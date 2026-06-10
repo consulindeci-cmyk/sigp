@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, IsBoolean } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsBoolean, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PartialType } from '@nestjs/mapped-types';
@@ -36,5 +36,6 @@ export class QueryUsersDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsIn(['createdAt', 'nom', 'prenom', 'email', 'role', 'actif', 'updatedAt'])
   sortBy?: string = 'createdAt';
 }

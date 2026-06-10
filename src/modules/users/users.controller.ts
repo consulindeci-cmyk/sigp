@@ -23,13 +23,15 @@ export class UsersController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: "Détail d'un utilisateur" })
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN_PROJET)
+  @ApiOperation({ summary: "Détail d'un utilisateur (SUPER_ADMIN, ADMIN_PROJET)" })
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Mettre à jour un utilisateur' })
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN_PROJET)
+  @ApiOperation({ summary: 'Mettre à jour un utilisateur (SUPER_ADMIN, ADMIN_PROJET)' })
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
   }

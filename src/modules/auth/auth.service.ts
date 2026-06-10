@@ -4,12 +4,14 @@ import {
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import { Role } from '@prisma/client';
 import {
   RegisterDto,
   LoginDto,
@@ -27,6 +29,13 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
+    // Empêcher la création de rôles privilégiés via l'endpoint public
+    const rolesPrivileges: Role[] = [Role.SUPER_ADMIN, Role.ADMIN_PROJET];
+    if (rolesPrivileges.includes(dto.role)) {
+      throw new ForbiddenException(
+        'Ce rôle ne peut être assigné que par un administrateur. Utilisez un rôle standard.',
+      );
+    }
     const existing = await this.prisma.utilisateur.findUnique({
       where: { email: dto.email },
     });
@@ -90,16 +99,26 @@ export class AuthService {
     return { message: 'Déconnexion réussie' };
   }
 
-  async refreshToken(userId: string, refreshToken: string) {
+  async refreshToken(refreshToken: string) {
+    // Vérification cryptographique de la signature du refresh token
+    let payload: { sub: string; email: string; role: string };
+    try {
+      payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('jwt.refreshSecret'),
+      });
+    } catch {
+      throw new UnauthorizedException('Refresh token invalide ou expiré');
+    }
+
     const user = await this.prisma.utilisateur.findFirst({
-      where: { id: userId, deletedAt: null, actif: true },
+      where: { id: payload.sub, deletedAt: null, actif: true },
     });
     if (!user || !user.refresh_token) {
       throw new UnauthorizedException('Accès refusé');
     }
     const isValid = await bcrypt.compare(refreshToken, user.refresh_token);
     if (!isValid) {
-      throw new UnauthorizedException('Refresh token invalide');
+      throw new UnauthorizedException('Refresh token invalide ou déjà utilisé');
     }
 
     const tokens = await this.generateTokens(user.id, user.email, user.role);
@@ -147,10 +166,10 @@ export class AuthService {
       where: { id: user.id },
       data: { reset_password_token: token, reset_password_expires: expires },
     });
-    // En production, envoyer un email avec le token
+    // TODO: Envoyer un email avec le lien de réinitialisation (nodemailer / SendGrid)
+    // Le token est stocké en base — NE JAMAIS le retourner dans la réponse HTTP
     return {
       message: 'Si cet email existe, un lien de réinitialisation a été envoyé.',
-      debug_token: token, // Retirer en production
     };
   }
 

@@ -50,10 +50,10 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Obtenir un nouveau access_token via refresh_token' })
+  @ApiResponse({ status: 200, description: 'Tokens renouvelés' })
+  @ApiResponse({ status: 401, description: 'Refresh token invalide ou expiré' })
   refresh(@Body() dto: RefreshTokenDto) {
-    // Décoder le refresh token pour obtenir l'userId
-    const payload = JSON.parse(Buffer.from(dto.refresh_token.split('.')[1], 'base64').toString());
-    return this.authService.refreshToken(payload.sub, dto.refresh_token);
+    return this.authService.refreshToken(dto.refresh_token);
   }
 
   @UseGuards(JwtAuthGuard)

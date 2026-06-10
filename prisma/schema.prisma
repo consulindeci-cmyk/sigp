@@ -138,6 +138,8 @@ model Utilisateur {
   documents    Document[]          @relation("UploadedBy")
   operations   Operation[]         @relation("OperationCreatedBy")
 
+  @@index([deletedAt, email])
+  @@index([reset_password_token])
   @@map("utilisateurs")
 }
 
@@ -168,6 +170,7 @@ model Projet {
   risques          Risque[]
   documents        Document[]
 
+  @@index([deletedAt, statut])
   @@map("projets")
 }
 
@@ -307,6 +310,7 @@ model Tache {
   ligneBudgetaire     LigneBudgetaire? @relation(fields: [ligne_budgetaire_id], references: [id])
   operations          Operation[]
 
+  @@index([projet_id, deletedAt, statut])
   @@map("taches")
 }
 
@@ -406,5 +410,7 @@ model AuditLog {
 
   utilisateur    Utilisateur? @relation(fields: [utilisateur_id], references: [id])
 
+  @@index([horodatage])
+  @@index([utilisateur_id])
   @@map("audit_logs")
 }

@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsEnum, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StatutProjet } from '@prisma/client';
 
@@ -118,6 +118,7 @@ export class QueryProjectsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsIn(['createdAt', 'nom_projet', 'code_projet', 'date_debut', 'date_fin', 'budget_total', 'statut', 'updatedAt'])
   sortBy?: string = 'createdAt';
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'] })
