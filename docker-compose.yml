@@ -1,0 +1,54 @@
+networks:
+  sigp-network:
+    driver: bridge
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sigp_user
+      POSTGRES_PASSWORD: sigp_password
+      POSTGRES_DB: sigp_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - sigp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sigp_user -d sigp_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://sigp_user:sigp_password@db:5432/sigp_db?schema=public
+      - NODE_ENV=production
+      - JWT_SECRET=sigp_jwt_secret_super_securise_2026
+      - JWT_EXPIRES_IN=15m
+      - JWT_REFRESH_SECRET=sigp_refresh_secret_super_securise_2026
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - UPLOAD_PATH=./uploads
+      - MAX_FILE_SIZE_MB=10
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+      - BCRYPT_SALT_ROUNDS=12
+      - PORT=3000
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - sigp-network
+
+volumes:
+  postgres_data:
+  uploads_data:
