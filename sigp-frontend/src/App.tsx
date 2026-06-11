@@ -11,6 +11,7 @@ import RisksPage from './pages/project/RisksPage'
 import LogframePage from './pages/project/LogframePage'
 import PTBAPage from './pages/project/PTBAPage'
 import WBSPage from './pages/project/WBSPage'
+import PPMPage from './pages/project/PPMPage'
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="logframe" element={<LogframePage />} />
             <Route path="ptba" element={<PTBAPage />} />
             <Route path="wbs" element={<WBSPage />} />
+            <Route path="ppm" element={<PPMPage />} />
           </Route>
         </Route>
 

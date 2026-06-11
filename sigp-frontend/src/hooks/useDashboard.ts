@@ -27,17 +27,6 @@ export function useProjectSummary(projectId: string) {
   })
 }
 
-export function useBudget(projectId: string) {
-  return useQuery({
-    queryKey: ['budget', projectId],
-    queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/budget`)
-      return data
-    },
-    enabled: !!projectId,
-  })
-}
-
 export function useWBS(projectId: string) {
   return useQuery({
     queryKey: ['wbs', projectId],
@@ -49,24 +38,3 @@ export function useWBS(projectId: string) {
   })
 }
 
-export function useLogframe(projectId: string) {
-  return useQuery({
-    queryKey: ['logframe', projectId],
-    queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/logframe`)
-      return data
-    },
-    enabled: !!projectId,
-  })
-}
-
-export function usePTBA(projectId: string) {
-  return useQuery({
-    queryKey: ['ptba', projectId],
-    queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/ptba`)
-      return data
-    },
-    enabled: !!projectId,
-  })
-}

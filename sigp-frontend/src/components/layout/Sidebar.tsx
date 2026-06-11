@@ -2,7 +2,7 @@ import { NavLink, useParams } from 'react-router-dom'
 import {
   LayoutDashboard, FolderOpen, ClipboardList, BarChart3,
   TrendingUp, DollarSign, AlertTriangle, Target, Calendar,
-  GitBranch, ChevronRight, Shield, LogOut, Menu,
+  GitBranch, FileText, ChevronRight, Shield, LogOut, Menu,
 } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -18,10 +18,11 @@ const projectNav = [
   { to: 'saisie-poa', icon: ClipboardList, label: 'Saisie POA' },
   { to: 'moteur-evm', icon: TrendingUp, label: 'Moteur EVM' },
   { to: 'dashboard', icon: BarChart3, label: 'Dashboard Projet' },
-  { to: 'budget', icon: DollarSign, label: 'Budget' },
-  { to: 'risks', icon: AlertTriangle, label: 'Risques' },
   { to: 'logframe', icon: Target, label: 'Cadre Logique' },
   { to: 'ptba', icon: Calendar, label: 'PTBA' },
+  { to: 'budget', icon: DollarSign, label: 'Budget Détaillé' },
+  { to: 'ppm', icon: FileText, label: 'PPM' },
+  { to: 'risks', icon: AlertTriangle, label: 'Risques' },
   { to: 'wbs', icon: GitBranch, label: 'WBS' },
 ]
 

@@ -32,7 +32,6 @@ export default function SaisiePOAPage() {
   const deleteMutation = useDeleteTask(projectId)
 
   const taches = data?.data ?? []
-  const wbsList = wbsData?.data ?? []
 
   const addRow = async () => {
     await createMutation.mutateAsync({

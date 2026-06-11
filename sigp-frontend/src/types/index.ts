@@ -163,3 +163,50 @@ export interface PaginatedResponse<T> {
     totalPages: number;
   };
 }
+
+export interface CadreLogique {
+  id: string;
+  projet_id: string;
+  niveau_intervention: 'IMPACT' | 'EFFET' | 'RESULTAT' | 'ACTIVITE';
+  indicateur: string;
+  valeur_reference?: string;
+  cible?: string;
+  source_verification?: string;
+}
+
+export interface PTBA {
+  id: string;
+  projet_id: string;
+  code_activite: string;
+  composante: string;
+  activite: string;
+  budget_prevu: string | number;
+  q1: string | number;
+  q2: string | number;
+  q3: string | number;
+  q4: string | number;
+  statut: 'PLANIFIE' | 'EN_COURS' | 'TERMINE' | 'SUSPENDU';
+}
+
+export interface LigneBudgetaireDetail {
+  id: string;
+  projet_id: string;
+  code_budget: string;
+  rubrique: string;
+  unite?: string;
+  quantite: number;
+  cout_unitaire: string | number;
+  cout_total: string | number;
+}
+
+export interface Marche {
+  id: string;
+  projet_id: string;
+  description_marche: string;
+  type_marche: 'TRAVAUX' | 'FOURNITURES' | 'SERVICES' | 'CONSULTANTS';
+  methode: 'AOI' | 'AON' | 'DEMANDE_COTATION' | 'SFQC' | 'SMC' | 'GRE_A_GRE';
+  date_prevue?: string;
+  montant_estime: string | number;
+  statut: 'PLANIFIE' | 'EN_COURS' | 'ADJUGE' | 'SIGNE' | 'RESILIE' | 'ANNULE';
+}
+
