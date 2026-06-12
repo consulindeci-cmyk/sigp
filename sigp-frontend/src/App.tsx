@@ -12,6 +12,7 @@ import LogframePage from './pages/project/LogframePage'
 import PTBAPage from './pages/project/PTBAPage'
 import WBSPage from './pages/project/WBSPage'
 import PPMPage from './pages/project/PPMPage'
+import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
 
           {/* Routes spécifiques à un projet */}
           <Route path="/projects/:id">
