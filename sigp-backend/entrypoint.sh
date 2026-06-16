@@ -1,8 +1,11 @@
 #!/bin/sh
 set -e
 
-echo "⏳ Exécution des migrations Prisma..."
+echo "Exécution des migrations Prisma..."
 npx --yes prisma migrate deploy
 
-echo "🚀 Démarrage de l'application NestJS..."
+echo "Exécution du seed..."
+npx --yes tsx prisma/seed.ts
+
+echo "Démarrage de l'application..."
 exec node dist/main.js
