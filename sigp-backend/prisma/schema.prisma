@@ -1,0 +1,416 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN_PROJET
+  COORDONNATEUR_PROJET
+  RESPONSABLE_TECHNIQUE
+  RESPONSABLE_FINANCIER
+  RESPONSABLE_PASSATION_MARCHES
+  RESPONSABLE_SUIVI_EVALUATION
+  BAILLEUR
+  AUDITEUR
+  OBSERVATEUR
+}
+
+enum StatutProjet {
+  PREPARATION
+  ACTIF
+  SUSPENDU
+  CLOTURE
+  ANNULE
+}
+
+enum NiveauIntervention {
+  IMPACT
+  EFFET
+  RESULTAT
+  ACTIVITE
+}
+
+enum StatutPTBA {
+  PLANIFIE
+  EN_COURS
+  TERMINE
+  SUSPENDU
+}
+
+enum StatutTache {
+  A_FAIRE
+  EN_COURS
+  TERMINE
+  ANNULE
+}
+
+enum TypeMarche {
+  TRAVAUX
+  FOURNITURES
+  SERVICES
+  CONSULTANTS
+}
+
+enum MethodePassation {
+  AOI
+  AON
+  DEMANDE_COTATION
+  SFQC
+  SMC
+  GRE_A_GRE
+}
+
+enum TypeRevue {
+  A_PRIORI
+  A_POSTERIORI
+}
+
+enum StatutMarche {
+  PLANIFIE
+  EN_COURS
+  ADJUGE
+  SIGNE
+  RESILIE
+  ANNULE
+}
+
+enum StatutRisque {
+  IDENTIFIE
+  EN_COURS_ATTENUATION
+  RESIDU
+  CLOS
+}
+
+enum TypeDocument {
+  CONTRAT
+  RAPPORT
+  AUDIT
+  FACTURE
+  PV
+  PHOTO
+  AUTRE
+}
+
+enum ActionAudit {
+  CREATION
+  MODIFICATION
+  SUPPRESSION
+  CONNEXION
+  DECONNEXION
+  EXPORT
+  UPLOAD
+}
+
+// ============================================================
+// MODELS
+// ============================================================
+
+model Utilisateur {
+  id           String    @id @default(uuid())
+  prenom       String
+  nom          String
+  email        String    @unique
+  telephone    String?
+  mot_de_passe String
+  role         Role
+  actif        Boolean   @default(true)
+  refresh_token String?
+  reset_password_token String?
+  reset_password_expires DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  projets      ProjetUtilisateur[]
+  auditLogs    AuditLog[]
+  documents    Document[]          @relation("UploadedBy")
+  operations   Operation[]         @relation("OperationCreatedBy")
+
+  @@index([deletedAt, email])
+  @@index([reset_password_token])
+  @@map("utilisateurs")
+}
+
+model Projet {
+  id               String       @id @default(uuid())
+  code_projet      String       @unique
+  nom_projet       String
+  description      String?
+  bailleur_principal String
+  date_debut       DateTime
+  date_fin         DateTime
+  budget_total     Decimal      @db.Decimal(15, 2)
+  devise           String       @default("XOF")
+  statut           StatutProjet @default(PREPARATION)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  utilisateurs     ProjetUtilisateur[]
+  cadresLogiques   CadreLogique[]
+  ptba             PTBA[]
+  lignesBudgetaires LigneBudgetaire[]
+  sourcesFinancement SourceFinancement[]
+  wbs              WBS[]
+  taches           Tache[]
+  operations       Operation[]
+  marches          Marche[]
+  risques          Risque[]
+  documents        Document[]
+
+  @@index([deletedAt, statut])
+  @@map("projets")
+}
+
+model ProjetUtilisateur {
+  id            String   @id @default(uuid())
+  projet_id     String
+  utilisateur_id String
+  createdAt     DateTime @default(now())
+
+  projet        Projet      @relation(fields: [projet_id], references: [id])
+  utilisateur   Utilisateur @relation(fields: [utilisateur_id], references: [id])
+
+  @@unique([projet_id, utilisateur_id])
+  @@map("projet_utilisateurs")
+}
+
+model CadreLogique {
+  id                  String             @id @default(uuid())
+  projet_id           String
+  niveau_intervention NiveauIntervention
+  indicateur          String
+  valeur_reference    String?
+  cible               String?
+  source_verification String?
+  hypotheses          String?
+  risques             String?
+  commentaires        String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deletedAt           DateTime?
+
+  projet              Projet             @relation(fields: [projet_id], references: [id])
+
+  @@map("cadres_logiques")
+}
+
+model PTBA {
+  id                    String     @id @default(uuid())
+  projet_id             String
+  code_activite         String
+  composante            String
+  activite              String
+  description           String?
+  responsable           String?
+  budget_prevu          Decimal    @db.Decimal(15, 2)
+  q1                    Decimal    @default(0) @db.Decimal(15, 2)
+  q2                    Decimal    @default(0) @db.Decimal(15, 2)
+  q3                    Decimal    @default(0) @db.Decimal(15, 2)
+  q4                    Decimal    @default(0) @db.Decimal(15, 2)
+  statut                StatutPTBA @default(PLANIFIE)
+  pourcentage_avancement Float     @default(0)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  deletedAt             DateTime?
+
+  projet                Projet     @relation(fields: [projet_id], references: [id])
+
+  @@map("ptba")
+}
+
+model LigneBudgetaire {
+  id                   String   @id @default(uuid())
+  projet_id            String
+  code_budget          String
+  rubrique             String
+  sous_rubrique        String?
+  unite                String?
+  quantite             Float    @default(1)
+  cout_unitaire        Decimal  @db.Decimal(15, 2)
+  cout_total           Decimal  @db.Decimal(15, 2)
+  financement_bailleur Decimal  @default(0) @db.Decimal(15, 2)
+  contrepartie_etat    Decimal  @default(0) @db.Decimal(15, 2)
+  commentaire          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  deletedAt            DateTime?
+
+  projet               Projet   @relation(fields: [projet_id], references: [id])
+  taches               Tache[]
+
+  @@map("lignes_budgetaires")
+}
+
+model SourceFinancement {
+  id               String    @id @default(uuid())
+  projet_id        String
+  nom_bailleur     String
+  montant          Decimal   @db.Decimal(15, 2)
+  devise           String
+  date_financement DateTime?
+  commentaire      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  projet           Projet    @relation(fields: [projet_id], references: [id])
+
+  @@map("sources_financement")
+}
+
+model WBS {
+  id          String    @id @default(uuid())
+  projet_id   String
+  code_wbs    String
+  nom_phase   String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  projet      Projet    @relation(fields: [projet_id], references: [id])
+  taches      Tache[]
+
+  @@map("wbs")
+}
+
+model Tache {
+  id                  String      @id @default(uuid())
+  projet_id           String
+  wbs_id              String?
+  ligne_budgetaire_id String?
+  code_tache          String
+  description         String
+  responsable         String?
+  date_debut          DateTime?
+  date_fin            DateTime?
+  cout_prevu          Decimal     @db.Decimal(15, 2)
+  cout_reel           Decimal     @default(0) @db.Decimal(15, 2)
+  avancement          Float       @default(0)
+  statut              StatutTache @default(A_FAIRE)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  deletedAt           DateTime?
+
+  projet              Projet          @relation(fields: [projet_id], references: [id])
+  wbs                 WBS?            @relation(fields: [wbs_id], references: [id])
+  ligneBudgetaire     LigneBudgetaire? @relation(fields: [ligne_budgetaire_id], references: [id])
+  operations          Operation[]
+
+  @@index([projet_id, deletedAt, statut])
+  @@map("taches")
+}
+
+model Operation {
+  id               String      @id @default(uuid())
+  projet_id        String
+  tache_id         String
+  date_operation   DateTime
+  statut           StatutTache
+  montant_engage   Decimal     @default(0) @db.Decimal(15, 2)
+  montant_decaisse Decimal     @default(0) @db.Decimal(15, 2)
+  commentaire      String?
+  cree_par         String
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  projet           Projet      @relation(fields: [projet_id], references: [id])
+  tache            Tache       @relation(fields: [tache_id], references: [id])
+  createur         Utilisateur @relation("OperationCreatedBy", fields: [cree_par], references: [id])
+
+  @@map("operations")
+}
+
+model Marche {
+  id                 String           @id @default(uuid())
+  projet_id          String
+  description_marche String
+  type_marche        TypeMarche
+  methode            MethodePassation
+  type_revue         TypeRevue
+  date_prevue        DateTime?
+  date_signature     DateTime?
+  montant_estime     Decimal          @db.Decimal(15, 2)
+  statut             StatutMarche     @default(PLANIFIE)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  projet             Projet           @relation(fields: [projet_id], references: [id])
+
+  @@map("marches")
+}
+
+model Risque {
+  id                    String       @id @default(uuid())
+  projet_id             String
+  categorie             String
+  description           String
+  probabilite           Int
+  impact                Int
+  criticite             Int
+  strategie_attenuation String?
+  responsable           String?
+  statut                StatutRisque @default(IDENTIFIE)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  deletedAt             DateTime?
+
+  projet                Projet       @relation(fields: [projet_id], references: [id])
+
+  @@map("risques")
+}
+
+model Document {
+  id             String       @id @default(uuid())
+  projet_id      String
+  nom_fichier    String
+  url_fichier    String
+  type_document  TypeDocument
+  taille_fichier Int
+  version        Int          @default(1)
+  date_upload    DateTime     @default(now())
+  uploade_par    String
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  projet         Projet       @relation(fields: [projet_id], references: [id])
+  uploadePar     Utilisateur  @relation("UploadedBy", fields: [uploade_par], references: [id])
+
+  @@map("documents")
+}
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  utilisateur_id String?
+  action         ActionAudit
+  module         String
+  entite_id      String?
+  ancienne_valeur Json?
+  nouvelle_valeur Json?
+  horodatage     DateTime    @default(now())
+  adresse_ip     String?
+  user_agent     String?
+
+  utilisateur    Utilisateur? @relation(fields: [utilisateur_id], references: [id])
+
+  @@index([horodatage])
+  @@index([utilisateur_id])
+  @@map("audit_logs")
+}

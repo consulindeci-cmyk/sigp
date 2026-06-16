@@ -1,0 +1,19 @@
+.git
+.env
+.env.*
+node_modules
+# dist est régénéré par nest build dans le stage builder — ne pas décommenter
+npm-debug.log
+yarn-error.log
+Dockerfile
+docker-compose.yml
+.eslintrc.js
+.prettierrc
+README.md
+coverage
+test
+.next
+logs
+*.log
+*.tmp
+temp
