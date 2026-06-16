@@ -452,13 +452,13 @@ export default function SettingsPage() {
         <p className="text-[#94A3B8] text-sm mt-0.5">Gérez votre compte et vos préférences</p>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6 w-full">
         {/* ── Sidebar tabs ── */}
         <div className="w-full md:w-52 shrink-0">
-          <div className="bg-[#101827] border border-[#1E293B] rounded-2xl p-2 flex md:flex-col overflow-x-auto md:overflow-visible gap-1 md:gap-0 md:space-y-0.5">
+          <div className="bg-[#101827] border border-[#1E293B] rounded-2xl p-2 flex md:flex-col overflow-x-auto md:overflow-visible gap-2 lg:gap-0 md:space-y-0.5">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setActiveTab(id)}
-                className={`flex items-center gap-2 md:gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 shrink-0 md:w-full
+                className={`flex items-center gap-2 md:gap-3 px-4 md:px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 shrink-0 md:w-full
                   ${activeTab === id
                     ? 'bg-[#10B981]/10 text-[#10B981]'
                     : 'text-[#94A3B8] hover:text-white hover:bg-white/5'
@@ -469,7 +469,7 @@ export default function SettingsPage() {
             ))}
             <div className="hidden md:block my-2 border-t border-[#1E293B]" />
             <button onClick={logout}
-              className="flex items-center gap-2 md:gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all shrink-0 md:w-full">
+              className="flex items-center gap-2 md:gap-3 px-4 md:px-3 py-2.5 rounded-xl text-sm font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all shrink-0 md:w-full">
               <AlertTriangle size={16} /> <span className="hidden md:inline">Déconnexion</span>
             </button>
           </div>
@@ -483,7 +483,7 @@ export default function SettingsPage() {
             <div className="space-y-6 pb-24">
               <Section title="Informations personnelles" subtitle="Gérez votre identité et vos coordonnées">
                 {/* Avatar */}
-                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8">
+                <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-8 w-full">
                   <div className="relative group">
                     <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-[#3B82F6] to-[#6366F1] flex items-center justify-center text-white text-3xl font-black shadow-xl overflow-hidden border-4 border-[#101827]">
                       {avatarUrl ? (
@@ -500,10 +500,10 @@ export default function SettingsPage() {
                     </button>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/jpeg, image/png" onChange={handleAvatarChange} />
                   </div>
-                  <div className="flex-1 text-center sm:text-left">
+                  <div className="flex-1 text-center md:text-left w-full">
                     <h3 className="text-white font-bold text-lg">{profile.prenom} {profile.nom}</h3>
                     <p className="text-[#94A3B8] text-sm mt-0.5">{formatRole(profile.role)}</p>
-                    <div className="mt-3 flex items-center justify-center sm:justify-start gap-3">
+                    <div className="mt-3 flex flex-wrap items-center justify-center md:justify-start gap-3">
                       <button onClick={() => fileInputRef.current?.click()} className="text-xs font-semibold text-[#10B981] bg-[#10B981]/10 hover:bg-[#10B981]/20 px-3 py-1.5 rounded-lg transition-colors">
                         Changer la photo
                       </button>
@@ -517,7 +517,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                   <Field label="Prénom">
                     <Input value={profile.prenom} onChange={e => setProfile(s => ({ ...s, prenom: e.target.value }))} />
                   </Field>
@@ -531,7 +531,7 @@ export default function SettingsPage() {
               </Section>
 
               <Section title="Informations professionnelles" subtitle="Détails de votre fonction dans le système">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                   <Field label="Organisation">
                     <LockedField value={profile.organisation} tooltip="Votre structure d'appartenance ne peut pas être modifiée" />
                   </Field>
@@ -554,7 +554,7 @@ export default function SettingsPage() {
               </Section>
 
               <Section title="Informations système" subtitle="Données techniques du compte">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                   <Field label="Adresse email">
                     <LockedField value={profile.email} tooltip="Pour modifier cette adresse, contactez un administrateur" />
                   </Field>
@@ -576,7 +576,7 @@ export default function SettingsPage() {
 
               <div className="bg-[#050810] border border-[#1E293B] rounded-2xl p-6 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl" />
-                <div className="flex items-start gap-4 relative z-10">
+                <div className="flex flex-col md:flex-row items-center md:items-start gap-4 relative z-10 w-full text-center md:text-left">
                   <div className="w-10 h-10 rounded-xl bg-[#1E293B] flex items-center justify-center shrink-0">
                     <Shield size={20} className="text-white" />
                   </div>
@@ -584,12 +584,12 @@ export default function SettingsPage() {
                     <h3 className="text-white font-bold mb-1 flex items-center gap-2">
                       Sécurité du compte
                     </h3>
-                    <ul className="text-sm text-[#94A3B8] space-y-1.5 mb-4">
+                    <ul className="text-sm text-[#94A3B8] space-y-1.5 mb-4 flex flex-col items-center md:items-start">
                       <li className="flex items-center gap-2"><Clock size={12} className="text-[#3B82F6]"/> Dernière connexion : il y a 2 heures</li>
                       <li className="flex items-center gap-2"><Lock size={12} className="text-[#10B981]"/> Authentification à deux facteurs : Activée</li>
                       <li className="flex items-center gap-2"><Activity size={12} className="text-[#F59E0B]"/> Sessions actives : 3</li>
                     </ul>
-                    <button onClick={() => setActiveTab('securite')} className="text-xs font-bold text-white bg-[#1E293B] hover:bg-[#334155] px-4 py-2 rounded-lg transition-colors flex items-center gap-2 w-max">
+                    <button onClick={() => setActiveTab('securite')} className="text-xs font-bold text-white bg-[#1E293B] hover:bg-[#334155] px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 w-full md:w-max">
                       Gérer la sécurité <ChevronRight size={14} />
                     </button>
                   </div>
@@ -597,15 +597,15 @@ export default function SettingsPage() {
               </div>
 
               {/* Actions sticky bar */}
-              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-6">
+              <div className="flex flex-col-reverse md:flex-row justify-end gap-3 mt-6 w-full">
                 {isDirty && (
                   <button onClick={cancelProfileChanges}
-                    className="w-full sm:w-auto px-6 py-2.5 text-[#94A3B8] hover:text-white font-bold text-sm rounded-xl transition-all hover:bg-white/5">
+                    className="w-full md:w-auto px-6 py-2.5 text-[#94A3B8] hover:text-white font-bold text-sm rounded-xl transition-all hover:bg-white/5">
                     Annuler les modifications
                   </button>
                 )}
                 <button onClick={saveProfile} disabled={!isDirty || isSaving}
-                  className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 font-bold text-sm rounded-xl transition-all shadow-lg sm:min-w-[260px]
+                  className={`w-full md:w-auto flex items-center justify-center gap-2 px-6 py-2.5 font-bold text-sm rounded-xl transition-all shadow-lg md:min-w-[260px]
                     ${isDirty 
                       ? 'bg-[#10B981] hover:bg-[#059669] text-white shadow-[#10B981]/20 active:scale-95 cursor-pointer' 
                       : 'bg-[#1E293B] text-[#94A3B8] cursor-not-allowed shadow-none'}`}>
