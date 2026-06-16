@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { useAuthStore } from '@/stores/authStore'
-import { Bell, Search, Plus, ChevronRight } from 'lucide-react'
+import { useUIStore } from '@/stores/uiStore'
+import { Bell, Search, Plus, ChevronRight, Menu } from 'lucide-react'
 
 // ── Breadcrumb map ──────────────────────────────────────────────
 const routeLabels: Record<string, string> = {
@@ -25,12 +26,12 @@ function Breadcrumb() {
   const crumbs = segments.map(s => routeLabels[s] ?? s)
 
   return (
-    <nav className="flex items-center gap-1.5 text-sm">
-      <span className="text-[#94A3B8] hover:text-white cursor-pointer transition-colors">Accueil</span>
+    <nav className="flex items-center gap-1.5 text-sm overflow-hidden whitespace-nowrap">
+      <span className="text-[#94A3B8] hover:text-white cursor-pointer transition-colors shrink-0">Accueil</span>
       {crumbs.map((crumb, i) => (
-        <span key={i} className="flex items-center gap-1.5">
+        <span key={i} className="flex items-center gap-1.5 shrink-0">
           <ChevronRight size={12} className="text-[#1E293B]" />
-          <span className={i === crumbs.length - 1 ? 'text-white font-semibold' : 'text-[#94A3B8]'}>
+          <span className={i === crumbs.length - 1 ? 'text-white font-semibold truncate' : 'text-[#94A3B8] truncate'}>
             {crumb}
           </span>
         </span>
@@ -42,6 +43,7 @@ function Breadcrumb() {
 // ── AppShell ────────────────────────────────────────────────────
 export function AppShell() {
   const { isAuthenticated } = useAuthStore()
+  const { toggleSidebar } = useUIStore()
   const navigate = useNavigate()
   const [notifOpen, setNotifOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -63,7 +65,12 @@ export function AppShell() {
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* ── HEADER ── */}
-        <header className="shrink-0 flex items-center gap-4 px-6 py-3.5 border-b border-[#1E293B] bg-[#0A0F1E]">
+        <header className="shrink-0 flex items-center gap-3 md:gap-4 px-4 md:px-6 py-3.5 border-b border-[#1E293B] bg-[#0A0F1E]">
+          
+          <button onClick={toggleSidebar} className="md:hidden p-1.5 text-[#94A3B8] hover:text-white rounded-lg bg-[#101827] border border-[#1E293B] shrink-0">
+            <Menu size={16} />
+          </button>
+
           {/* Breadcrumb */}
           <div className="flex-1 min-w-0">
             <Breadcrumb />
@@ -84,14 +91,14 @@ export function AppShell() {
           </div>
 
           {/* Notifications */}
-          <div className="relative" ref={notifRef}>
+          <div className="relative shrink-0" ref={notifRef}>
             <button onClick={() => setNotifOpen(v => !v)}
               className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-[#101827] border border-[#1E293B] text-[#94A3B8] hover:text-white hover:border-[#10B981]/30 transition-all duration-200">
               <Bell size={16} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#10B981] rounded-full ring-2 ring-[#0A0F1E]" />
             </button>
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-2 w-80 bg-[#101827] border border-[#1E293B] rounded-2xl shadow-2xl shadow-black/50 z-50 overflow-hidden">
+              <div className="absolute right-0 top-full mt-2 w-[300px] sm:w-80 bg-[#101827] border border-[#1E293B] rounded-2xl shadow-2xl shadow-black/50 z-50 overflow-hidden">
                 <div className="px-4 py-3 border-b border-[#1E293B] flex items-center justify-between">
                   <h3 className="text-white text-sm font-bold">Notifications</h3>
                   <span className="text-[10px] text-[#10B981] font-semibold bg-[#10B981]/10 px-2 py-0.5 rounded-full">3 nouvelles</span>
@@ -118,7 +125,7 @@ export function AppShell() {
           {/* Nouveau Projet button */}
           <button
             onClick={() => navigate('/projects')}
-            className="flex items-center gap-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white font-semibold text-sm rounded-xl transition-all duration-200 shadow-lg shadow-[#10B981]/20 hover:shadow-[#10B981]/30 active:scale-95">
+            className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-[#10B981] hover:bg-[#059669] text-white font-semibold text-sm rounded-xl transition-all duration-200 shadow-lg shadow-[#10B981]/20 hover:shadow-[#10B981]/30 active:scale-95 shrink-0">
             <Plus size={15} />
             <span className="hidden sm:inline">Nouveau Projet</span>
           </button>
@@ -142,12 +149,12 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
   return (
-    <div className="flex items-start justify-between px-6 py-4 border-b border-[#1E293B]">
+    <div className="flex flex-col sm:flex-row sm:items-start justify-between px-4 md:px-6 py-4 border-b border-[#1E293B] gap-4">
       <div>
         <h1 className="text-base font-bold text-white">{title}</h1>
         {subtitle && <p className="text-xs text-[#94A3B8] mt-0.5">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">{actions}</div>}
     </div>
   )
 }

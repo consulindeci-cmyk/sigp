@@ -13,7 +13,7 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
         <h2 className="text-white font-bold text-sm">{title}</h2>
         {subtitle && <p className="text-[#94A3B8] text-xs mt-0.5">{subtitle}</p>}
       </div>
-      <div className="p-6">{children}</div>
+      <div className="p-4 md:p-6">{children}</div>
     </div>
   )
 }
@@ -437,7 +437,7 @@ export default function SettingsPage() {
   const activeTabLabel = tabs.find(t => t.id === activeTab)?.label || 'Paramètres'
 
   return (
-    <div className="p-6 space-y-6 min-h-full">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 min-h-full">
 
       {/* Breadcrumb & Title */}
       <div>

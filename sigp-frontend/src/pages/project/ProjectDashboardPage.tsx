@@ -43,7 +43,7 @@ export default function ProjectDashboardPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-x-auto overflow-y-auto w-full p-4 md:p-6 space-y-4 md:space-y-6">
         {/* KPIs principaux */}
         {tasksLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="animate-spin text-sigp-muted" /></div>
@@ -150,7 +150,7 @@ export default function ProjectDashboardPage() {
                   <h3 className="text-sm font-semibold text-sigp-red">{alertes.length} Alerte(s) Critique(s)</h3>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="excel-table">
+                  <table className="excel-table min-w-max">
                     <thead>
                       <tr>
                         <th>Code Tâche</th>

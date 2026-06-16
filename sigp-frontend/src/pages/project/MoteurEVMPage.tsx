@@ -46,18 +46,18 @@ export default function MoteurEVMPage() {
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-sigp-muted" /></div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-auto w-full p-4 md:p-6 space-y-4 md:space-y-6">
           {/* KPIs EVM globaux */}
           {evm && (
             <>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <KPICard label="BAC (Budget)" value={formatCurrency(evm.bac, project?.devise)} color="blue" />
                 <KPICard label="EV (Valeur Acquise)" value={formatCurrency(evm.ev, project?.devise)} color="green" />
                 <KPICard label="AC (Coût Réel)" value={formatCurrency(evm.ac, project?.devise)} color="yellow" />
                 <KPICard label="PV (Valeur Planifiée)" value={formatCurrency(evm.pv, project?.devise)} />
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="kpi-card">
                   <p className="text-xs text-sigp-muted uppercase tracking-wider mb-2">CPI</p>
                   <EVMBadge value={evm.cpi} size="lg" />
@@ -80,7 +80,7 @@ export default function MoteurEVMPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <KPICard label="EAC (Coût Final Estimé)" value={formatCurrency(evm.eac, project?.devise)} color="blue" />
                 <KPICard label="VAC (Variance à Complétion)" value={formatCurrency(evm.vac, project?.devise)} color={evm.vac >= 0 ? 'green' : 'red'} />
                 <KPICard label="Date de contrôle" value={dateControle || 'Aujourd\'hui'} />

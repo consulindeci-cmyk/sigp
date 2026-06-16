@@ -42,7 +42,7 @@ function StatCard({
           </span>
         )}
       </div>
-      <p className="text-3xl font-black text-white tracking-tight mb-1">{value}</p>
+      <p className="text-2xl md:text-3xl font-black text-white tracking-tight mb-1">{value}</p>
       <p className="text-[#94A3B8] text-xs font-semibold uppercase tracking-wider">{label}</p>
       {subtitle && <p className="text-[#94A3B8]/60 text-[11px] mt-0.5">{subtitle}</p>}
     </div>
@@ -89,12 +89,12 @@ export default function DashboardPage() {
   ]
 
   return (
-    <div className="p-6 space-y-6 min-h-full">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 min-h-full">
 
       {/* ── Page Title ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tight">Tableau de bord</h1>
+          <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">Tableau de bord</h1>
           <p className="text-[#94A3B8] text-sm mt-0.5">Vue d'ensemble de tous les projets de développement</p>
         </div>
         <div className="flex items-center gap-2">
@@ -112,7 +112,7 @@ export default function DashboardPage() {
       {dashLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="animate-spin text-[#94A3B8]" /></div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             label="Projets actifs"
             value={dashboard?.projets?.actifs ?? projets.filter(p => p.statut === 'ACTIF').length}
@@ -227,14 +227,14 @@ export default function DashboardPage() {
       {/* ── Projets Table ── */}
       <div className="bg-[#101827] border border-[#1E293B] rounded-2xl overflow-hidden">
         {/* Table header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1E293B]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 sm:px-5 py-4 border-b border-[#1E293B] gap-3">
           <div className="flex items-center gap-3">
             <h2 className="text-white font-bold text-sm">Projets</h2>
             <span className="text-[10px] font-bold text-[#94A3B8] bg-[#1E293B] px-2 py-0.5 rounded-full">
               {projets.length} total
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Filter tabs */}
             <div className="hidden md:flex items-center gap-1 bg-[#0A0F1E] border border-[#1E293B] rounded-xl p-1">
               {filters.map(f => (
@@ -262,8 +262,8 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[800px] text-sm">
               <thead>
                 <tr className="border-b border-[#1E293B]">
                   {['Code', 'Nom du Projet', 'Bailleur', 'Début', 'Fin', 'Budget', 'Statut', ''].map(h => (

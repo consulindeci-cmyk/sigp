@@ -282,7 +282,7 @@ export default function ProjectsPage() {
 
       {/* Selection action bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center justify-between px-6 py-2.5 bg-sigp-blue/10 border-b border-sigp-blue/30 text-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 md:px-6 py-2.5 bg-sigp-blue/10 border-b border-sigp-blue/30 text-sm gap-3 sm:gap-0">
           <span className="text-sigp-blue font-semibold flex items-center gap-2">
             <Check size={14} /> {selectedIds.size} projet(s) sélectionné(s)
           </span>
@@ -298,8 +298,8 @@ export default function ProjectsPage() {
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-navy-500 bg-navy-800/30">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 md:px-6 py-3 border-b border-navy-500 bg-navy-800/30">
+        <div className="relative flex-1 w-full max-w-none sm:max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-sigp-muted" />
           <input
             value={search}
@@ -311,7 +311,7 @@ export default function ProjectsPage() {
         <select
           value={statut}
           onChange={e => { setStatut(e.target.value as StatutProjet | ''); setPage(1) }}
-          className="sigp-input w-36 py-1.5 text-xs"
+          className="sigp-input w-full sm:w-36 py-1.5 text-xs"
         >
           <option value="">Tous statuts</option>
           {['PREPARATION', 'ACTIF', 'SUSPENDU', 'CLOTURE', 'ANNULE'].map(s => (
@@ -326,7 +326,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-auto w-full">
         {isLoading ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-sigp-muted" /></div>
         ) : projets.length === 0 ? (
@@ -354,7 +354,7 @@ export default function ProjectsPage() {
             )}
           </div>
         ) : (
-          <table className="excel-table">
+          <table className="excel-table min-w-max">
             <thead>
               <tr>
                 <th className="w-8">
@@ -414,7 +414,7 @@ export default function ProjectsPage() {
 
       {/* Pagination */}
       {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-3 border-t border-navy-500 text-xs text-sigp-muted">
+        <div className="flex flex-col sm:flex-row items-center justify-between px-4 md:px-6 py-3 border-t border-navy-500 text-xs text-sigp-muted gap-3">
           <span>{meta.total} projets · Page {meta.page}/{meta.totalPages}</span>
           <div className="flex gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-ghost py-1 px-2 disabled:opacity-40">← Préc.</button>
@@ -432,7 +432,7 @@ export default function ProjectsPage() {
               <button onClick={() => setShowModal(false)} className="text-sigp-muted hover:text-sigp-text"><X size={16} /></button>
             </div>
             <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-sigp-muted mb-1 block">Code projet *</label>
                   <input {...register('code_projet')} placeholder="PAEP-CI-2025" className="sigp-input" />
@@ -457,7 +457,7 @@ export default function ProjectsPage() {
                 <input {...register('bailleur_principal')} placeholder="Banque Mondiale" className="sigp-input" />
                 {errors.bailleur_principal && <p className="text-sigp-red text-xs mt-1">{errors.bailleur_principal.message}</p>}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-sigp-muted mb-1 block">Date début *</label>
                   <input {...register('date_debut')} type="date" className="sigp-input" />
@@ -557,7 +557,7 @@ export default function ProjectsPage() {
               {exportOptions.reportType === 'list' && (
                 <div>
                   <label className="text-xs font-bold text-sigp-muted uppercase tracking-wider block mb-2">Données à inclure</label>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {[
                       { key: 'includeInfos', label: 'Informations générales' },
                       { key: 'includeBudget', label: 'Budget' },

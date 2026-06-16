@@ -228,7 +228,7 @@ export default function BudgetPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="excel-table">
+                <table className="excel-table min-w-max">
                   <thead>
                     <tr>
                       <th className="w-8"><input type="checkbox" checked={filtered.length > 0 && selectedIds.size === filtered.length} onChange={toggleSelectAll} className="accent-sigp-blue cursor-pointer" /></th>

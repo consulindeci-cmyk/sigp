@@ -55,7 +55,7 @@ export default function LogframePage() {
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-sigp-muted" /></div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-auto w-full p-4 md:p-6">
           <div className="bg-navy-800 border border-navy-500 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="excel-table min-w-[900px]">
