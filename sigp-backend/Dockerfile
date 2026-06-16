@@ -29,7 +29,7 @@ RUN npm prune --omit=dev
 FROM node:22-alpine AS runner
 
 # Mêmes dépendances système nécessaires à l'exécution de Prisma
-RUN apk add --no-cache openssl libc6-compat
+RUN apk add --no-cache openssl libc6-compat postgresql-client
 
 WORKDIR /app
 
@@ -40,6 +40,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY dump.sql* ./
 
 # Copie et configuration du script d'entrée (migrations + démarrage)
 COPY entrypoint.sh ./entrypoint.sh
