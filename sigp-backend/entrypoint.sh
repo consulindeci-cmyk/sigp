@@ -2,7 +2,7 @@
 set -e
 
 echo "⏳ Exécution des migrations Prisma..."
-npx prisma migrate deploy
+npx --yes prisma migrate deploy
 
 echo "🚀 Démarrage de l'application NestJS..."
 exec node dist/main.js
