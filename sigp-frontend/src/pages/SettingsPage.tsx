@@ -452,13 +452,13 @@ export default function SettingsPage() {
         <p className="text-[#94A3B8] text-sm mt-0.5">Gérez votre compte et vos préférences</p>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
         {/* ── Sidebar tabs ── */}
-        <div className="w-52 shrink-0">
-          <div className="bg-[#101827] border border-[#1E293B] rounded-2xl p-2 space-y-0.5">
+        <div className="w-full md:w-52 shrink-0">
+          <div className="bg-[#101827] border border-[#1E293B] rounded-2xl p-2 flex md:flex-col overflow-x-auto md:overflow-visible gap-1 md:gap-0 md:space-y-0.5">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setActiveTab(id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200
+                className={`flex items-center gap-2 md:gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 shrink-0 md:w-full
                   ${activeTab === id
                     ? 'bg-[#10B981]/10 text-[#10B981]'
                     : 'text-[#94A3B8] hover:text-white hover:bg-white/5'
@@ -467,10 +467,10 @@ export default function SettingsPage() {
                 {label}
               </button>
             ))}
-            <div className="my-2 border-t border-[#1E293B]" />
+            <div className="hidden md:block my-2 border-t border-[#1E293B]" />
             <button onClick={logout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all">
-              <AlertTriangle size={16} /> Déconnexion
+              className="flex items-center gap-2 md:gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all shrink-0 md:w-full">
+              <AlertTriangle size={16} /> <span className="hidden md:inline">Déconnexion</span>
             </button>
           </div>
         </div>
@@ -597,15 +597,15 @@ export default function SettingsPage() {
               </div>
 
               {/* Actions sticky bar */}
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-6">
                 {isDirty && (
                   <button onClick={cancelProfileChanges}
-                    className="px-6 py-2.5 text-[#94A3B8] hover:text-white font-bold text-sm rounded-xl transition-all hover:bg-white/5">
+                    className="w-full sm:w-auto px-6 py-2.5 text-[#94A3B8] hover:text-white font-bold text-sm rounded-xl transition-all hover:bg-white/5">
                     Annuler les modifications
                   </button>
                 )}
                 <button onClick={saveProfile} disabled={!isDirty || isSaving}
-                  className={`flex items-center justify-center gap-2 px-6 py-2.5 font-bold text-sm rounded-xl transition-all shadow-lg min-w-[260px]
+                  className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 font-bold text-sm rounded-xl transition-all shadow-lg sm:min-w-[260px]
                     ${isDirty 
                       ? 'bg-[#10B981] hover:bg-[#059669] text-white shadow-[#10B981]/20 active:scale-95 cursor-pointer' 
                       : 'bg-[#1E293B] text-[#94A3B8] cursor-not-allowed shadow-none'}`}>
