@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { AlertTriangle, TrendingUp, DollarSign, Activity, Clock, Loader2 } from 'lucide-react'
+import { AlertTriangle, TrendingUp, Coins, Activity, Clock, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { KPICard } from '@/components/shared/KPICard'
 import { EVMBadge, StatusBadge } from '@/components/shared/Badges'
@@ -54,7 +54,7 @@ export default function ProjectDashboardPage() {
                 label="BAC"
                 value={evm ? formatCurrency(evm.bac, project?.devise) : '—'}
                 subtitle="Budget à l'achèvement"
-                icon={DollarSign}
+                icon={Coins}
                 color="blue"
               />
               <KPICard
@@ -66,7 +66,7 @@ export default function ProjectDashboardPage() {
               <KPICard
                 label="AC (Coût Réel)"
                 value={evm ? formatCurrency(evm.ac, project?.devise) : '—'}
-                icon={DollarSign}
+                icon={Coins}
                 color={evm && evm.ac > evm.ev ? 'red' : 'yellow'}
               />
               <KPICard
@@ -164,7 +164,7 @@ export default function ProjectDashboardPage() {
                     <tbody>
                       {alertes.map(t => (
                         <tr key={t.tache_id}>
-                          <td className="font-mono text-sigp-red">{t.code_tache}</td>
+                          <td className="font-mono text-sigp-red whitespace-nowrap">{t.code_tache}</td>
                           <td className="max-w-xs truncate">{t.description}</td>
                           <td className="text-center"><EVMBadge value={t.cpi} size="sm" /></td>
                           <td className="text-center"><EVMBadge value={t.spi} size="sm" /></td>

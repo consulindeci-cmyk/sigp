@@ -388,7 +388,7 @@ export default function ProjectsPage() {
                       className="accent-sigp-blue cursor-pointer"
                     />
                   </td>
-                  <td className="font-mono text-sigp-blue font-medium">{p.code_projet}</td>
+                  <td className="font-mono text-sigp-blue font-medium whitespace-nowrap">{p.code_projet}</td>
                   <td className="max-w-xs truncate font-medium">{p.nom_projet}</td>
                   <td className="text-sigp-muted">{p.bailleur_principal}</td>
                   <td className="font-mono text-sigp-muted text-xs">{formatDate(p.date_debut)}</td>

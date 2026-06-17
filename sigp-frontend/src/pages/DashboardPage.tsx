@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import {
   FolderOpen, Activity, TrendingUp, AlertTriangle,
-  ArrowRight, Loader2, DollarSign, CheckSquare,
+  ArrowRight, Loader2, Coins, CheckSquare,
   BarChart3, Clock, Download
 } from 'lucide-react'
 import { StatusBadge } from '@/components/shared/Badges'
@@ -128,7 +128,7 @@ export default function DashboardPage() {
               return total >= 1_000_000 ? `${(total / 1_000_000).toFixed(1)}M F` : formatCurrency(String(total), 'XOF')
             })()}
             subtitle="Toutes devises confondues"
-            icon={DollarSign}
+            icon={Coins}
             color="blue"
             trend={12}
           />
@@ -277,7 +277,7 @@ export default function DashboardPage() {
                 {filteredProjets.map(p => (
                   <tr key={p.id} className="group hover:bg-white/[0.02] transition-colors">
                     <td className="px-4 py-3.5 pl-5">
-                      <span className="font-mono text-xs font-bold text-[#3B82F6] bg-[#3B82F6]/10 px-2 py-0.5 rounded-lg">
+                      <span className="font-mono text-xs font-bold text-[#3B82F6] bg-[#3B82F6]/10 px-2 py-0.5 rounded-lg whitespace-nowrap">
                         {p.code_projet}
                       </span>
                     </td>

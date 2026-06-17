@@ -253,7 +253,7 @@ export default function PTBAPage() {
                       return (
                         <tr key={l.id} className={selectedIds.has(l.id) ? 'bg-sigp-blue/5' : ''}>
                           <td><input type="checkbox" checked={selectedIds.has(l.id)} onChange={() => toggleSelect(l.id)} className="accent-sigp-blue cursor-pointer" /></td>
-                          <td className="font-mono text-sigp-blue font-medium text-xs">{l.code_activite}</td>
+                          <td className="font-mono text-sigp-blue font-medium text-xs whitespace-nowrap">{l.code_activite}</td>
                           <td className="text-xs text-sigp-muted">{l.composante}</td>
                           <td className="text-xs whitespace-normal">{l.activite}</td>
                           {[l.q1, l.q2, l.q3, l.q4].map((q, i) => <td key={i} className="text-right font-mono text-xs">{fmt(Number(q)||0)}</td>)}

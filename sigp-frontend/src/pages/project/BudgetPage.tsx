@@ -245,7 +245,7 @@ export default function BudgetPage() {
                     {filtered.map(l => (
                       <tr key={l.id} className={selectedIds.has(l.id) ? 'bg-sigp-blue/5' : ''}>
                         <td><input type="checkbox" checked={selectedIds.has(l.id)} onChange={() => toggleSelect(l.id)} className="accent-sigp-blue cursor-pointer" /></td>
-                        <td className="font-mono text-sigp-blue font-medium text-xs">{l.code_budget}</td>
+                        <td className="font-mono text-sigp-blue font-medium text-xs whitespace-nowrap">{l.code_budget}</td>
                         <td className="font-medium text-xs">{l.rubrique}</td>
                         <td className="text-center text-xs text-sigp-muted">{l.unite || '—'}</td>
                         <td className="text-right font-mono text-xs">{fmt(Number(l.quantite))}</td>

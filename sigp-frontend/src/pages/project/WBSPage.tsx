@@ -42,7 +42,7 @@ export default function WBSPage() {
                   ) : (
                     wbs.map((item: any) => (
                       <tr key={item.id}>
-                        <td className="font-mono text-sigp-blue font-medium">{item.code_wbs}</td>
+                        <td className="font-mono text-sigp-blue font-medium whitespace-nowrap">{item.code_wbs}</td>
                         <td className="font-medium" style={{ paddingLeft: `${(item.niveau - 1) * 1.5 + 0.5}rem` }}>
                           {item.nom_phase}
                         </td>

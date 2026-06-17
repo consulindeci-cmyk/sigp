@@ -27,10 +27,9 @@ function Breadcrumb() {
 
   return (
     <nav className="flex items-center gap-1.5 text-sm overflow-hidden whitespace-nowrap">
-      <span className="text-[#94A3B8] hover:text-white cursor-pointer transition-colors shrink-0">Accueil</span>
       {crumbs.map((crumb, i) => (
         <span key={i} className="flex items-center gap-1.5 shrink-0">
-          <ChevronRight size={12} className="text-[#1E293B]" />
+          {i > 0 && <ChevronRight size={12} className="text-[#1E293B]" />}
           <span className={i === crumbs.length - 1 ? 'text-white font-semibold truncate' : 'text-[#94A3B8] truncate'}>
             {crumb}
           </span>

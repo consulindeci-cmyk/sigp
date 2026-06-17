@@ -123,7 +123,7 @@ export default function MoteurEVMPage() {
                   ) : (
                     evmTasks.map((t) => (
                       <tr key={t.tache_id}>
-                        <td className="font-mono text-sigp-blue font-medium">{t.code_tache}</td>
+                        <td className="font-mono text-sigp-blue font-medium whitespace-nowrap">{t.code_tache}</td>
                         <td className="max-w-[200px] truncate">{t.description}</td>
                         <td className="text-sigp-muted">{t.wbs ?? '—'}</td>
                         <td className="text-center">
