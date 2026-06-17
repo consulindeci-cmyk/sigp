@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { AppShell } from './components/layout/AppShell'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -13,10 +14,28 @@ import PTBAPage from './pages/project/PTBAPage'
 import WBSPage from './pages/project/WBSPage'
 import PPMPage from './pages/project/PPMPage'
 import SettingsPage from './pages/SettingsPage'
+import { usePrefsStore, applyThemeClass } from './stores/prefsStore'
+
+// ── Applique le thème persisté dès le premier rendu ────────────
+function ThemeInitializer() {
+  const theme = usePrefsStore((s) => s.theme)
+  useEffect(() => {
+    applyThemeClass(theme)
+    // Pour le mode "auto", écouter les changements système
+    if (theme === 'auto') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)')
+      const handler = () => applyThemeClass('auto')
+      mq.addEventListener('change', handler)
+      return () => mq.removeEventListener('change', handler)
+    }
+  }, [theme])
+  return null
+}
 
 export default function App() {
   return (
     <BrowserRouter>
+      <ThemeInitializer />
       <Routes>
         {/* Route publique */}
         <Route path="/login" element={<LoginPage />} />

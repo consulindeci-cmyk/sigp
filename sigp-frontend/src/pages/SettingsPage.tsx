@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/authStore'
+import { usePrefsStore, applyThemeClass } from '@/stores/prefsStore'
+import type { NotifsState } from '@/stores/prefsStore'
+import api from '@/lib/axios'
 import {
   User, Lock, Bell, Globe, Moon, Shield, Save,
   Eye, EyeOff, Check, AlertTriangle, Camera, Trash2, ChevronRight, Info, Loader2, Clock, Activity, ShieldCheck, X, ShieldAlert, MonitorSmartphone, Smartphone, Key, History, Mail, Send, Briefcase, CalendarClock, MessageSquare, Settings2, TrendingUp, BellRing, Sun, Palette, Globe2, LayoutTemplate, Accessibility, Calendar, Coins, Hash, Type, RefreshCw
@@ -159,133 +162,98 @@ function formatRole(role: string) {
 // ── Settings Page ──────────────────────────────────────────────
 export default function SettingsPage() {
   const { user, logout } = useAuthStore()
+
+  // ── Prefs Store (localStorage persist) ───────────────────────
+  const storedPrefs  = usePrefsStore()
+  const storedNotifs = storedPrefs.notifs
+
   const [activeTab, setActiveTab] = useState('profil')
-  const [showPwd, setShowPwd] = useState(false)
+  const [showPwd, setShowPwd]     = useState(false)
   const [showNewPwd, setShowNewPwd] = useState(false)
   const [toast, setToast] = useState<{show: boolean, type: 'success'|'error', message: string}>({show: false, type: 'success', message: ''})
-  
-  const [initialPrefs, setInitialPrefs] = useState({
-    theme: 'dark',
-    region: {
-      lang: 'fr',
-      timezone: 'UTC+0 - Abidjan',
-      dateFormat: 'JJ/MM/AAAA',
-      timeFormat: '24h',
-      currency: 'XOF (Franc CFA)',
-      numberFormat: '1 234 567,89'
-    },
-    display: {
-      homePage: 'Tableau de bord',
-      density: 'Confortable',
-      pagination: '25'
-    },
-    a11y: {
-      reduceMotion: false,
-      highContrast: false,
-      textSize: 'Standard'
-    }
-  })
-  const [prefs, setPrefs] = useState(initialPrefs)
-  const isPrefsDirty = JSON.stringify(prefs) !== JSON.stringify(initialPrefs)
   const [showReloadModal, setShowReloadModal] = useState(false)
-  
-  const [initialNotifs, setInitialNotifs] = useState({
-    channels: { email: true, push: true, sms: false },
-    emailFreq: 'Immédiat',
-    alerts: {
-      budget: { enabled: true, threshold: '5%', channels: { email: true, push: true }, frequency: 'Immédiat' },
-      tresorerie: { enabled: true, channels: { email: true, push: false }, frequency: 'Immédiat' },
-      validations: { enabled: true, channels: { email: true, push: true }, frequency: 'Quotidien' },
-      rapports: { enabled: false, channels: { email: true, push: false }, frequency: 'Hebdomadaire' },
-      risques: { enabled: true, channels: { email: true, push: true }, frequency: 'Immédiat' },
-      echeances: { enabled: false, channels: { email: false, push: false }, frequency: 'Quotidien' },
-      mentions: { enabled: true, channels: { email: false, push: true }, frequency: 'Immédiat' }
-    },
-    dnd: { enabled: false, start: '21:00', end: '08:00', days: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'] }
+
+  // ── Prefs local draft (modifications non encore enregistrées) ─
+  const [prefs, setPrefs] = useState(() => ({
+    theme:   storedPrefs.theme,
+    region:  storedPrefs.region,
+    display: storedPrefs.display,
+    a11y:    storedPrefs.a11y,
+  }))
+  const isPrefsDirty = JSON.stringify(prefs) !== JSON.stringify({
+    theme:   storedPrefs.theme,
+    region:  storedPrefs.region,
+    display: storedPrefs.display,
+    a11y:    storedPrefs.a11y,
   })
-  const [notifs, setNotifs] = useState(initialNotifs)
-  const isNotifsDirty = JSON.stringify(notifs) !== JSON.stringify(initialNotifs)
-  
+
+  // ── Notifs local draft ────────────────────────────────────────
+  const [notifs, setNotifs] = useState<NotifsState>(() => storedNotifs)
+  const isNotifsDirty = JSON.stringify(notifs) !== JSON.stringify(storedNotifs)
+
+  // ── Profile ───────────────────────────────────────────────────
   const [initialProfile, setInitialProfile] = useState({
-    prenom: user?.prenom ?? 'Admin',
-    nom: user?.nom ?? 'DevProject',
-    email: user?.email ?? 'admin@sigp.ci',
-    role: user?.role ?? 'ADMINISTRATEUR',
-    telephone: '+225 0700000000',
+    prenom:       user?.prenom       ?? '',
+    nom:          user?.nom          ?? '',
+    email:        user?.email        ?? '',
+    role:         user?.role         ?? '',
+    telephone:    (user as any)?.telephone ?? '',
     organisation: 'Ministère du Développement',
   })
-  const [profile, setProfile] = useState(initialProfile)
-  const [pwd, setPwd] = useState({ actuel: '', nouveau: '', confirm: '' })
-  
+  const [profile, setProfile]     = useState(initialProfile)
+  const [pwd, setPwd]             = useState({ actuel: '', nouveau: '', confirm: '' })
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isSaving, setIsSaving]   = useState(false)
+  const fileInputRef              = useRef<HTMLInputElement>(null)
 
-  // ── States Sécurité ──────────────────────────────────────────
-  const [is2FAEnabled, setIs2FAEnabled] = useState(true)
-  const [show2FAModal, setShow2FAModal] = useState<'activate' | 'deactivate' | 'recovery' | null>(null)
-  const [modalInput, setModalInput] = useState('')
-  const [sessions, setSessions] = useState([
-    { id: 1, device: 'Chrome sur Windows', location: 'Abidjan, Côte d’Ivoire', ip: '102.123.45.67', time: 'il y a 5 minutes', current: true },
-    { id: 2, device: 'Firefox sur Android', location: 'Yamoussoukro, Côte d’Ivoire', ip: '196.200.10.2', time: 'hier à 18:42', current: false },
+  // ── États Sécurité ────────────────────────────────────────────
+  const [is2FAEnabled, setIs2FAEnabled]     = useState(true)
+  const [show2FAModal, setShow2FAModal]     = useState<'activate' | 'deactivate' | 'recovery' | null>(null)
+  const [modalInput, setModalInput]         = useState('')
+  const [sessions, setSessions]             = useState([
+    { id: 1, device: 'Chrome sur Windows',  location: 'Abidjan, Côte d’Ivoire',     ip: '102.123.45.67', time: 'il y a 5 minutes', current: true  },
+    { id: 2, device: 'Firefox sur Android', location: 'Yamoussoukro, Côte d’Ivoire', ip: '196.200.10.2',  time: 'hier à 18:42',    current: false },
   ])
 
   const pwdRules = {
-    length: pwd.nouveau.length >= 8,
-    upper: /[A-Z]/.test(pwd.nouveau),
-    lower: /[a-z]/.test(pwd.nouveau),
-    number: /[0-9]/.test(pwd.nouveau),
-    special: /[^A-Za-z0-9]/.test(pwd.nouveau)
+    length:  pwd.nouveau.length >= 8,
+    upper:   /[A-Z]/.test(pwd.nouveau),
+    lower:   /[a-z]/.test(pwd.nouveau),
+    number:  /[0-9]/.test(pwd.nouveau),
+    special: /[^A-Za-z0-9]/.test(pwd.nouveau),
   }
-  const pwdScore = Object.values(pwdRules).filter(Boolean).length
-  const pwdMatch = pwd.nouveau !== '' && pwd.nouveau === pwd.confirm
-  const canSubmitPwd = pwdScore === 5 && pwdMatch && pwd.actuel !== ''
+  const pwdScore      = Object.values(pwdRules).filter(Boolean).length
+  const pwdMatch      = pwd.nouveau !== '' && pwd.nouveau === pwd.confirm
+  const canSubmitPwd  = pwdScore === 5 && pwdMatch && pwd.actuel !== ''
 
-  const isDirty = JSON.stringify(profile) !== JSON.stringify(initialProfile) || avatarUrl !== null || isNotifsDirty || isPrefsDirty
+  const isDirty = JSON.stringify(profile) !== JSON.stringify(initialProfile) || avatarUrl !== null
 
+  // Alerte navigateur si modifications non sauvegardées
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty || isPrefsDirty || isNotifsDirty) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isDirty])
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty, isPrefsDirty, isNotifsDirty])
 
-  // Apply theme to <html> when prefs.theme changes
-  useEffect(() => {
-    const root = document.documentElement
-    const applyTheme = (dark: boolean) => {
-      if (dark) {
-        root.classList.add('dark')
-      } else {
-        root.classList.remove('dark')
-      }
-    }
-    if (prefs.theme === 'dark') {
-      applyTheme(true)
-    } else if (prefs.theme === 'light') {
-      applyTheme(false)
-    } else {
-      // 'auto' — follow system preference
-      const mq = window.matchMedia('(prefers-color-scheme: dark)')
-      applyTheme(mq.matches)
-      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches)
-      mq.addEventListener('change', handler)
-      return () => mq.removeEventListener('change', handler)
-    }
-  }, [prefs.theme])
+  // ── Helpers toast ─────────────────────────────────────────────
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ show: true, type, message })
+    setTimeout(() => setToast(s => ({ ...s, show: false })), 3000)
+  }
 
+  // ── Sauvegarde profil (pas d'API dédié — local) ───────────────
   const saveProfile = async () => {
     setIsSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
+    await new Promise(r => setTimeout(r, 400))
     setInitialProfile(profile)
     setAvatarUrl(null)
     setIsSaving(false)
-    setToast({show: true, type: 'success', message: 'Profil mis à jour avec succès'})
-    setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+    showToast('success', 'Profil mis à jour avec succès')
   }
 
   const cancelProfileChanges = () => {
@@ -299,130 +267,103 @@ export default function SettingsPage() {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 2 * 1024 * 1024) {
-      setToast({show: true, type: 'error', message: 'L\'image ne doit pas dépasser 2 Mo'})
-      setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+      showToast('error', "L'image ne doit pas dépasser 2 Mo")
       return
     }
     setAvatarUrl(URL.createObjectURL(file))
   }
 
-  const save = () => {
-    setToast({show: true, type: 'success', message: 'Modifications enregistrées'})
-    setTimeout(() => setToast(s => ({...s, show: false})), 3000)
-  }
-
+  // ── Changement de mot de passe — VRAI APPEL API ───────────────
   const handleUpdatePassword = async () => {
     setIsSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
-    setPwd({ actuel: '', nouveau: '', confirm: '' })
-    setIsSaving(false)
-    setToast({show: true, type: 'success', message: 'Mot de passe mis à jour avec succès.'})
-    setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+    try {
+      await api.patch('/auth/change-password', {
+        ancien_mot_de_passe: pwd.actuel,
+        nouveau_mot_de_passe: pwd.nouveau,
+      })
+      setPwd({ actuel: '', nouveau: '', confirm: '' })
+      showToast('success', 'Mot de passe mis à jour avec succès.')
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Mot de passe actuel incorrect.'
+      showToast('error', msg)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
+  // ── 2FA (simulé — pas d'API) ──────────────────────────────────
   const handle2FAAction = async () => {
     setIsSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
-    if (show2FAModal === 'activate') setIs2FAEnabled(true)
+    await new Promise(r => setTimeout(r, 600))
+    if (show2FAModal === 'activate')   setIs2FAEnabled(true)
     if (show2FAModal === 'deactivate') setIs2FAEnabled(false)
     setShow2FAModal(null)
     setModalInput('')
     setIsSaving(false)
-    setToast({show: true, type: 'success', message: 'Paramètres 2FA mis à jour.'})
-    setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+    showToast('success', 'Paramètres 2FA mis à jour.')
   }
 
   const handleDisconnectSession = (id?: number) => {
     if (confirm('Confirmer la déconnexion de ' + (id ? 'cet appareil' : 'tous les autres appareils') + ' ?')) {
       if (id) setSessions(s => s.filter(x => x.id !== id))
-      else setSessions(s => s.filter(x => x.current))
-      setToast({show: true, type: 'success', message: 'Session(s) déconnectée(s).'})
-      setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+      else    setSessions(s => s.filter(x => x.current))
+      showToast('success', 'Session(s) déconnectée(s).')
     }
   }
 
-  const saveNotifs = async () => {
-    setIsSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
-    setInitialNotifs(notifs)
-    setIsSaving(false)
-    setToast({show: true, type: 'success', message: 'Préférences de notifications mises à jour.'})
-    setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+  // ── Sauvegarde notifications → localStorage via prefsStore ────
+  const saveNotifs = () => {
+    storedPrefs.setNotifs(notifs)     // persist dans localStorage
+    showToast('success', 'Préférences de notifications mises à jour.')
   }
 
   const cancelNotifsChanges = () => {
     if (confirm('Voulez-vous vraiment annuler vos modifications ?')) {
-      setNotifs(initialNotifs)
+      setNotifs(storedNotifs)
     }
   }
 
-  const testNotification = () => {
-    setToast({show: true, type: 'success', message: 'Ding! Ceci est une notification de test.'})
-    setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+  const testNotification = () => showToast('success', 'Ding! Ceci est une notification de test.')
+
+  const updateAlert = (key: keyof NotifsState['alerts'], field: string, value: any) => {
+    setNotifs(s => ({ ...s, alerts: { ...s.alerts, [key]: { ...s.alerts[key], [field]: value } } }))
   }
 
-  const updateAlert = (key: keyof typeof notifs.alerts, field: string, value: any) => {
+  const updateAlertChannel = (key: keyof NotifsState['alerts'], channel: 'email' | 'push', value: boolean) => {
     setNotifs(s => ({
       ...s,
-      alerts: {
-        ...s.alerts,
-        [key]: {
-          ...s.alerts[key],
-          [field]: value
-        }
-      }
-    }))
-  }
-  
-  const updateAlertChannel = (key: keyof typeof notifs.alerts, channel: 'email'|'push', value: boolean) => {
-    setNotifs(s => ({
-      ...s,
-      alerts: {
-        ...s.alerts,
-        [key]: {
-          ...s.alerts[key],
-          channels: {
-            ...s.alerts[key].channels,
-            [channel]: value
-          }
-        }
-      }
+      alerts: { ...s.alerts, [key]: { ...s.alerts[key], channels: { ...s.alerts[key].channels, [channel]: value } } },
     }))
   }
 
   const toggleDndDay = (day: string) => {
     setNotifs(s => ({
       ...s,
-      dnd: {
-        ...s.dnd,
-        days: s.dnd.days.includes(day) ? s.dnd.days.filter(d => d !== day) : [...s.dnd.days, day]
-      }
+      dnd: { ...s.dnd, days: s.dnd.days.includes(day) ? s.dnd.days.filter(d => d !== day) : [...s.dnd.days, day] },
     }))
   }
 
-  const savePrefs = async () => {
-    setIsSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
-    const langChanged = initialPrefs.region.lang !== prefs.region.lang
-    setInitialPrefs(prefs)
-    setIsSaving(false)
+  // ── Sauvegarde préférences (thème, région, affichage, a11y) → localStorage
+  const savePrefs = () => {
+    const langChanged = storedPrefs.region.lang !== prefs.region.lang
+    // Persiste dans localStorage via le store
+    storedPrefs.setPrefs(prefs)
+    // Applique le thème immédiatement
+    applyThemeClass(prefs.theme)
     if (langChanged) {
       setShowReloadModal(true)
     } else {
-      setToast({show: true, type: 'success', message: 'Préférences mises à jour avec succès.'})
-      setTimeout(() => setToast(s => ({...s, show: false})), 3000)
+      showToast('success', 'Préférences mises à jour avec succès.')
     }
   }
 
   const cancelPrefsChanges = () => {
     if (confirm('Voulez-vous vraiment annuler vos modifications ?')) {
-      setPrefs(initialPrefs)
+      setPrefs({ theme: storedPrefs.theme, region: storedPrefs.region, display: storedPrefs.display, a11y: storedPrefs.a11y })
     }
   }
 
-  const handleReload = () => {
-    window.location.reload()
-  }
+  const handleReload = () => window.location.reload()
 
   const allTabs = [
     { id: 'profil',        label: 'Profil',          icon: User    },
@@ -1217,7 +1158,7 @@ export default function SettingsPage() {
                     { id: 'light', label: 'Clair',    icon: Sun,     bg: 'bg-[#F8FAFC]', preview: <div className="w-full h-full bg-white border border-slate-200 rounded-t-lg"></div> },
                     { id: 'auto',  label: 'Système',  icon: MonitorSmartphone, bg: 'bg-[#0A0F1E]', preview: <div className="w-full h-full flex"><div className="w-1/2 h-full bg-[#0A0F1E] border-t border-l border-[#1E293B] rounded-tl-lg"></div><div className="w-1/2 h-full bg-white border-t border-r border-slate-200 rounded-tr-lg"></div></div> },
                   ].map(t => (
-                    <button key={t.id} onClick={() => setPrefs(s => ({...s, theme: t.id}))}
+                    <button key={t.id} onClick={() => setPrefs(s => ({...s, theme: t.id as import('@/stores/prefsStore').Theme}))}
                       className={`relative flex flex-col items-center p-4 rounded-xl border-2 transition-all duration-200
                         ${prefs.theme === t.id ? 'border-[#10B981] bg-[#10B981]/5 shadow-lg shadow-[#10B981]/10' : 'border-[#1E293B] bg-[#050810] hover:border-[#334155]'}`}>
                       <t.icon size={24} className={`mb-3 ${prefs.theme === t.id ? 'text-[#10B981]' : 'text-[#94A3B8]'}`} />
