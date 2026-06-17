@@ -442,8 +442,6 @@ export default function SettingsPage() {
       {/* Breadcrumb & Title */}
       <div>
         <div className="flex items-center gap-2 text-xs font-semibold text-[#94A3B8] mb-3">
-          <span className="hover:text-white cursor-pointer transition-colors">Accueil</span>
-          <ChevronRight size={12} />
           <span className="hover:text-white cursor-pointer transition-colors">Paramètres</span>
           <ChevronRight size={12} />
           <span className="text-[#10B981]">{activeTabLabel}</span>

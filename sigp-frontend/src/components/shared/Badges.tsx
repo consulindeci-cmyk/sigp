@@ -51,7 +51,7 @@ const STATUT_COLORS: Record<string, string> = {
 export function StatusBadge({ statut, className }: StatusBadgeProps) {
   return (
     <span className={cn(
-      'inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium',
+      'inline-flex items-center px-1.5 md:px-2 py-0.5 rounded border text-[10px] md:text-xs font-medium',
       STATUT_COLORS[statut] ?? 'bg-navy-500/50 text-sigp-muted border-navy-500',
       className
     )}>

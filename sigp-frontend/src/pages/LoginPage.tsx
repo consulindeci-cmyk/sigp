@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { useNavigate, Navigate } from 'react-router-dom'
 import {
   Eye, EyeOff, AlertCircle, Mail, Lock, Shield,
-  LayoutDashboard, DollarSign, AlertTriangle, FileText,
+  LayoutDashboard, Coins, AlertTriangle, FileText,
   User, Copy, CheckCircle2, Check
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
@@ -26,7 +26,7 @@ function getStrength(pwd: string) {
 
 const FEATURES = [
   { Icon: LayoutDashboard, title: 'Tableau de bord',    sub: 'Vue consolidée des KPIs',          color: 'text-blue-400   bg-blue-500/10'   },
-  { Icon: DollarSign,      title: 'Budget & PTBA',       sub: 'Suivi financier rigoureux',         color: 'text-[#1d9e75] bg-[#1d9e75]/10' },
+  { Icon: Coins,           title: 'Budget & PTBA',       sub: 'Suivi financier rigoureux',         color: 'text-[#1d9e75] bg-[#1d9e75]/10' },
   { Icon: AlertTriangle,   title: 'Gestion des risques', sub: 'Matrice et plan d\'atténuation',    color: 'text-orange-400 bg-orange-500/10' },
   { Icon: FileText,        title: 'Rapports bailleurs',  sub: 'Génération automatique',            color: 'text-indigo-400 bg-indigo-500/10' },
 ] as const
