@@ -1,22 +1,20 @@
-import { useState, useRef, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Search, X, MoreVertical, Download, ChevronDown, Check, FileText, FileSpreadsheet, File } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import {
-  Plus, Search, ArrowRight, Loader2, X, Download, ChevronDown,
-  FileSpreadsheet, FileText, File, Filter, AlertTriangle, Check,
-  RotateCcw
-} from 'lucide-react'
-import * as XLSX from 'xlsx'
-import { PageHeader } from '@/components/layout/AppShell'
-import { StatusBadge } from '@/components/shared/Badges'
 import { useProjects, useCreateProject } from '@/hooks/useProjects'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import type { StatutProjet } from '@/types'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import api from '@/lib/axios'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import * as XLSX from 'xlsx'
+import { useUIStore } from '@/stores/uiStore'
 
 const schema = z.object({
-  code_projet: z.string().min(1, 'Requis'),
+  code_projet: z.string().optional(),
   nom_projet: z.string().min(1, 'Requis'),
   bailleur_principal: z.string().min(1, 'Requis'),
   date_debut: z.string().min(1, 'Requis'),
@@ -28,59 +26,32 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 type ExportScope = 'current' | 'all' | 'selected'
-type ExportFormat = 'xlsx' | 'csv' | 'print'
-
-interface ExportOptions {
-  scope: ExportScope
-  format: ExportFormat
-  reportType: 'list' | 'financial'
-  filename: string
-  includeInfos: boolean
-  includeBudget: boolean
-  includeTasks: boolean
-  includeStatus: boolean
-}
-
-const today = new Date().toISOString().slice(0, 10).replace(/-/g, '_')
 
 export default function ProjectsPage() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const setActiveProject = useUIStore(state => state.setActiveProject)
+  
+  const [filter, setFilter] = useState('Tous')
   const [search, setSearch] = useState('')
-  const [statut, setStatut] = useState<StatutProjet | ''>('')
   const [page, setPage] = useState(1)
+  
+  // Modals state
   const [showModal, setShowModal] = useState(false)
+  const [editingProject, setEditingProject] = useState<any>(null)
+  
+  // Deletion state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [projectToDelete, setProjectToDelete] = useState<any>(null)
 
+  // Selection & Actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [activeMenu, setActiveMenu] = useState<string | null>(null)
+  
   // Export state
   const [showExportMenu, setShowExportMenu] = useState(false)
-  const [showExportModal, setShowExportModal] = useState(false)
-  const [exportOptions, setExportOptions] = useState<ExportOptions>({
-    scope: 'current',
-    format: 'xlsx',
-    reportType: 'list',
-    filename: `projets_${today}.xlsx`,
-    includeInfos: true,
-    includeBudget: true,
-    includeTasks: true,
-    includeStatus: true,
-  })
   const exportMenuRef = useRef<HTMLDivElement>(null)
 
-  // Row selection
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-
-  const { data, isLoading } = useProjects({ search: search || undefined, statut: statut || undefined, page, limit: 20 })
-  const { data: allData } = useProjects({ page: 1, limit: 9999 })
-  const createMutation = useCreateProject()
-
-  const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: { devise: 'XOF' },
-  })
-
-  const projets = data?.data ?? []
-  const allProjets = allData?.data ?? []
-  const meta = data?.meta
-
-  // Close export menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
@@ -91,356 +62,411 @@ export default function ProjectsPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Update filename when format changes
-  useEffect(() => {
-    const ext = exportOptions.format === 'xlsx' ? 'xlsx' : exportOptions.format === 'csv' ? 'csv' : 'pdf'
-    setExportOptions(s => ({ ...s, filename: `projets_${today}.${ext}` }))
-  }, [exportOptions.format])
+  // Sort
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc'|'desc' }>({ key: 'code_projet', direction: 'asc' })
 
-  const onSubmit = async (values: FormData) => {
-    await createMutation.mutateAsync(values)
-    reset()
-    setShowModal(false)
+  const statutMap: Record<string, string> = {
+    'Tous': '',
+    'En cours': 'ACTIF',
+    'Planifié': 'PREPARATION',
+    'Clôturé': 'CLOTURE'
   }
 
-  // ── Selection helpers ────────────────────────────────────────
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+  // API Queries
+  const { data: projetsData } = useProjects({ 
+    limit: 10, 
+    page, 
+    search: search || undefined, 
+    statut: filter !== 'Tous' ? statutMap[filter] : undefined 
+  })
+  const { data: allProjectsData } = useProjects({ limit: 9999 })
+  
+  const realProjects = projetsData?.data ?? []
+  const allProjects = allProjectsData?.data ?? []
+  const meta = projetsData?.meta
+
+  // Mutations
+  const createMutation = useCreateProject()
+  
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, dto }: { id: string, dto: Partial<FormData> }) => {
+      return api.patch(`/projects/${id}`, dto)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] })
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => api.delete(`/projects/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] })
+  })
+
+  const { register, handleSubmit, formState: { errors, isSubmitting }, reset, setValue } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { devise: 'XOF' },
+  })
+
+  const onSubmit = async (values: FormData) => {
+    try {
+      console.log('--- DIAGNOSTIC FRONTEND ---')
+      console.log('1. Début de la soumission du formulaire')
+      console.log('2. Payload (Données préparées) :', values)
+      
+      if (editingProject) {
+        console.log(`3. Mode Modification (ID: ${editingProject.id})`)
+        await updateMutation.mutateAsync({ id: editingProject.id, dto: values })
+      } else {
+        console.log('3. Mode Création (POST /projects)')
+        const res = await createMutation.mutateAsync(values)
+        console.log('4. Réponse de création API :', res)
+      }
+      
+      console.log('5. Succès ! Invalidation du cache en cours...')
+      reset()
+      setEditingProject(null)
+      setShowModal(false)
+    } catch (err: any) {
+      console.error('ERREUR LORS DE LA SOUMISSION :', err)
+      if (err.response) {
+        console.error('Détails API (Status, Data) :', err.response.status, err.response.data)
+        alert(`Erreur API : ${err.response.data?.message || 'Erreur interne'}`)
+      } else {
+        alert(`Erreur inattendue : ${err.message}`)
+      }
+    }
+  }
+
+  // Logger les erreurs de validation frontend en temps réel
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      console.error('Erreurs de validation du formulaire (Zod) bloquant la soumission :', errors)
+    }
+  }, [errors])
+
+  const handleDelete = async () => {
+    if (projectToDelete) {
+      await deleteMutation.mutateAsync(projectToDelete.id)
+      setProjectToDelete(null)
+      setShowDeleteModal(false)
+      setSelectedIds(new Set())
+    }
+  }
+
+  const openEdit = (p: any) => {
+    setEditingProject(p)
+    setValue('code_projet', p.code_projet)
+    setValue('nom_projet', p.nom_projet)
+    setValue('bailleur_principal', p.bailleur_principal)
+    setValue('date_debut', p.date_debut?.slice(0,10) || '')
+    setValue('date_fin', p.date_fin?.slice(0,10) || '')
+    setValue('budget_total', String(p.budget_total))
+    setValue('devise', p.devise)
+    setValue('description', p.description || '')
+    setShowModal(true)
+    setActiveMenu(null)
+  }
+
+  const openDuplicate = (p: any) => {
+    setEditingProject(null)
+    setValue('code_projet', '') // Sera généré par le backend
+    setValue('nom_projet', `${p.nom_projet} (Copie)`)
+    setValue('bailleur_principal', p.bailleur_principal)
+    setValue('date_debut', p.date_debut?.slice(0,10) || '')
+    setValue('date_fin', p.date_fin?.slice(0,10) || '')
+    setValue('budget_total', String(p.budget_total))
+    setValue('devise', p.devise)
+    setValue('description', p.description || '')
+    setShowModal(true)
+    setActiveMenu(null)
+  }
+
+  // Formatting & Display Data
+  const combinedProjects = realProjects
+
+  const sortedProjects = useMemo(() => {
+    let sortable = [...combinedProjects]
+    if (sortConfig !== null) {
+      sortable.sort((a, b) => {
+        let aVal = (a as any)[sortConfig.key]
+        let bVal = (b as any)[sortConfig.key]
+        if (sortConfig.key === 'budget_total') {
+          aVal = parseFloat(aVal)
+          bVal = parseFloat(bVal)
+        }
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    return sortable
+  }, [combinedProjects, sortConfig])
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc'
+    setSortConfig({ key, direction })
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === projets.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(projets.map(p => p.id)))
-    }
+    if (selectedIds.size === sortedProjects.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(sortedProjects.map(p => p.id)))
+  }
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds)
+    newSet.has(id) ? newSet.delete(id) : newSet.add(id)
+    setSelectedIds(newSet)
   }
 
-  const clearSelection = () => setSelectedIds(new Set())
+  // KPIs
+  const KPIBase = allProjects
+  const actifsCount = KPIBase.filter(p => p.statut === 'ACTIF').length
+  const budgetTotal = KPIBase.reduce((sum, p) => sum + parseFloat(String(p.budget_total) || '0'), 0)
+  const budgetStr = budgetTotal >= 1_000_000 ? `${(budgetTotal / 1_000_000).toFixed(1)} M` : formatCurrency(String(budgetTotal), 'XOF')
+  const bailleursCount = new Set(KPIBase.map(p => p.bailleur_principal)).size
 
-  // ── Export logic ─────────────────────────────────────────────
-  const getDataToExport = () => {
-    if (exportOptions.scope === 'selected') return allProjets.filter(p => selectedIds.has(p.id))
-    if (exportOptions.scope === 'all') return allProjets
-    return projets // 'current' = filtered view
-  }
+  // Export
+  const doExport = (format: 'xlsx' | 'csv' | 'pdf', scope: ExportScope) => {
+    let dataToExport = []
+    if (scope === 'selected') dataToExport = KPIBase.filter(p => selectedIds.has(p.id))
+    else if (scope === 'all') dataToExport = KPIBase
+    else dataToExport = sortedProjects
 
-  const buildRows = (rows: typeof projets) => {
-    if (exportOptions.reportType === 'financial') {
-      return rows.map(p => ({
-        'Code Projet': p.code_projet,
-        'Nom du Projet': p.nom_projet,
-        'Bailleur Principal': p.bailleur_principal,
-        'Budget Initial': Number(p.budget_total),
-        'Devise': p.devise,
-        'Date Début': formatDate(p.date_debut),
-        'Date Fin': formatDate(p.date_fin),
-        'Statut': p.statut,
-      }))
-    }
-    return rows.map(p => ({
-      ...(exportOptions.includeInfos ? {
-        'Code': p.code_projet,
-        'Nom du Projet': p.nom_projet,
-        'Bailleur': p.bailleur_principal,
-        'Date Début': formatDate(p.date_debut),
-        'Date Fin': formatDate(p.date_fin),
-      } : {}),
-      ...(exportOptions.includeBudget ? {
-        'Budget Total': Number(p.budget_total),
-        'Devise': p.devise,
-      } : {}),
-      ...(exportOptions.includeTasks ? { 'Nbre Tâches': p._count?.taches ?? 0 } : {}),
-      ...(exportOptions.includeStatus ? { 'Statut': p.statut } : {}),
+    const rows = dataToExport.map(p => ({
+      Code: p.code_projet,
+      Projet: p.nom_projet,
+      Bailleur: p.bailleur_principal,
+      Budget: p.budget_total,
+      Devise: p.devise,
+      Statut: p.statut
     }))
-  }
 
-  const doExport = () => {
-    const rows = buildRows(getDataToExport())
     if (rows.length === 0) return
 
-    if (exportOptions.format === 'csv') {
+    if (format === 'csv') {
       const headers = Object.keys(rows[0])
-      const csvContent = [
-        headers.join(';'),
-        ...rows.map(r => headers.map(h => `"${(r as Record<string, string | number>)[h] ?? ''}"`).join(';'))
-      ].join('\n')
+      const csvContent = [headers.join(';'), ...rows.map(r => Object.values(r).join(';'))].join('\n')
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = exportOptions.filename; a.click()
-      URL.revokeObjectURL(url)
-    } else if (exportOptions.format === 'xlsx') {
+      const a = document.createElement('a'); a.href = url; a.download = 'projets.csv'; a.click(); URL.revokeObjectURL(url)
+    } else if (format === 'xlsx') {
       const ws = XLSX.utils.json_to_sheet(rows)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Projets')
-      XLSX.writeFile(wb, exportOptions.filename)
-    } else if (exportOptions.format === 'print') {
-      // Open print window
-      const tableRows = getDataToExport()
-      const html = `
-        <!DOCTYPE html><html><head>
-        <title>${exportOptions.filename}</title>
-        <style>
-          body { font-family: Arial, sans-serif; font-size: 11px; color: #000; margin: 20px; }
-          h1 { font-size: 16px; margin-bottom: 4px; }
-          p { font-size: 11px; color: #666; margin-bottom: 16px; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
-          th { background: #1a2340; color: white; font-size: 10px; text-transform: uppercase; }
-          tr:nth-child(even) { background: #f5f7fa; }
-          .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: bold; }
-          .ACTIF { background: #d1fae5; color: #065f46; }
-          .SUSPENDU { background: #fef3c7; color: #92400e; }
-          .CLOTURE { background: #e0e7ff; color: #3730a3; }
-          .ANNULE { background: #fee2e2; color: #991b1b; }
-          @media print { body { margin: 0; } }
-        </style></head><body>
-        <h1>Rapport — Liste des Projets</h1>
-        <p>Généré le ${new Date().toLocaleDateString('fr-FR')} — ${tableRows.length} projet(s)</p>
-        <table>
-          <thead><tr>
-            <th>Code</th><th>Nom du Projet</th><th>Bailleur</th>
-            <th>Budget</th><th>Statut</th><th>Début</th><th>Fin</th>
-          </tr></thead>
-          <tbody>${tableRows.map(p => `<tr>
-            <td>${p.code_projet}</td>
-            <td>${p.nom_projet}</td>
-            <td>${p.bailleur_principal}</td>
-            <td>${formatCurrency(p.budget_total, p.devise)}</td>
-            <td><span class="badge ${p.statut}">${p.statut}</span></td>
-            <td>${formatDate(p.date_debut)}</td>
-            <td>${formatDate(p.date_fin)}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-        </body></html>`
-      const win = window.open('', '_blank')
-      if (win) { win.document.write(html); win.document.close(); win.print() }
+      XLSX.writeFile(wb, 'projets.xlsx')
+    } else if (format === 'pdf') {
+      const doc = new jsPDF()
+      doc.text('Liste des projets', 14, 15)
+      autoTable(doc, {
+        head: [['Code', 'Projet', 'Bailleur', 'Budget', 'Devise', 'Statut']],
+        body: rows.map(r => [r.Code, r.Projet, r.Bailleur, String(r.Budget), r.Devise, r.Statut]),
+        startY: 20
+      })
+      doc.save('projets.pdf')
     }
-
-    setShowExportModal(false)
-  }
-
-  const openExport = (scope: ExportScope = 'current') => {
-    setExportOptions(s => ({ ...s, scope }))
     setShowExportMenu(false)
-    setShowExportModal(true)
   }
-
-  const hasData = projets.length > 0 || allProjets.length > 0
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title="Projets"
-        subtitle={`${meta?.total ?? 0} projet(s) au total`}
-        actions={
-          <div className="flex items-center gap-2">
-            {/* Export button */}
-            <div className="relative" ref={exportMenuRef}>
-              <button
-                onClick={() => hasData && setShowExportMenu(v => !v)}
-                disabled={!hasData}
-                title={!hasData ? 'Aucun projet disponible à exporter.' : undefined}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-navy-500 text-sigp-muted hover:text-sigp-text hover:border-sigp-blue rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Download size={13} />
-                Exporter
-                <ChevronDown size={12} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showExportMenu && (
-                <div className="absolute right-0 top-full mt-1 w-56 bg-navy-800 border border-navy-500 rounded-xl shadow-2xl z-30 py-1 overflow-hidden">
-                  <div className="px-3 py-1.5 text-[10px] font-bold text-sigp-muted uppercase tracking-wider border-b border-navy-500">Périmètre</div>
-                  <button onClick={() => openExport('current')} className="w-full text-left flex items-center gap-2 px-4 py-2 text-xs text-sigp-text hover:bg-navy-700 transition-colors">
-                    <Filter size={12} className="text-sigp-blue" /> Vue actuelle (avec filtres)
-                  </button>
-                  <button onClick={() => openExport('all')} className="w-full text-left flex items-center gap-2 px-4 py-2 text-xs text-sigp-text hover:bg-navy-700 transition-colors">
-                    <FileText size={12} className="text-sigp-muted" /> Tous les projets
-                  </button>
-                  <button onClick={() => openExport('selected')} disabled={selectedIds.size === 0} className="w-full text-left flex items-center gap-2 px-4 py-2 text-xs text-sigp-text hover:bg-navy-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                    <Check size={12} className="text-sigp-muted" /> Sélection ({selectedIds.size})
-                  </button>
-
-                  <div className="px-3 py-1.5 text-[10px] font-bold text-sigp-muted uppercase tracking-wider border-t border-b border-navy-500 mt-1">Rapports</div>
-                  <button onClick={() => { setExportOptions(s => ({...s, scope: 'all', reportType: 'financial'})); setShowExportMenu(false); setShowExportModal(true) }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-xs text-sigp-text hover:bg-navy-700 transition-colors">
-                    <FileSpreadsheet size={12} className="text-emerald-400" /> Rapport financier
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-1.5">
-              <Plus size={14} /> Nouveau Projet
-            </button>
-          </div>
-        }
-      />
-
-      {/* Selection action bar */}
-      {selectedIds.size > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 md:px-6 py-2.5 bg-sigp-blue/10 border-b border-sigp-blue/30 text-sm gap-3 sm:gap-0">
-          <span className="text-sigp-blue font-semibold flex items-center gap-2">
-            <Check size={14} /> {selectedIds.size} projet(s) sélectionné(s)
-          </span>
-          <div className="flex gap-2">
-            <button onClick={() => openExport('selected')} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-sigp-blue text-white rounded-lg hover:bg-sigp-blue-light transition-colors">
-              <Download size={12} /> Exporter la sélection
-            </button>
-            <button onClick={clearSelection} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-sigp-muted hover:text-sigp-text border border-navy-500 rounded-lg transition-colors">
-              <X size={12} /> Annuler
-            </button>
-          </div>
+    <div className="p-8 max-w-[1400px] mx-auto space-y-8 h-full flex flex-col relative">
+      {/* 1. En-tête de page */}
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-[#0A1628]">Gestion des projets</h1>
+          <p className="text-gray-500 mt-2">Créer, suivre et filtrer les projets par bailleur, secteur, statut et budget.</p>
         </div>
-      )}
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 md:px-6 py-3 border-b border-navy-500 bg-navy-800/30">
-        <div className="relative flex-1 w-full max-w-none sm:max-w-sm">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-sigp-muted" />
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Rechercher un projet..."
-            className="sigp-input pl-8 py-1.5 text-xs"
-          />
-        </div>
-        <select
-          value={statut}
-          onChange={e => { setStatut(e.target.value as StatutProjet | ''); setPage(1) }}
-          className="sigp-input w-full sm:w-36 py-1.5 text-xs"
-        >
-          <option value="">Tous statuts</option>
-          {['PREPARATION', 'ACTIF', 'SUSPENDU', 'CLOTURE', 'ANNULE'].map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        {(search || statut) && (
-          <button onClick={() => { setSearch(''); setStatut(''); setPage(1) }} className="flex items-center gap-1.5 text-xs text-sigp-muted hover:text-sigp-text border border-navy-500 px-2.5 py-1.5 rounded-lg transition-colors">
-            <RotateCcw size={11} /> Réinitialiser
-          </button>
-        )}
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto w-full">
-        {isLoading ? (
-          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-sigp-muted" /></div>
-        ) : projets.length === 0 ? (
-          <div className="text-center py-16 text-sigp-muted space-y-3">
-            {(search || statut) ? (
-              <>
-                <AlertTriangle size={32} className="mx-auto text-sigp-muted/50" />
-                <p className="font-medium">Aucun résultat pour ces filtres</p>
-                <div className="flex items-center justify-center gap-3 mt-4">
-                  <button onClick={() => { setSearch(''); setStatut('') }} className="flex items-center gap-1.5 text-xs border border-navy-500 px-3 py-1.5 rounded-lg hover:text-sigp-text transition-colors">
-                    <RotateCcw size={11} /> Réinitialiser les filtres
-                  </button>
-                  <button onClick={() => openExport('all')} disabled={allProjets.length === 0} className="flex items-center gap-1.5 text-xs bg-sigp-blue/10 text-sigp-blue border border-sigp-blue/30 px-3 py-1.5 rounded-lg hover:bg-sigp-blue/20 transition-colors disabled:opacity-40">
-                    <Download size={11} /> Exporter tous les projets
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="mb-2">Aucun projet trouvé</p>
-                <button onClick={() => setShowModal(true)} className="text-sigp-blue hover:underline text-sm">
-                  Créer votre premier projet
-                </button>
-              </>
+        <div className="flex items-center gap-3">
+          <div className="relative" ref={exportMenuRef}>
+            <button onClick={() => setShowExportMenu(!showExportMenu)} className="bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition-colors flex items-center gap-2">
+              <Download size={16} /> Exporter
+              <ChevronDown size={14} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Vue actuelle</div>
+                <button onClick={() => doExport('xlsx', 'current')} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><FileSpreadsheet size={14} className="text-emerald-600"/> Excel</button>
+                <button onClick={() => doExport('csv', 'current')} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><File size={14} className="text-gray-500"/> CSV</button>
+                <button onClick={() => doExport('pdf', 'current')} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><FileText size={14} className="text-red-500"/> PDF</button>
+                
+                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-t border-gray-100">Tous les projets</div>
+                <button onClick={() => doExport('xlsx', 'all')} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><FileSpreadsheet size={14} className="text-emerald-600"/> Excel</button>
+                <button onClick={() => doExport('csv', 'all')} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><File size={14} className="text-gray-500"/> CSV</button>
+                <button onClick={() => doExport('pdf', 'all')} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><FileText size={14} className="text-red-500"/> PDF</button>
+                
+                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-t border-gray-100">Sélection ({selectedIds.size})</div>
+                <button onClick={() => doExport('xlsx', 'selected')} disabled={selectedIds.size === 0} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"><Check size={14} className="text-blue-500"/> Exporter la sélection (.xlsx)</button>
+                <button onClick={() => doExport('csv', 'selected')} disabled={selectedIds.size === 0} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"><Check size={14} className="text-blue-500"/> Exporter la sélection (.csv)</button>
+                <button onClick={() => doExport('pdf', 'selected')} disabled={selectedIds.size === 0} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"><Check size={14} className="text-blue-500"/> Exporter la sélection (.pdf)</button>
+              </div>
             )}
           </div>
-        ) : (
-          <table className="excel-table min-w-max">
-            <thead>
+          <button onClick={() => { setEditingProject(null); reset(); setShowModal(true) }} className="bg-[#2563EB] text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors shrink-0">
+            + Nouveau projet
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Cartes KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
+          <p className="text-gray-500 text-sm font-semibold mb-3">Projets actifs</p>
+          <p className="text-2xl font-bold text-[#2563EB]">{actifsCount}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
+          <p className="text-gray-500 text-sm font-semibold mb-3">Budget portefeuille</p>
+          <p className="text-2xl font-bold text-[#15803D]">{budgetStr}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
+          <p className="text-gray-500 text-sm font-semibold mb-3">Bailleurs</p>
+          <p className="text-2xl font-bold text-[#15803D]">{bailleursCount}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
+          <p className="text-gray-500 text-sm font-semibold mb-3">Projets en alerte</p>
+          <p className="text-2xl font-bold text-[#DC2626]">2</p>
+        </div>
+      </div>
+
+      {/* 3. Recherche et Filtres */}
+      <div className="flex flex-col lg:flex-row gap-4 items-center">
+        <div className="relative flex-1 w-full">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Recherche projet, bailleur, secteur..."
+            className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-2 w-full lg:w-auto">
+          {['Tous', 'En cours', 'Planifié', 'Clôturé'].map(f => {
+            let activeBg = 'white'
+            let textColor = '#6B7280'
+            let isActive = filter === f
+
+            if (isActive) {
+              textColor = 'white'
+              if (f === 'Tous') activeBg = '#2563EB'
+              else if (f === 'En cours') activeBg = '#15803D'
+              else activeBg = '#6B7280'
+            }
+
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors border border-transparent"
+                style={{ backgroundColor: activeBg, color: textColor, border: isActive ? 'none' : '1px solid #E5E7EB' }}
+              >
+                {f}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 4. Tableau des projets */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-visible flex-1 flex flex-col">
+        <div className="overflow-x-auto flex-1 pb-16">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-[#0A1628] text-white">
               <tr>
-                <th className="w-8">
-                  <input
-                    type="checkbox"
-                    checked={projets.length > 0 && selectedIds.size === projets.length}
-                    onChange={toggleSelectAll}
-                    className="accent-sigp-blue cursor-pointer"
-                  />
+                <th className="w-12 px-6 py-4">
+                  <input type="checkbox" checked={selectedIds.size > 0 && selectedIds.size === sortedProjects.length} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer accent-blue-600" />
                 </th>
-                <th>Code</th>
-                <th>Nom du Projet</th>
-                <th>Bailleur</th>
-                <th>Début</th>
-                <th>Fin</th>
-                <th className="text-right">Budget</th>
-                <th>Devise</th>
-                <th>Statut</th>
-                <th>Tâches</th>
-                <th></th>
+                <th className="px-6 py-4 font-bold cursor-pointer hover:bg-white/5" onClick={() => handleSort('code_projet')}>
+                  Code {sortConfig.key === 'code_projet' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="px-6 py-4 font-bold cursor-pointer hover:bg-white/5" onClick={() => handleSort('nom_projet')}>
+                  Projet {sortConfig.key === 'nom_projet' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="px-6 py-4 font-bold cursor-pointer hover:bg-white/5" onClick={() => handleSort('bailleur_principal')}>
+                  Bailleur {sortConfig.key === 'bailleur_principal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="px-6 py-4 font-bold cursor-pointer hover:bg-white/5" onClick={() => handleSort('budget_total')}>
+                  Budget {sortConfig.key === 'budget_total' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="px-6 py-4 font-bold cursor-pointer hover:bg-white/5" onClick={() => handleSort('statut')}>
+                  Statut {sortConfig.key === 'statut' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="px-6 py-4 font-bold">Avancement</th>
+                <th className="px-6 py-4 font-bold text-center">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {projets.map(p => (
-                <tr key={p.id} className={selectedIds.has(p.id) ? 'bg-sigp-blue/5' : ''}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(p.id)}
-                      onChange={() => toggleSelect(p.id)}
-                      className="accent-sigp-blue cursor-pointer"
-                    />
-                  </td>
-                  <td className="font-mono text-sigp-blue font-medium whitespace-nowrap">{p.code_projet}</td>
-                  <td className="max-w-xs truncate font-medium">{p.nom_projet}</td>
-                  <td className="text-sigp-muted">{p.bailleur_principal}</td>
-                  <td className="font-mono text-sigp-muted text-xs">{formatDate(p.date_debut)}</td>
-                  <td className="font-mono text-sigp-muted text-xs">{formatDate(p.date_fin)}</td>
-                  <td className="text-right font-mono">{formatCurrency(p.budget_total, p.devise)}</td>
-                  <td className="text-sigp-muted font-mono text-xs">{p.devise}</td>
-                  <td><StatusBadge statut={p.statut} /></td>
-                  <td className="text-center text-sigp-muted">{p._count?.taches ?? 0}</td>
-                  <td>
-                    <Link
-                      to={`/projects/${p.id}/dashboard`}
-                      className="flex items-center gap-1 text-xs text-sigp-blue hover:text-sigp-blue-light"
-                    >
-                      Ouvrir <ArrowRight size={11} />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-gray-100">
+              {sortedProjects.map(p => {
+                const isChecked = selectedIds.has(p.id)
+                const avancement = (p as any).avancement || (p.statut === 'ACTIF' ? '45%' : p.statut === 'PREPARATION' ? '0%' : p.statut === 'SUSPENDU' ? '62%' : '38%')
+                const displayStatut = p.statut === 'ACTIF' ? 'En cours' : p.statut === 'PREPARATION' ? 'Planifié' : p.statut === 'SUSPENDU' ? 'En alerte' : p.statut
+                return (
+                  <tr key={p.id} onClick={() => { setActiveProject(p.id, p.nom_projet); navigate(`/projects/${p.id}/dashboard`); }} className={`hover:bg-gray-50 transition-colors cursor-pointer group ${isChecked ? 'bg-blue-50/50' : ''}`}>
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(p.id)} className="w-4 h-4 rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer accent-blue-600" />
+                    </td>
+                    <td className="px-6 py-4 font-medium text-gray-900">{p.code_projet}</td>
+                    <td className="px-6 py-4 font-medium text-gray-900">{p.nom_projet}</td>
+                    <td className="px-6 py-4 text-gray-600">{p.bailleur_principal}</td>
+                    <td className="px-6 py-4 text-gray-900 font-mono">{formatCurrency(String(p.budget_total), p.devise)}</td>
+                    <td className="px-6 py-4 text-gray-600">{displayStatut}</td>
+                    <td className="px-6 py-4 text-gray-600">{avancement}</td>
+                    <td className="px-6 py-4 text-center relative" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setActiveMenu(activeMenu === p.id ? null : p.id)} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
+                        <MoreVertical size={16} />
+                      </button>
+                      {activeMenu === p.id && (
+                        <div className="absolute right-12 top-8 bg-white border border-gray-200 shadow-xl rounded-xl w-36 py-1 z-20 text-left">
+                          <button onClick={() => { setActiveProject(p.id, p.nom_projet); navigate(`/projects/${p.id}/dashboard`); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Voir</button>
+                          <button onClick={() => openEdit(p)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Modifier</button>
+                          <button onClick={() => openDuplicate(p)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Dupliquer</button>
+                          <div className="my-1 border-t border-gray-100"></div>
+                          <button onClick={() => { setProjectToDelete(p); setShowDeleteModal(true); setActiveMenu(null) }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium">Supprimer</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination */}
+        {meta && meta.totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 bg-gray-50 rounded-b-2xl mt-auto">
+            <span className="text-sm text-gray-500 font-medium">{meta.total} projets • Page {page} sur {meta.totalPages}</span>
+            <div className="flex gap-2">
+              <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 font-semibold hover:bg-gray-100 disabled:opacity-50 transition-colors">Précédent</button>
+              <button disabled={page === meta.totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 font-semibold hover:bg-gray-100 disabled:opacity-50 transition-colors">Suivant</button>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Pagination */}
-      {meta && meta.totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between px-4 md:px-6 py-3 border-t border-navy-500 text-xs text-sigp-muted gap-3">
-          <span>{meta.total} projets · Page {meta.page}/{meta.totalPages}</span>
-          <div className="flex gap-2">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-ghost py-1 px-2 disabled:opacity-40">← Préc.</button>
-            <button onClick={() => setPage(p => Math.min(meta.totalPages, p + 1))} disabled={page === meta.totalPages} className="btn-ghost py-1 px-2 disabled:opacity-40">Suiv. →</button>
-          </div>
-        </div>
-      )}
+      {/* 5. Bande interaction */}
+      <div className="bg-[#EEF2FF] rounded-xl p-4 border border-blue-100 mt-auto">
+        <p className="text-gray-700 text-sm text-center">
+          Interaction : cliquer sur une ligne ouvre le détail du projet et active tous les modules liés.
+        </p>
+      </div>
 
-      {/* ── Modal Création ─────────────────────────────────────────── */}
+      {/* ── Modal Création/Edition ─────────────────────────────────────────── */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-navy-800 border border-navy-500 rounded-xl w-full max-w-lg shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-navy-500">
-              <h3 className="text-sm font-semibold text-sigp-text">Nouveau Projet</h3>
-              <button onClick={() => setShowModal(false)} className="text-sigp-muted hover:text-sigp-text"><X size={16} /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h3 className="text-lg font-bold text-[#0A1628]">{editingProject ? 'Modifier le projet' : 'Nouveau Projet'}</h3>
+              <button onClick={() => { setShowModal(false); setEditingProject(null); reset() }} className="text-gray-500 hover:text-gray-900 transition-colors">
+                <X size={20} />
+              </button>
             </div>
-            <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-sigp-muted mb-1 block">Code projet *</label>
-                  <input {...register('code_projet')} placeholder="PAEP-CI-2025" className="sigp-input" />
-                  {errors.code_projet && <p className="text-sigp-red text-xs mt-1">{errors.code_projet.message}</p>}
+                  <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Code projet</label>
+                  <input {...register('code_projet')} disabled placeholder="Généré automatiquement" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-500 cursor-not-allowed" />
+                  {errors.code_projet && <p className="text-red-500 text-xs mt-1">{errors.code_projet.message}</p>}
                 </div>
                 <div>
-                  <label className="text-xs text-sigp-muted mb-1 block">Devise</label>
-                  <select {...register('devise')} className="sigp-input">
+                  <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Devise</label>
+                  <select {...register('devise')} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]">
                     <option value="XOF">XOF (FCFA)</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
@@ -448,39 +474,43 @@ export default function ProjectsPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-sigp-muted mb-1 block">Nom du projet *</label>
-                <input {...register('nom_projet')} placeholder="Projet d'Accès à l'Eau Potable" className="sigp-input" />
-                {errors.nom_projet && <p className="text-sigp-red text-xs mt-1">{errors.nom_projet.message}</p>}
+                <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Nom du projet *</label>
+                <input {...register('nom_projet')} placeholder="Ex: Eau potable rural" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]" />
+                {errors.nom_projet && <p className="text-red-500 text-xs mt-1">{errors.nom_projet.message}</p>}
               </div>
               <div>
-                <label className="text-xs text-sigp-muted mb-1 block">Bailleur principal *</label>
-                <input {...register('bailleur_principal')} placeholder="Banque Mondiale" className="sigp-input" />
-                {errors.bailleur_principal && <p className="text-sigp-red text-xs mt-1">{errors.bailleur_principal.message}</p>}
+                <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Bailleur principal *</label>
+                <input {...register('bailleur_principal')} placeholder="Ex: Banque X" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]" />
+                {errors.bailleur_principal && <p className="text-red-500 text-xs mt-1">{errors.bailleur_principal.message}</p>}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-sigp-muted mb-1 block">Date début *</label>
-                  <input {...register('date_debut')} type="date" className="sigp-input" />
+                  <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Date début *</label>
+                  <input {...register('date_debut')} type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]" />
+                  {errors.date_debut && <p className="text-red-500 text-xs mt-1">{errors.date_debut.message}</p>}
                 </div>
                 <div>
-                  <label className="text-xs text-sigp-muted mb-1 block">Date fin *</label>
-                  <input {...register('date_fin')} type="date" className="sigp-input" />
+                  <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Date fin *</label>
+                  <input {...register('date_fin')} type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]" />
+                  {errors.date_fin && <p className="text-red-500 text-xs mt-1">{errors.date_fin.message}</p>}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-sigp-muted mb-1 block">Budget total *</label>
-                <input {...register('budget_total')} placeholder="2500000.00" className="sigp-input" />
-                {errors.budget_total && <p className="text-sigp-red text-xs mt-1">{errors.budget_total.message}</p>}
+                <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Budget total *</label>
+                <input {...register('budget_total')} placeholder="Ex: 500000" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]" />
+                {errors.budget_total && <p className="text-red-500 text-xs mt-1">{errors.budget_total.message}</p>}
               </div>
               <div>
-                <label className="text-xs text-sigp-muted mb-1 block">Description</label>
-                <textarea {...register('description')} rows={2} className="sigp-input resize-none" />
+                <label className="text-xs text-gray-600 font-bold mb-1.5 block uppercase tracking-wide">Description</label>
+                <textarea {...register('description')} rows={2} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]" />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-ghost">Annuler</button>
-                <button type="submit" disabled={isSubmitting} className="btn-primary flex items-center gap-2">
-                  {isSubmitting && <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                  Créer le projet
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button type="button" onClick={() => { setShowModal(false); setEditingProject(null); reset() }} className="px-5 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                  Annuler
+                </button>
+                <button type="submit" disabled={isSubmitting || updateMutation.isPending || createMutation.isPending} className="px-5 py-2.5 text-sm font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-lg flex items-center gap-2 transition-colors">
+                  {(isSubmitting || updateMutation.isPending || createMutation.isPending) && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                  {editingProject ? 'Enregistrer' : 'Créer le projet'}
                 </button>
               </div>
             </form>
@@ -488,111 +518,30 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* ── Modal Export ───────────────────────────────────────────── */}
-      {showExportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-navy-800 border border-navy-500 rounded-xl w-full max-w-lg shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-navy-500">
-              <div className="flex items-center gap-2">
-                <Download size={16} className="text-sigp-blue" />
-                <h3 className="text-sm font-semibold text-sigp-text">Exporter les projets</h3>
-              </div>
-              <button onClick={() => setShowExportModal(false)} className="text-sigp-muted hover:text-sigp-text"><X size={16} /></button>
+      {/* ── Modal Suppression ─────────────────────────────────────────── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden p-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4 text-red-600">
+              <X size={24} />
             </div>
-
-            <div className="p-5 space-y-5">
-              {/* Scope */}
-              <div>
-                <label className="text-xs font-bold text-sigp-muted uppercase tracking-wider block mb-2">Que souhaitez-vous exporter ?</label>
-                <div className="space-y-1.5">
-                  {[
-                    { id: 'current', label: 'Vue actuelle avec filtres appliqués', count: projets.length },
-                    { id: 'all', label: 'Tous les projets', count: allProjets.length },
-                    { id: 'selected', label: 'Projets sélectionnés uniquement', count: selectedIds.size, disabled: selectedIds.size === 0 },
-                  ].map(opt => (
-                    <label key={opt.id} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${exportOptions.scope === opt.id ? 'border-sigp-blue bg-sigp-blue/10' : 'border-navy-500 hover:border-navy-400'} ${opt.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                      <input type="radio" name="scope" value={opt.id} checked={exportOptions.scope === opt.id} onChange={() => !opt.disabled && setExportOptions(s => ({ ...s, scope: opt.id as ExportScope }))} disabled={opt.disabled} className="accent-sigp-blue" />
-                      <span className="text-xs text-sigp-text flex-1">{opt.label}</span>
-                      <span className="text-[10px] text-sigp-muted bg-navy-700 px-2 py-0.5 rounded-full">{opt.count}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Report type */}
-              <div>
-                <label className="text-xs font-bold text-sigp-muted uppercase tracking-wider block mb-2">Type de rapport</label>
-                <div className="flex gap-2">
-                  {[
-                    { id: 'list', label: 'Liste standard', icon: FileText },
-                    { id: 'financial', label: 'Rapport financier', icon: FileSpreadsheet },
-                  ].map(t => (
-                    <button key={t.id} onClick={() => setExportOptions(s => ({ ...s, reportType: t.id as 'list' | 'financial' }))}
-                      className={`flex-1 flex items-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-colors ${exportOptions.reportType === t.id ? 'border-sigp-blue bg-sigp-blue/10 text-sigp-blue' : 'border-navy-500 text-sigp-muted hover:border-navy-400'}`}>
-                      <t.icon size={13} /> {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Format */}
-              <div>
-                <label className="text-xs font-bold text-sigp-muted uppercase tracking-wider block mb-2">Format du fichier</label>
-                <div className="flex gap-2">
-                  {[
-                    { id: 'xlsx', label: 'Excel (.xlsx)', icon: FileSpreadsheet, color: 'text-emerald-400' },
-                    { id: 'csv', label: 'CSV', icon: File, color: 'text-sigp-muted' },
-                    { id: 'print', label: 'PDF (impression)', icon: FileText, color: 'text-red-400' },
-                  ].map(f => (
-                    <button key={f.id} onClick={() => setExportOptions(s => ({ ...s, format: f.id as ExportFormat }))}
-                      className={`flex-1 flex flex-col items-center gap-1 p-2.5 rounded-lg border text-xs font-semibold transition-colors ${exportOptions.format === f.id ? 'border-sigp-blue bg-sigp-blue/10 text-sigp-blue' : 'border-navy-500 text-sigp-muted hover:border-navy-400'}`}>
-                      <f.icon size={16} className={exportOptions.format === f.id ? 'text-sigp-blue' : f.color} />
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Data to include (only for list mode) */}
-              {exportOptions.reportType === 'list' && (
-                <div>
-                  <label className="text-xs font-bold text-sigp-muted uppercase tracking-wider block mb-2">Données à inclure</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {[
-                      { key: 'includeInfos', label: 'Informations générales' },
-                      { key: 'includeBudget', label: 'Budget' },
-                      { key: 'includeTasks', label: 'Tâches' },
-                      { key: 'includeStatus', label: 'Statut' },
-                    ].map(item => (
-                      <label key={item.key} className="flex items-center gap-2 text-xs text-sigp-text cursor-pointer">
-                        <input type="checkbox" checked={exportOptions[item.key as keyof ExportOptions] as boolean} onChange={e => setExportOptions(s => ({ ...s, [item.key]: e.target.checked }))} className="accent-sigp-blue" />
-                        {item.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Filename */}
-              <div>
-                <label className="text-xs font-bold text-sigp-muted uppercase tracking-wider block mb-2">Nom du fichier</label>
-                <input
-                  value={exportOptions.filename}
-                  onChange={e => setExportOptions(s => ({ ...s, filename: e.target.value }))}
-                  className="sigp-input text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 px-5 py-4 border-t border-navy-500">
-              <button onClick={() => setShowExportModal(false)} className="btn-ghost text-xs">Annuler</button>
-              <button onClick={doExport} className="btn-primary flex items-center gap-2 text-xs">
-                <Download size={13} /> Exporter
+            <h3 className="text-lg font-bold text-[#0A1628] mb-2">Supprimer le projet ?</h3>
+            <p className="text-gray-500 text-sm mb-6">
+              Êtes-vous sûr de vouloir supprimer définitivement le projet <strong className="text-gray-800">{projectToDelete?.code_projet}</strong> ? Cette action est irréversible.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeleteModal(false)} className="flex-1 px-4 py-2.5 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                Annuler
+              </button>
+              <button onClick={handleDelete} disabled={deleteMutation.isPending} className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center justify-center gap-2">
+                {deleteMutation.isPending && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                Supprimer
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   )
 }

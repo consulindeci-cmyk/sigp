@@ -172,6 +172,9 @@ export interface CadreLogique {
   valeur_reference?: string;
   cible?: string;
   source_verification?: string;
+  hypotheses?: string;
+  risques?: string;
+  commentaires?: string;
 }
 
 export interface PTBA {
@@ -185,6 +188,8 @@ export interface PTBA {
   q2: string | number;
   q3: string | number;
   q4: string | number;
+  responsable?: string;
+  pourcentage_avancement?: number;
   statut: 'PLANIFIE' | 'EN_COURS' | 'TERMINE' | 'SUSPENDU';
 }
 

@@ -3,10 +3,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StatutProjet } from '@prisma/client';
 
 export class CreateProjectDto {
-  @ApiProperty({ example: 'PAEP-CI-2025' })
+  @ApiPropertyOptional({ example: 'P001' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  code_projet: string;
+  code_projet?: string;
 
   @ApiProperty({ example: "Projet d'Accès à l'Eau Potable" })
   @IsString()

@@ -8,14 +8,22 @@ export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateProjectDto) {
-    const existing = await this.prisma.projet.findUnique({
-      where: { code_projet: dto.code_projet },
-    });
-    if (existing) throw new ConflictException('Ce code projet existe déjà');
+    const allCodes = await this.prisma.projet.findMany({ select: { code_projet: true } });
+    let maxNum = 0;
+    for (const p of allCodes) {
+      if (p.code_projet?.startsWith('P')) {
+        const numStr = p.code_projet.substring(1);
+        if (/^\d+$/.test(numStr)) {
+          const num = parseInt(numStr, 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+    const newCode = `P${(maxNum + 1).toString().padStart(3, '0')}`;
 
     return this.prisma.projet.create({
       data: {
-        code_projet: dto.code_projet,
+        code_projet: newCode,
         nom_projet: dto.nom_projet,
         description: dto.description,
         bailleur_principal: dto.bailleur_principal,

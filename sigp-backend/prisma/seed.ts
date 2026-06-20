@@ -47,15 +47,15 @@ async function main() {
   console.log('Users created:', users.map(u => u.email));
 
   // 2. Création du projet de démonstration
-  const existingProject = await prisma.projet.findUnique({ where: { code_projet: 'PAEP-CI-2025' } });
+  const existingProject = await prisma.projet.findUnique({ where: { code_projet: 'P001' } });
   if (existingProject) {
-    console.log('Seed already completed (project PAEP-CI-2025 exists). Skipping further seeding to prevent duplicates.');
+    console.log('Seed already completed (project P001 exists). Skipping further seeding to prevent duplicates.');
     return;
   }
 
   const projet = await prisma.projet.create({
     data: {
-      code_projet: 'PAEP-CI-2025',
+      code_projet: 'P001',
       nom_projet: 'Projet d\'Accès à l\'Eau Potable en Milieu Rural — Côte d\'Ivoire',
       description: 'Amélioration de l\'accès à l\'eau potable dans les régions nord',
       bailleur_principal: 'Banque Mondiale',

@@ -45,6 +45,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/logframe" element={<LogframePage />} />
           <Route path="/settings" element={<SettingsPage />} />
 
           {/* Routes spécifiques à un projet */}
