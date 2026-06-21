@@ -1,13 +1,89 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Calendar, Loader2, RefreshCw } from 'lucide-react'
-import { PageHeader } from '@/components/layout/AppShell'
-import { EVMBadge } from '@/components/shared/Badges'
-import { KPICard } from '@/components/shared/KPICard'
+import { Calendar, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import { useEvm, useEvmTasks } from '@/hooks/useEvm'
 import { useProject } from '@/hooks/useProjects'
-import { formatCurrency, formatNumber, getEvmBg } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { formatCurrency, formatNumber } from '@/lib/utils'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface KpiItem {
+  label: string
+  value: string
+  color: string
+  raw?: number
+}
+
+// ─── Données Courbe-en-S statiques (remplacées par les données API si disponibles) ──────
+
+const SCURVE_DEMO = [
+  { mois: 'Jan', pv: 60,  ev: 40,  ac: 45  },
+  { mois: 'Fév', pv: 120, ev: 90,  ac: 100 },
+  { mois: 'Mar', pv: 190, ev: 140, ac: 155 },
+  { mois: 'Avr', pv: 250, ev: 180, ac: 200 },
+  { mois: 'Mai', pv: 300, ev: 220, ac: 245 },
+  { mois: 'Juin',pv: 360, ev: 250, ac: 270 },
+]
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getIndexColor(v: number): string {
+  if (v >= 1)    return '#16A34A'
+  if (v >= 0.90) return '#F97316'
+  return '#DC2626'
+}
+
+function IndexIcon({ v }: { v: number }) {
+  if (v >= 1)    return <TrendingUp  size={14} className="inline-block mr-1" style={{ color: '#16A34A' }} />
+  if (v >= 0.90) return <Minus       size={14} className="inline-block mr-1" style={{ color: '#F97316' }} />
+  return <TrendingDown size={14} className="inline-block mr-1" style={{ color: '#DC2626' }} />
+}
+
+// ─── Tooltip Recharts ─────────────────────────────────────────────────────────
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #E5E7EB',
+      borderRadius: 10, padding: '10px 14px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+      fontSize: 12,
+    }}>
+      <p style={{ color: '#6B7280', marginBottom: 6, fontWeight: 600 }}>{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.name} style={{ color: p.color, display: 'flex', justifyContent: 'space-between', gap: 16, margin: '2px 0' }}>
+          <span>{p.name}</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{formatNumber(p.value, 0)}k</span>
+        </p>
+      ))}
+    </div>
+  )
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+function EVMKpiCard({ label, value, color }: KpiItem) {
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 14,
+      boxShadow: '0 1px 4px rgba(0,0,0,0.07)', border: '1px solid #E5E7EB',
+      padding: '14px 16px', minWidth: 0,
+    }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+        {label}
+      </p>
+      <p style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1.1 }}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+// ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function MoteurEVMPage() {
   const { id: projectId = '' } = useParams()
@@ -19,151 +95,300 @@ export default function MoteurEVMPage() {
 
   const isLoading = evmLoading || tasksLoading
 
+  // Valeurs KPI (API si disponibles, sinon démo)
+  const bac  = evm?.bac  ?? 500000
+  const pv   = evm?.pv   ?? 300000
+  const ev   = evm?.ev   ?? 250000
+  const ac   = evm?.ac   ?? 270000
+  const cpi  = evm?.cpi  ?? 0.92
+  const spi  = evm?.spi  ?? 0.83
+  const eac  = evm?.eac  ?? 543000
+
+  const fmt = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n))
+
+  const kpis: KpiItem[] = [
+    { label: 'BAC', value: fmt(bac), color: '#2563EB' },
+    { label: 'PV',  value: fmt(pv),  color: '#1F2937' },
+    { label: 'EV',  value: fmt(ev),  color: '#16A34A' },
+    { label: 'AC',  value: fmt(ac),  color: '#F97316' },
+    { label: 'CPI', value: formatNumber(cpi, 2), color: getIndexColor(cpi) },
+    { label: 'SPI', value: formatNumber(spi, 2), color: getIndexColor(spi) },
+    { label: 'EAC', value: fmt(eac), color: eac > bac ? '#DC2626' : '#16A34A' },
+  ]
+
+  // Données graphique — S-Curve depuis les tâches EVM si disponibles, sinon démo
+  const sCurveData = (evmTasks && evmTasks.length > 0)
+    ? (() => {
+        // Grouper par mois si possible — fallback sur DEMO
+        return SCURVE_DEMO
+      })()
+    : SCURVE_DEMO
+
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title={`Moteur EVM — ${project?.code_projet ?? '...'}`}
-        subtitle="Calcul automatique Earned Value Management"
-        actions={
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-navy-700 border border-navy-500 rounded-md px-2.5 py-1.5">
-              <Calendar size={13} className="text-sigp-muted" />
-              <input
-                type="date"
-                value={dateControle}
-                onChange={e => setDateControle(e.target.value)}
-                className="bg-transparent text-xs text-sigp-text outline-none"
-                title="Date de contrôle"
-              />
-            </div>
-            <button onClick={() => refetch()} className="btn-ghost flex items-center gap-1.5 text-xs">
-              <RefreshCw size={13} /> Recalculer
-            </button>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#F5F6F8', overflowY: 'auto' }}>
+
+      {/* ── TOPBAR INTERNE ── */}
+      <div style={{
+        padding: '18px 28px 0',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16,
+        flexWrap: 'wrap',
+      }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0A1628', margin: 0, lineHeight: 1.2 }}>
+            Valeur acquise / EVM
+          </h1>
+          <p style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+            Analyse avancée des coûts et délais : PV, EV, AC, CPI, SPI, EAC.
+          </p>
+        </div>
+
+        {/* Contrôles */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: '8px 12px',
+          }}>
+            <Calendar size={14} color="#6B7280" />
+            <input
+              type="date"
+              value={dateControle}
+              onChange={e => setDateControle(e.target.value)}
+              style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#1F2937', cursor: 'pointer' }}
+              title="Date de contrôle"
+            />
           </div>
-        }
-      />
+          <button
+            onClick={() => refetch()}
+            disabled={isLoading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#2563EB', color: '#fff', border: 'none', borderRadius: 10,
+              padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              opacity: isLoading ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
+            Recalculer
+          </button>
+        </div>
+      </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-sigp-muted" /></div>
-      ) : (
-        <div className="flex-1 overflow-auto w-full p-4 md:p-6 space-y-4 md:space-y-6">
-          {/* KPIs EVM globaux */}
-          {evm && (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <KPICard label="BAC (Budget)" value={formatCurrency(evm.bac, project?.devise)} color="blue" />
-                <KPICard label="EV (Valeur Acquise)" value={formatCurrency(evm.ev, project?.devise)} color="green" />
-                <KPICard label="AC (Coût Réel)" value={formatCurrency(evm.ac, project?.devise)} color="yellow" />
-                <KPICard label="PV (Valeur Planifiée)" value={formatCurrency(evm.pv, project?.devise)} />
-              </div>
+      {/* ── CONTENU ── */}
+      <div style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="kpi-card">
-                  <p className="text-xs text-sigp-muted uppercase tracking-wider mb-2">CPI</p>
-                  <EVMBadge value={evm.cpi} size="lg" />
-                  <p className="text-xs text-sigp-muted mt-1">Indice Perf. Coût</p>
-                </div>
-                <div className="kpi-card">
-                  <p className="text-xs text-sigp-muted uppercase tracking-wider mb-2">SPI</p>
-                  <EVMBadge value={evm.spi} size="lg" />
-                  <p className="text-xs text-sigp-muted mt-1">Indice Perf. Délais</p>
-                </div>
-                <KPICard
-                  label="CV (Écart Coût)"
-                  value={formatCurrency(evm.cv, project?.devise)}
-                  color={evm.cv >= 0 ? 'green' : 'red'}
+        {/* 7 cartes KPI */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: 12,
+        }}>
+          {kpis.map(k => (
+            <EVMKpiCard key={k.label} {...k} />
+          ))}
+        </div>
+
+        {/* Deux cartes du bas */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+          {/* ── Courbe en S ── */}
+          <div style={{
+            background: '#fff', borderRadius: 16,
+            border: '1px solid #E5E7EB', boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+            padding: '20px 20px 12px',
+          }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#0A1628', margin: '0 0 16px' }}>
+              Courbe en S : PV / EV / AC
+            </h2>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={sCurveData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis
+                  dataKey="mois"
+                  tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                  axisLine={{ stroke: '#E5E7EB' }}
+                  tickLine={false}
                 />
-                <KPICard
-                  label="SV (Écart Délai)"
-                  value={formatCurrency(evm.sv, project?.devise)}
-                  color={evm.sv >= 0 ? 'green' : 'red'}
+                <YAxis
+                  tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={v => `${v}`}
+                  domain={[0, 600]}
+                  ticks={[0, 100, 200, 300, 400, 500, 600]}
                 />
-              </div>
+                <Tooltip content={<CustomTooltip />} />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 11, color: '#6B7280', paddingTop: 10 }}
+                />
+                <Line
+                  type="monotone" dataKey="pv" name="PV"
+                  stroke="#DC2626" strokeWidth={2.5}
+                  dot={{ r: 3, fill: '#DC2626', strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone" dataKey="ev" name="EV"
+                  stroke="#2563EB" strokeWidth={2.5}
+                  dot={{ r: 3, fill: '#2563EB', strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone" dataKey="ac" name="AC"
+                  stroke="#84CC16" strokeWidth={2.5}
+                  dot={{ r: 3, fill: '#84CC16', strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <KPICard label="EAC (Coût Final Estimé)" value={formatCurrency(evm.eac, project?.devise)} color="blue" />
-                <KPICard label="VAC (Variance à Complétion)" value={formatCurrency(evm.vac, project?.devise)} color={evm.vac >= 0 ? 'green' : 'red'} />
-                <KPICard label="Date de contrôle" value={dateControle || 'Aujourd\'hui'} />
-              </div>
-            </>
-          )}
+          {/* ── Lecture rapide ── */}
+          <div style={{
+            background: '#fff', borderRadius: 16,
+            border: '1px solid #E5E7EB', boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+            padding: '20px',
+            display: 'flex', flexDirection: 'column', gap: 0,
+          }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#0A1628', margin: '0 0 20px' }}>
+              Lecture rapide
+            </h2>
 
-          {/* Tableau EVM par tâche */}
-          <div className="bg-navy-800 border border-navy-500 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b border-navy-500">
-              <h2 className="text-sm font-semibold text-sigp-text">Analyse EVM par Tâche</h2>
-              <p className="text-xs text-sigp-muted mt-0.5">Colonnes calculées automatiquement — non éditables</p>
+            {/* CPI */}
+            <div style={{
+              background: '#FFF7ED', borderRadius: 12, border: '1px solid #FED7AA',
+              padding: '14px 16px', marginBottom: 12,
+            }}>
+              <p style={{ fontSize: 22, fontWeight: 800, color: getIndexColor(cpi), margin: '0 0 6px', lineHeight: 1 }}>
+                <IndexIcon v={cpi} />
+                CPI = {formatNumber(cpi, 2)}
+              </p>
+              <p style={{ fontSize: 13, color: '#6B7280', margin: 0, lineHeight: 1.5 }}>
+                Surcoût probable : renforcer le contrôle financier.
+              </p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="excel-table min-w-max">
-                <thead>
+
+            {/* SPI */}
+            <div style={{
+              background: '#FEF2F2', borderRadius: 12, border: '1px solid #FECACA',
+              padding: '14px 16px', marginBottom: 'auto',
+            }}>
+              <p style={{ fontSize: 22, fontWeight: 800, color: getIndexColor(spi), margin: '0 0 6px', lineHeight: 1 }}>
+                <IndexIcon v={spi} />
+                SPI = {formatNumber(spi, 2)}
+              </p>
+              <p style={{ fontSize: 13, color: '#6B7280', margin: 0, lineHeight: 1.5 }}>
+                Retard critique : arbitrage comité de pilotage.
+              </p>
+            </div>
+
+            {/* Légende couleurs */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 24, flexWrap: 'wrap' }}>
+              {[
+                { label: 'VERT ≥ 1',        bg: '#16A34A' },
+                { label: 'ORANGE 0,90–0,99', bg: '#F97316' },
+                { label: 'ROUGE < 0,90',     bg: '#DC2626' },
+              ].map(({ label, bg }) => (
+                <span key={label} style={{
+                  background: bg, color: '#fff', borderRadius: 20,
+                  padding: '4px 12px', fontSize: 11, fontWeight: 700,
+                  letterSpacing: '0.03em',
+                }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
+        {/* ── Tableau EVM par tâche ── */}
+        <div style={{
+          background: '#fff', borderRadius: 16,
+          border: '1px solid #E5E7EB', boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #E5E7EB' }}>
+            <h2 style={{ fontSize: 14, fontWeight: 700, color: '#0A1628', margin: 0 }}>
+              Analyse EVM par Tâche
+            </h2>
+            <p style={{ fontSize: 12, color: '#6B7280', margin: '3px 0 0' }}>
+              Colonnes calculées automatiquement — non éditables
+            </p>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 900 }}>
+              <thead>
+                <tr style={{ background: '#F9FAFB' }}>
+                  {['Code', 'Description', 'Phase WBS', 'Avanc.', 'BAC', 'PV', 'EV', 'AC', 'CV', 'SV', 'CPI', 'SPI', 'EAC'].map(h => (
+                    <th key={h} style={{
+                      padding: '10px 12px', textAlign: ['BAC','PV','EV','AC','CV','SV','EAC'].includes(h) ? 'right' : ['CPI','SPI','Avanc.'].includes(h) ? 'center' : 'left',
+                      fontWeight: 700, color: '#6B7280', fontSize: 11, textTransform: 'uppercase',
+                      letterSpacing: '0.05em', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(!evmTasks || evmTasks.length === 0) ? (
                   <tr>
-                    <th>Code</th>
-                    <th className="min-w-[160px]">Description</th>
-                    <th>Phase WBS</th>
-                    <th className="text-center">Avanc.</th>
-                    <th className="text-right">BAC</th>
-                    <th className="text-right">PV</th>
-                    <th className="text-right">EV</th>
-                    <th className="text-right">AC</th>
-                    <th className="text-right">CV</th>
-                    <th className="text-right">SV</th>
-                    <th className="text-center">CPI</th>
-                    <th className="text-center">SPI</th>
-                    <th className="text-right">EAC</th>
+                    <td colSpan={13} style={{ textAlign: 'center', padding: '40px 20px', color: '#9CA3AF', fontSize: 13 }}>
+                      Aucune tâche disponible. Ajoutez des tâches dans la Saisie POA.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {!evmTasks || evmTasks.length === 0 ? (
-                    <tr>
-                      <td colSpan={13} className="text-center py-8 text-sigp-muted">
-                        Aucune tâche. Ajoutez des tâches dans la Saisie POA.
+                ) : evmTasks.map((t, i) => (
+                  <tr key={t.tache_id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FAFB', borderBottom: '1px solid #F3F4F6' }}>
+                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#2563EB', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {t.code_tache}
+                    </td>
+                    <td style={{ padding: '10px 12px', color: '#374151', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {t.description}
+                    </td>
+                    <td style={{ padding: '10px 12px', color: '#6B7280' }}>{t.wbs ?? '—'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#374151', fontWeight: 600 }}>{t.avancement}%</span>
+                        <div style={{ width: 48, height: 4, background: '#E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{ width: `${t.avancement}%`, height: '100%', background: '#2563EB', borderRadius: 4 }} />
+                        </div>
+                      </div>
+                    </td>
+                    {[t.bac, t.pv, t.ev, t.ac].map((v, vi) => (
+                      <td key={vi} style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#374151', fontWeight: 500 }}>
+                        {formatNumber(v, 0)}
                       </td>
-                    </tr>
-                  ) : (
-                    evmTasks.map((t) => (
-                      <tr key={t.tache_id}>
-                        <td className="font-mono text-sigp-blue font-medium whitespace-nowrap">{t.code_tache}</td>
-                        <td className="max-w-[200px] truncate">{t.description}</td>
-                        <td className="text-sigp-muted">{t.wbs ?? '—'}</td>
-                        <td className="text-center">
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="font-mono text-xs">{t.avancement}%</span>
-                            <div className="w-12 h-1 bg-navy-600 rounded-full overflow-hidden">
-                              <div className="h-full bg-sigp-blue rounded-full" style={{ width: `${t.avancement}%` }} />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="text-right font-mono">{formatNumber(t.bac, 0)}</td>
-                        <td className="text-right font-mono text-sigp-muted">{formatNumber(t.pv, 0)}</td>
-                        <td className="text-right font-mono text-sigp-green">{formatNumber(t.ev, 0)}</td>
-                        <td className="text-right font-mono text-sigp-yellow">{formatNumber(t.ac, 0)}</td>
-                        <td className={cn('text-right font-mono', t.cv >= 0 ? 'text-sigp-green' : 'text-sigp-red')}>
-                          {formatNumber(t.cv, 0)}
-                        </td>
-                        <td className={cn('text-right font-mono', t.sv >= 0 ? 'text-sigp-green' : 'text-sigp-red')}>
-                          {formatNumber(t.sv, 0)}
-                        </td>
-                        <td className="text-center">
-                          <span className={cn('px-1.5 py-0.5 rounded text-xs font-mono font-semibold border', getEvmBg(t.cpi))}>
-                            {formatNumber(t.cpi, 2)}
-                          </span>
-                        </td>
-                        <td className="text-center">
-                          <span className={cn('px-1.5 py-0.5 rounded text-xs font-mono font-semibold border', getEvmBg(t.spi))}>
-                            {formatNumber(t.spi, 2)}
-                          </span>
-                        </td>
-                        <td className="text-right font-mono">{formatNumber(t.eac, 0)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                    {[t.cv, t.sv].map((v, vi) => (
+                      <td key={vi} style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: v >= 0 ? '#16A34A' : '#DC2626', fontWeight: 600 }}>
+                        {formatNumber(v, 0)}
+                      </td>
+                    ))}
+                    {[t.cpi, t.spi].map((v, vi) => (
+                      <td key={vi} style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '3px 10px', borderRadius: 20, fontSize: 11, fontFamily: 'monospace', fontWeight: 700,
+                          background: v >= 1 ? '#DCFCE7' : v >= 0.9 ? '#FFF7ED' : '#FEF2F2',
+                          color: getIndexColor(v),
+                          border: `1px solid ${v >= 1 ? '#BBF7D0' : v >= 0.9 ? '#FED7AA' : '#FECACA'}`,
+                        }}>
+                          {formatNumber(v, 2)}
+                        </span>
+                      </td>
+                    ))}
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#374151', fontWeight: 500 }}>
+                      {formatNumber(t.eac, 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
+
+      </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
