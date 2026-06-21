@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,10 +12,11 @@ async function bootstrap() {
   const isProduction = configService.get<string>('nodeEnv') === 'production';
   const port = configService.get<number>('port') || 3000;
 
-  // Sécurité HTTP headers (X-Frame-Options, X-Content-Type-Options, etc.)
+  // Sécurité HTTP headers
   app.use(helmet());
+  app.use(cookieParser());
 
-  // Validation globale — whitelist + rejet des champs inconnus
+  // Validation globale
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -23,9 +25,10 @@ async function bootstrap() {
     }),
   );
 
-  // CORS
+  // CORS sécurisé avec credentials
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   app.enableCors({
-    origin: true,
+    origin: isProduction ? [frontendUrl] : ['http://localhost:5173', frontendUrl],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

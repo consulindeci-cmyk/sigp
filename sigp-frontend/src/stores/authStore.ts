@@ -5,46 +5,48 @@ import api from '@/lib/axios'
 
 interface AuthState {
   user: User | null
-  accessToken: string | null
-  refreshToken: string | null
   isAuthenticated: boolean
   login: (email: string, mot_de_passe: string) => Promise<void>
-  logout: () => void
-  setTokens: (accessToken: string, refreshToken: string) => void
+  logout: () => Promise<void>
+  checkAuth: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      accessToken: null,
-      refreshToken: null,
       isAuthenticated: false,
 
       login: async (email, mot_de_passe) => {
         const { data } = await api.post('/auth/login', { email, mot_de_passe })
         set({
           user: data.user,
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
           isAuthenticated: true,
         })
       },
 
-      logout: () => {
-        set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false })
+      logout: async () => {
+        try {
+          await api.post('/auth/logout')
+        } catch (e) {
+          console.error('Logout error', e)
+        }
+        set({ user: null, isAuthenticated: false })
       },
 
-      setTokens: (accessToken, refreshToken) => {
-        set({ accessToken, refreshToken, isAuthenticated: true })
+      checkAuth: async () => {
+        try {
+          const { data } = await api.get('/auth/me')
+          set({ user: data.user, isAuthenticated: true })
+        } catch (error) {
+          set({ user: null, isAuthenticated: false })
+        }
       },
     }),
     {
       name: 'sigp-auth',
       partialize: (state) => ({
         user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
     },

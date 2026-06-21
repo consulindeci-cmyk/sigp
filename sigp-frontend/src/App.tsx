@@ -16,6 +16,15 @@ import PPMPage from './pages/project/PPMPage'
 import JournalPage from './pages/project/JournalPage'
 import SettingsPage from './pages/SettingsPage'
 import { usePrefsStore, applyThemeClass } from './stores/prefsStore'
+import { useAuthStore } from './stores/authStore'
+
+function AuthInitializer() {
+  const checkAuth = useAuthStore((s) => s.checkAuth)
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
+  return null
+}
 
 // ── Applique le thème persisté dès le premier rendu ────────────
 function ThemeInitializer() {
@@ -36,6 +45,7 @@ function ThemeInitializer() {
 export default function App() {
   return (
     <BrowserRouter>
+      <AuthInitializer />
       <ThemeInitializer />
       <Routes>
         {/* Route publique */}

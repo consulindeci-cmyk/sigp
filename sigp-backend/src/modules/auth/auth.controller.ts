@@ -1,4 +1,5 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Patch } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, UseGuards, Patch, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
@@ -30,30 +31,53 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Connexion — retourne access_token + refresh_token' })
+  @ApiOperation({ summary: 'Connexion — retourne les cookies httpOnly' })
   @ApiResponse({ status: 200, description: 'Connexion réussie' })
   @ApiResponse({ status: 401, description: 'Identifiants incorrects' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.login(dto);
+    const { access_token, refresh_token, user } = result as any;
+
+    this.setCookies(res, access_token, refresh_token);
+    return { user };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Récupérer le profil courant' })
+  getMe(@CurrentUser() user: any) {
+    return { user };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Déconnexion — invalide le refresh_token' })
-  logout(@CurrentUser('id') userId: string) {
-    return this.authService.logout(userId);
+  @ApiOperation({ summary: 'Déconnexion — supprime les cookies' })
+  async logout(@CurrentUser('id') userId: string, @Res({ passthrough: true }) res: Response) {
+    await this.authService.logout(userId);
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+    return { message: 'Déconnexion réussie' };
   }
 
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Obtenir un nouveau access_token via refresh_token' })
+  @ApiOperation({ summary: 'Obtenir un nouveau access_token via refresh_token (cookie)' })
   @ApiResponse({ status: 200, description: 'Tokens renouvelés' })
   @ApiResponse({ status: 401, description: 'Refresh token invalide ou expiré' })
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshToken(dto.refresh_token);
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = req.cookies['refresh_token'];
+    if (!refreshToken) {
+      throw new UnauthorizedException('Aucun refresh token trouvé dans les cookies');
+    }
+    const result = await this.authService.refreshToken(refreshToken);
+    const { access_token, refresh_token } = result as any;
+    
+    this.setCookies(res, access_token, refresh_token);
+    return { message: 'Tokens renouvelés' };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -78,5 +102,23 @@ export class AuthController {
   @ApiOperation({ summary: 'Réinitialiser le mot de passe avec un token' })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  private setCookies(res: Response, accessToken: string, refreshToken: string) {
+    const isProd = process.env.NODE_ENV === 'production';
+    res.cookie('access_token', accessToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
+      maxAge: 15 * 60 * 1000, // 15 min
+    });
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
   }
 }
