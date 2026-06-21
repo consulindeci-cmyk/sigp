@@ -1,10 +1,10 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
 
+// En dev  → http://localhost:3000 (via .env)
+// En prod → https://sigp-backend.onrender.com (via .env.production)
 const api = axios.create({
-  baseURL: import.meta.env.PROD 
-    ? (import.meta.env.VITE_API_URL || 'https://sigp-backend.onrender.com') 
-    : 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
   headers: { 'Content-Type': 'application/json' },
   timeout: 60000,
   withCredentials: true,
@@ -12,10 +12,10 @@ const api = axios.create({
 
 // Auto-refresh on 401
 let isRefreshing = false
-let failedQueue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => void }> = []
+let failedQueue: Array<{ resolve: (v: unknown) => void; reject: (e: unknown) => void }> = []
 
-const processQueue = (error: unknown, token: string | null = null) => {
-  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token!)))
+const processQueue = (error: unknown) => {
+  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(null)))
   failedQueue = []
 }
 
@@ -24,11 +24,16 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
+    // Ne pas retenter sur les endpoints d'auth eux-mêmes
+    if (originalRequest?.url?.includes('/auth/')) {
+      return Promise.reject(error)
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })
-        }).then((token) => {
+        }).then(() => {
           originalRequest._retry = true
           return api(originalRequest)
         })
@@ -39,10 +44,10 @@ api.interceptors.response.use(
 
       try {
         await api.post('/auth/refresh')
-        processQueue(null, 'refreshed')
+        processQueue(null)
         return api(originalRequest)
       } catch (err) {
-        processQueue(err, null)
+        processQueue(err)
         useAuthStore.getState().logout()
         return Promise.reject(err)
       } finally {

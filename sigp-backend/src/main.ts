@@ -25,12 +25,31 @@ async function bootstrap() {
     }),
   );
 
-  // CORS sécurisé avec credentials
+  // CORS sécurisé avec credentials — accepte le domaine Vercel configuré + localhost
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   app.enableCors({
-    origin: isProduction ? [frontendUrl] : ['http://localhost:5173', frontendUrl],
+    origin: (origin, callback) => {
+      // Autorise les requêtes sans origin (Postman, Render health checks)
+      if (!origin) return callback(null, true);
+      const allowedPatterns = [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        frontendUrl,
+        // Accepte TOUS les sous-domaines Vercel
+        /^https:\/\/.*\.vercel\.app$/,
+      ];
+      const isAllowed = allowedPatterns.some((p) =>
+        typeof p === 'string' ? p === origin : p.test(origin),
+      );
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS bloqué pour origin: ${origin}`));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
   });
 
   // Swagger — DÉSACTIVÉ en production

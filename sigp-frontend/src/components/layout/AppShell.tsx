@@ -6,7 +6,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useProject } from '@/hooks/useProjects'
 
 export function AppShell() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isAuthChecked } = useAuthStore()
   const { activeProjectId, activeProjectName, setActiveProject } = useUIStore()
   const navigate = useNavigate()
   const location = useLocation()
@@ -32,6 +32,15 @@ export function AppShell() {
       setActiveProject(urlProjectId, urlProject.nom_projet)
     }
   }, [isError, activeProjectId, urlProjectId, urlProject, setActiveProject])
+
+  // Attendre la vérification du cookie avant toute redirection
+  if (!isAuthChecked) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F5F6F8]">
+        <div className="w-8 h-8 border-4 border-[#1d9e75]/30 border-t-[#1d9e75] rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
