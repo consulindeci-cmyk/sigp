@@ -72,7 +72,7 @@ export class LedgerService {
         type_evenement: dto.type_evenement,
         entite_type: dto.entite_type,
         entite_id: dto.entite_id,
-        entite_snapshot: dto.entite_snapshot ? JSON.stringify(dto.entite_snapshot) : null,
+        entite_snapshot: dto.entite_snapshot ? dto.entite_snapshot : null,
         montant_engage: dto.montant_engage || 0,
         montant_decaisse: dto.montant_decaisse || 0,
         description: dto.description,

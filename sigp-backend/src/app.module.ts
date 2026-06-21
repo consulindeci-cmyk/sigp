@@ -14,7 +14,6 @@ import { BudgetModule } from './modules/budget/budget.module';
 import { FundingModule } from './modules/funding/funding.module';
 import { WbsModule } from './modules/wbs/wbs.module';
 import { TasksModule } from './modules/tasks/tasks.module';
-import { OperationsModule } from './modules/operations/operations.module';
 import { ProcurementModule } from './modules/procurement/procurement.module';
 import { RisksModule } from './modules/risks/risks.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -42,7 +41,6 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     FundingModule,
     WbsModule,
     TasksModule,
-    OperationsModule,
     ProcurementModule,
     RisksModule,
     DocumentsModule,

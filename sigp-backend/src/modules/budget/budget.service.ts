@@ -129,7 +129,6 @@ export class BudgetService {
       const ligne = await tx.ligneBudgetaire.update({
         where: { id },
         data: {
-          code_budget: dto.code_budget,
           rubrique: dto.rubrique,
           sous_rubrique: dto.sous_rubrique,
           unite: dto.unite,
