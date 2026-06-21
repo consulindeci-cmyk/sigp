@@ -14,6 +14,7 @@ import PTBAPage from './pages/project/PTBAPage'
 import WBSPage from './pages/project/WBSPage'
 import PPMPage from './pages/project/PPMPage'
 import JournalPage from './pages/project/JournalPage'
+import ReportsPage from './pages/project/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
 import { usePrefsStore, applyThemeClass } from './stores/prefsStore'
 import { useAuthStore } from './stores/authStore'
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/logframe" element={<LogframePage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
 
           {/* Routes spécifiques à un projet */}
           <Route path="/projects/:id">
@@ -72,6 +74,8 @@ export default function App() {
             <Route path="wbs" element={<WBSPage />} />
             <Route path="ppm" element={<PPMPage />} />
             <Route path="journal" element={<JournalPage />} />
+            <Route path="reports" element={<ReportsPage />} />
+
           </Route>
         </Route>
 
