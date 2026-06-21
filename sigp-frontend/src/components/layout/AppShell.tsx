@@ -4,10 +4,11 @@ import { Sidebar } from './Sidebar'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useProject } from '@/hooks/useProjects'
+import { Menu, Bell, User, X } from 'lucide-react'
 
 export function AppShell() {
   const { isAuthenticated, isAuthChecked } = useAuthStore()
-  const { activeProjectId, activeProjectName, setActiveProject } = useUIStore()
+  const { activeProjectId, activeProjectName, setActiveProject, setSidebarOpen } = useUIStore()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -27,7 +28,6 @@ export function AppShell() {
     }
     
     // 2. Synchronisation URL -> Zustand
-    // Si l'utilisateur navigue vers un autre projet via l'URL, on force la mise à jour globale
     if (urlProjectId && urlProjectId !== activeProjectId && urlProject) {
       setActiveProject(urlProjectId, urlProject.nom_projet)
     }
@@ -54,49 +54,60 @@ export function AppShell() {
     <div className="flex h-screen overflow-hidden bg-[#F5F6F8]">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* ── HEADER ── */}
-        <header className="shrink-0 flex items-center justify-between px-4 md:px-6 py-3 border-b border-gray-200 bg-white">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-[#0A1628] flex items-center justify-center rounded">
-              <span className="text-white font-bold text-sm tracking-widest">GPD</span>
+        <header className="shrink-0 flex items-center justify-between px-4 lg:px-6 py-3 border-b border-gray-200 bg-white">
+          <div className="flex items-center gap-3">
+            {/* Mobile menu button */}
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 -ml-1.5 rounded-lg text-gray-500 hover:bg-gray-100 lg:hidden"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="w-8 h-8 lg:w-10 lg:h-10 bg-[#0A1628] flex items-center justify-center rounded">
+              <span className="text-white font-bold text-xs lg:text-sm tracking-widest">GPD</span>
             </div>
-            <h1 className="font-bold text-[#0A1628] text-lg hidden lg:block">
+            <h1 className="font-bold text-[#0A1628] text-base lg:text-lg hidden md:block">
               Gestion de Projets de Développement
             </h1>
           </div>
           
-          <div className="text-gray-500 font-medium hidden md:block">
+          <div className="text-gray-500 font-medium text-sm hidden xl:block absolute left-1/2 -translate-x-1/2">
             {getPageTitle()}
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 lg:gap-3">
             {activeProjectId ? (
-              <div className="flex items-center bg-[#2563EB] text-white rounded-lg overflow-hidden shadow-sm">
-                <span className="px-4 py-2 text-sm font-semibold">
-                  Projet actif : {activeProjectName}
+              <div className="flex items-center bg-[#2563EB] text-white rounded-lg overflow-hidden shadow-sm h-9 lg:h-10">
+                <span className="px-3 lg:px-4 py-1.5 lg:py-2 text-xs lg:text-sm font-semibold max-w-[120px] lg:max-w-none truncate">
+                  <span className="hidden lg:inline">Projet actif : </span>{activeProjectName}
                 </span>
                 <button 
                   onClick={() => {
                     setActiveProject(null, null)
                     navigate('/dashboard')
                   }}
-                  className="px-3 py-2 bg-blue-700 hover:bg-blue-800 transition-colors flex items-center justify-center border-l border-blue-600"
-                  title="Quitter le projet et retourner au Dashboard Général"
+                  className="px-2 lg:px-3 h-full bg-blue-700 hover:bg-blue-800 transition-colors flex items-center justify-center border-l border-blue-600"
+                  title="Quitter le projet"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider">Quitter ✕</span>
+                  <X size={14} className="lg:hidden" />
+                  <span className="text-xs font-bold uppercase tracking-wider hidden lg:inline">Quitter ✕</span>
                 </button>
               </div>
             ) : (
-              <div className="bg-gray-400 text-white px-4 py-2 rounded-lg text-sm font-semibold">
-                Projet actif : Aucun
+              <div className="bg-gray-100 text-gray-500 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg text-xs lg:text-sm font-semibold hidden sm:block">
+                Aucun projet actif
               </div>
             )}
-            <button className="bg-[#F97316] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors hover:bg-orange-600">
-              Notifications
+            
+            <button className="flex items-center justify-center w-9 h-9 lg:w-auto lg:h-auto lg:bg-[#F97316] text-[#F97316] lg:text-white lg:px-4 lg:py-2 rounded-lg text-sm font-semibold transition-colors lg:hover:bg-orange-600 hover:bg-orange-50 bg-transparent">
+              <Bell size={18} className="lg:hidden" />
+              <span className="hidden lg:inline">Notifications</span>
             </button>
-            <button onClick={() => navigate('/settings')} className="bg-[#0F766E] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors hover:bg-teal-800">
-              Profil
+            <button onClick={() => navigate('/settings')} className="flex items-center justify-center w-9 h-9 lg:w-auto lg:h-auto lg:bg-[#0F766E] text-[#0F766E] lg:text-white lg:px-4 lg:py-2 rounded-lg text-sm font-semibold transition-colors lg:hover:bg-teal-800 hover:bg-teal-50 bg-transparent">
+              <User size={18} className="lg:hidden" />
+              <span className="hidden lg:inline">Profil</span>
             </button>
           </div>
         </header>
@@ -119,12 +130,16 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-start justify-between px-4 md:px-6 py-4 border-b border-gray-200 gap-4 bg-white">
-      <div>
-        <h1 className="text-xl font-bold text-[#0A1628]">{title}</h1>
-        {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+    <div className="flex flex-col md:flex-row md:items-center justify-between px-4 lg:px-6 py-4 border-b border-gray-200 gap-4 bg-white shrink-0">
+      <div className="flex-1 min-w-0">
+        <h1 className="text-lg lg:text-xl font-bold text-[#0A1628] truncate">{title}</h1>
+        {subtitle && <p className="text-xs lg:text-sm text-gray-500 mt-1 truncate">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">{actions}</div>}
+      {actions && (
+        <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 sigp-scrollbar shrink-0">
+          {actions}
+        </div>
+      )}
     </div>
   )
 }

@@ -13,7 +13,7 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      sidebarOpen: true,
+      sidebarOpen: true, // par défaut ouvert sur desktop
       activeProjectId: null,
       activeProjectName: null,
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -22,7 +22,11 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'sigp-ui-store',
-      partialize: (state) => ({ activeProjectId: state.activeProjectId, activeProjectName: state.activeProjectName }),
+      partialize: (state) => ({ 
+        activeProjectId: state.activeProjectId, 
+        activeProjectName: state.activeProjectName,
+        sidebarOpen: state.sidebarOpen 
+      }),
     }
   )
 )
