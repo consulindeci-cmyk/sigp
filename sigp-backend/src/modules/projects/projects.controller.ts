@@ -10,7 +10,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { ProjectsService } from './projects.service';
+import { JournalService } from './journal.service';
 import { CreateProjectDto, UpdateProjectDto, QueryProjectsDto } from './dto/project.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -24,6 +27,7 @@ export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly evmService: EvmService,
+    private readonly journalService: JournalService,
   ) {}
 
   @Post()
@@ -69,5 +73,12 @@ export class ProjectsController {
       id,
       dateControle ? new Date(dateControle) : undefined,
     );
+  }
+
+  @Get(':id/journal')
+  @Roles(Role.SUPER_ADMIN, Role.AUDITEUR, Role.BAILLEUR, Role.COORDONNATEUR_PROJET)
+  @ApiOperation({ summary: 'Journal des opérations consolidé pour un projet (Ledger)' })
+  getJournal(@Param('id') id: string) {
+    return this.journalService.getProjectJournal(id);
   }
 }

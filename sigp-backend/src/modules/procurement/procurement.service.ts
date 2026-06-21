@@ -5,30 +5,56 @@ import {
   UpdateProcurementDto,
   QueryProcurementDto,
 } from './dto/procurement.dto';
+import { LedgerService } from '../projects/ledger.service';
 
 @Injectable()
 export class ProcurementService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ledgerService: LedgerService,
+  ) {}
 
   private async verifyProject(projectId: string) {
     const p = await this.prisma.projet.findFirst({ where: { id: projectId, deletedAt: null } });
     if (!p) throw new NotFoundException('Projet introuvable');
   }
 
-  async create(projectId: string, dto: CreateProcurementDto) {
+  async create(projectId: string, dto: CreateProcurementDto, userId: string) {
     await this.verifyProject(projectId);
-    return this.prisma.marche.create({
-      data: {
-        projet_id: projectId,
-        description_marche: dto.description_marche,
-        type_marche: dto.type_marche,
-        methode: dto.methode,
-        type_revue: dto.type_revue,
-        date_prevue: dto.date_prevue ? new Date(dto.date_prevue) : undefined,
-        date_signature: dto.date_signature ? new Date(dto.date_signature) : undefined,
-        montant_estime: dto.montant_estime,
-        statut: dto.statut ?? 'PLANIFIE',
-      },
+    
+    return this.prisma.$transaction(async (tx) => {
+      const marche = await tx.marche.create({
+        data: {
+          projet_id: projectId,
+          description_marche: dto.description_marche,
+          type_marche: dto.type_marche,
+          methode: dto.methode,
+          type_revue: dto.type_revue,
+          date_prevue: dto.date_prevue ? new Date(dto.date_prevue) : undefined,
+          date_signature: dto.date_signature ? new Date(dto.date_signature) : undefined,
+          montant_estime: dto.montant_estime,
+          statut: dto.statut ?? 'PLANIFIE',
+        },
+      });
+
+      const snapshot = { ...marche };
+
+      await this.ledgerService.dispatchToOutbox(tx, {
+        aggregateType: 'MARCHE',
+        aggregateId: marche.id,
+        eventType: 'CREATION_MARCHE',
+        auteur_id: userId,
+        payload: {
+          projet_id: marche.projet_id,
+          entite_type: 'MARCHE',
+          montant_engage: 0,
+          montant_decaisse: 0,
+          description: `Création du marché: ${marche.description_marche}`,
+          snapshot: snapshot
+        }
+      });
+
+      return marche;
     });
   }
 
@@ -64,20 +90,43 @@ export class ProcurementService {
     return item;
   }
 
-  async update(projectId: string, id: string, dto: UpdateProcurementDto) {
-    await this.findOne(projectId, id);
-    return this.prisma.marche.update({
-      where: { id },
-      data: {
-        description_marche: dto.description_marche,
-        type_marche: dto.type_marche,
-        methode: dto.methode,
-        type_revue: dto.type_revue,
-        date_prevue: dto.date_prevue ? new Date(dto.date_prevue) : undefined,
-        date_signature: dto.date_signature ? new Date(dto.date_signature) : undefined,
-        montant_estime: dto.montant_estime,
-        statut: dto.statut,
-      },
+  async update(projectId: string, id: string, dto: UpdateProcurementDto, userId: string) {
+    const oldMarche = await this.findOne(projectId, id);
+    
+    return this.prisma.$transaction(async (tx) => {
+      const marche = await tx.marche.update({
+        where: { id },
+        data: {
+          description_marche: dto.description_marche,
+          type_marche: dto.type_marche,
+          methode: dto.methode,
+          type_revue: dto.type_revue,
+          date_prevue: dto.date_prevue ? new Date(dto.date_prevue) : undefined,
+          date_signature: dto.date_signature ? new Date(dto.date_signature) : undefined,
+          montant_estime: dto.montant_estime,
+          statut: dto.statut,
+        },
+      });
+
+      // Si le statut passe à SIGNE, on enregistre un engagement financier
+      if (dto.statut === 'SIGNE' && oldMarche.statut !== 'SIGNE') {
+        await this.ledgerService.dispatchToOutbox(tx, {
+          aggregateType: 'MARCHE',
+          aggregateId: marche.id,
+          eventType: 'ENGAGEMENT_BUDGETAIRE',
+          auteur_id: userId,
+          payload: {
+            projet_id: marche.projet_id,
+            entite_type: 'MARCHE',
+            montant_engage: marche.montant_estime,
+            montant_decaisse: 0,
+            description: `Signature du marché: ${marche.description_marche}`,
+            snapshot: { ...marche }
+          }
+        });
+      }
+
+      return marche;
     });
   }
 

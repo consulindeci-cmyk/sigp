@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto, UpdateTaskDto, QueryTasksDto } from './dto/task.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Tâches')
 @ApiBearerAuth()
@@ -23,8 +24,12 @@ export class TasksController {
 
   @Post()
   @ApiOperation({ summary: 'Créer une tâche' })
-  create(@Param('projectId') projectId: string, @Body() dto: CreateTaskDto) {
-    return this.tasksService.create(projectId, dto);
+  create(
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateTaskDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.tasksService.create(projectId, dto, userId);
   }
 
   @Get()
@@ -51,8 +56,9 @@ export class TasksController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body() dto: UpdateTaskDto,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.tasksService.update(projectId, id, dto);
+    return this.tasksService.update(projectId, id, dto, userId);
   }
 
   @Delete(':id')

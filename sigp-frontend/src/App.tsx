@@ -13,6 +13,7 @@ import LogframePage from './pages/project/LogframePage'
 import PTBAPage from './pages/project/PTBAPage'
 import WBSPage from './pages/project/WBSPage'
 import PPMPage from './pages/project/PPMPage'
+import JournalPage from './pages/project/JournalPage'
 import SettingsPage from './pages/SettingsPage'
 import { usePrefsStore, applyThemeClass } from './stores/prefsStore'
 
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="ptba" element={<PTBAPage />} />
             <Route path="wbs" element={<WBSPage />} />
             <Route path="ppm" element={<PPMPage />} />
+            <Route path="journal" element={<JournalPage />} />
           </Route>
         </Route>
 

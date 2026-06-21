@@ -17,6 +17,7 @@ import {
   QueryProcurementDto,
 } from './dto/procurement.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Plan de Passation des Marchés (PPM)')
 @ApiBearerAuth()
@@ -27,8 +28,12 @@ export class ProcurementController {
 
   @Post()
   @ApiOperation({ summary: 'Créer un marché' })
-  create(@Param('projectId') projectId: string, @Body() dto: CreateProcurementDto) {
-    return this.procurementService.create(projectId, dto);
+  create(
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateProcurementDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.procurementService.create(projectId, dto, userId);
   }
 
   @Get()
@@ -55,8 +60,9 @@ export class ProcurementController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body() dto: UpdateProcurementDto,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.procurementService.update(projectId, id, dto);
+    return this.procurementService.update(projectId, id, dto, userId);
   }
 
   @Delete(':id')

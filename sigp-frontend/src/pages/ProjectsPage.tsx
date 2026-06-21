@@ -5,7 +5,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useProjects, useCreateProject } from '@/hooks/useProjects'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { useDashboard } from '@/hooks/useDashboard'
+import { formatCurrency, formatDate, formatPercent } from '@/lib/utils'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/axios'
 import jsPDF from 'jspdf'
@@ -31,6 +32,7 @@ export default function ProjectsPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const setActiveProject = useUIStore(state => state.setActiveProject)
+  const activeProjectId = useUIStore(state => state.activeProjectId)
   
   const [filter, setFilter] = useState('Tous')
   const [search, setSearch] = useState('')
@@ -73,6 +75,7 @@ export default function ProjectsPage() {
   }
 
   // API Queries
+  const { data: dashboard } = useDashboard()
   const { data: projetsData } = useProjects({ 
     limit: 10, 
     page, 
@@ -144,10 +147,21 @@ export default function ProjectsPage() {
 
   const handleDelete = async () => {
     if (projectToDelete) {
-      await deleteMutation.mutateAsync(projectToDelete.id)
-      setProjectToDelete(null)
-      setShowDeleteModal(false)
-      setSelectedIds(new Set())
+      try {
+        await deleteMutation.mutateAsync(projectToDelete.id)
+        if (projectToDelete.id === activeProjectId) {
+          setActiveProject(null, null)
+        }
+        setProjectToDelete(null)
+        setShowDeleteModal(false)
+        setSelectedIds(new Set())
+      } catch (err: any) {
+        if (err.response?.status === 409) {
+          alert(`Action refusée : ${err.response.data?.message}`)
+        } else {
+          alert("Erreur lors de la suppression du projet.")
+        }
+      }
     }
   }
 
@@ -218,10 +232,11 @@ export default function ProjectsPage() {
 
   // KPIs
   const KPIBase = allProjects
-  const actifsCount = KPIBase.filter(p => p.statut === 'ACTIF').length
-  const budgetTotal = KPIBase.reduce((sum, p) => sum + parseFloat(String(p.budget_total) || '0'), 0)
+  const actifsCount = dashboard?.projets?.actifs ?? KPIBase.filter(p => p.statut === 'ACTIF').length
+  const budgetTotal = dashboard?.financier?.budget_total_bac ?? KPIBase.reduce((sum, p) => sum + parseFloat(String(p.budget_total) || '0'), 0)
   const budgetStr = budgetTotal >= 1_000_000 ? `${(budgetTotal / 1_000_000).toFixed(1)} M` : formatCurrency(String(budgetTotal), 'XOF')
   const bailleursCount = new Set(KPIBase.map(p => p.bailleur_principal)).size
+  const alertesCount = dashboard?.risques?.eleves ?? 0
 
   // Export
   const doExport = (format: 'xlsx' | 'csv' | 'pdf', scope: ExportScope) => {
@@ -320,7 +335,7 @@ export default function ProjectsPage() {
         </div>
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
           <p className="text-gray-500 text-sm font-semibold mb-3">Projets en alerte</p>
-          <p className="text-2xl font-bold text-[#DC2626]">2</p>
+          <p className="text-2xl font-bold text-[#DC2626]">{alertesCount}</p>
         </div>
       </div>
 
@@ -394,7 +409,7 @@ export default function ProjectsPage() {
             <tbody className="divide-y divide-gray-100">
               {sortedProjects.map(p => {
                 const isChecked = selectedIds.has(p.id)
-                const avancement = (p as any).avancement || (p.statut === 'ACTIF' ? '45%' : p.statut === 'PREPARATION' ? '0%' : p.statut === 'SUSPENDU' ? '62%' : '38%')
+                const avancement = formatPercent(p.taux_avancement ?? 0)
                 const displayStatut = p.statut === 'ACTIF' ? 'En cours' : p.statut === 'PREPARATION' ? 'Planifié' : p.statut === 'SUSPENDU' ? 'En alerte' : p.statut
                 return (
                   <tr key={p.id} onClick={() => { setActiveProject(p.id, p.nom_projet); navigate(`/projects/${p.id}/dashboard`); }} className={`hover:bg-gray-50 transition-colors cursor-pointer group ${isChecked ? 'bg-blue-50/50' : ''}`}>

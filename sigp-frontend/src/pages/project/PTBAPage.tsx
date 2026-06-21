@@ -40,7 +40,11 @@ export default function PTBAPage() {
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) setShowExportMenu(false)
-      setOpenMenuId(null)
+      
+      const target = e.target as HTMLElement
+      if (!target.closest('.ptba-action-menu') && !target.closest('.ptba-action-btn')) {
+        setOpenMenuId(null)
+      }
     }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
@@ -288,11 +292,11 @@ export default function PTBAPage() {
                             <td className="py-3 px-4 text-sm text-right text-gray-900 font-mono whitespace-nowrap">{fmt(tot)}</td>
                             <td className={`py-3 px-4 text-sm ${statutStyles[l.statut] || 'text-gray-500'}`}>{statutLabels[l.statut] || l.statut}</td>
                             <td className="py-3 px-4 text-sm text-center relative">
-                              <button onClick={() => setOpenMenuId(openMenuId === l.id ? null : l.id)} className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100 transition-colors">
+                              <button onClick={() => setOpenMenuId(openMenuId === l.id ? null : l.id)} className="ptba-action-btn text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100 transition-colors">
                                 <MoreHorizontal size={16} />
                               </button>
                               {openMenuId === l.id && (
-                                <div className="absolute right-12 top-8 bg-white border border-gray-200 shadow-xl rounded-xl w-36 py-1 z-20 text-left">
+                                <div className="ptba-action-menu absolute right-12 top-8 bg-white border border-gray-200 shadow-xl rounded-xl w-36 py-1 z-20 text-left">
                                   <button onClick={() => { openEdit(l); setOpenMenuId(null) }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><Pencil size={14} /> Modifier</button>
                                   <button onClick={async () => { await deleteMutation.mutateAsync(l.id); setOpenMenuId(null) }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 size={14} /> Supprimer</button>
                                 </div>
@@ -314,17 +318,18 @@ export default function PTBAPage() {
                 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                   {filtered.map(l => {
-                    const progress = l.pourcentage_avancement || (l.statut === 'TERMINE' ? 100 : l.statut === 'EN_COURS' ? 50 : 0)
+                    const progress = l.pourcentage_avancement
+                    const hasProgress = progress !== null && progress !== undefined && progress > 0
                     const labelColor = l.statut === 'TERMINE' ? 'text-[#16A34A]' : l.statut === 'EN_COURS' ? 'text-[#2563EB]' : l.statut === 'SUSPENDU' ? 'text-[#F97316]' : 'text-[#6B7280]'
                     
                     return (
                       <div key={l.id}>
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-sm font-medium text-gray-900 truncate pr-2" title={l.activite}>{l.code_activite}</span>
-                          <span className={`text-sm font-bold ${labelColor}`}>{progress}%</span>
+                          <span className={`text-sm font-bold ${hasProgress ? labelColor : 'text-gray-400'}`}>{hasProgress ? `${progress}%` : 'N/A'}</span>
                         </div>
                         <div className="w-full bg-[#E5E7EB] rounded-full h-2 overflow-hidden">
-                          <div className={`${getBarColor(l.statut)} h-2 rounded-full transition-all duration-500`} style={{ width: `${progress}%` }}></div>
+                          {hasProgress && <div className={`${getBarColor(l.statut)} h-2 rounded-full transition-all duration-500`} style={{ width: `${progress}%` }}></div>}
                         </div>
                       </div>
                     )

@@ -4,7 +4,7 @@ import { useUIStore } from '@/stores/uiStore'
 export function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { activeProjectId } = useUIStore()
+  const { activeProjectId, setActiveProject } = useUIStore()
   
   const links = [
     { name: 'Dashboard', to: activeProjectId ? `/projects/${activeProjectId}/dashboard` : '/dashboard', isProjectMenu: false },
@@ -12,7 +12,7 @@ export function Sidebar() {
     { name: 'Cadre logique', to: activeProjectId ? `/projects/${activeProjectId}/logframe` : '/logframe', isProjectMenu: true },
     { name: 'PTBA', to: activeProjectId ? `/projects/${activeProjectId}/ptba` : '/ptba', isProjectMenu: true },
     { name: 'Budget & finances', to: activeProjectId ? `/projects/${activeProjectId}/budget` : '/budget', isProjectMenu: true },
-    { name: 'Journal opérations', to: activeProjectId ? `/projects/${activeProjectId}/operations` : '/operations', isProjectMenu: true },
+    { name: 'Journal opérations', to: activeProjectId ? `/projects/${activeProjectId}/journal` : '/journal', isProjectMenu: true },
     { name: 'Valeur acquise EVM', to: activeProjectId ? `/projects/${activeProjectId}/moteur-evm` : '/moteur-evm', isProjectMenu: true },
     { name: 'Passation marchés', to: activeProjectId ? `/projects/${activeProjectId}/ppm` : '/ppm', isProjectMenu: true },
     { name: 'Risques', to: activeProjectId ? `/projects/${activeProjectId}/risks` : '/risks', isProjectMenu: true },
@@ -57,7 +57,10 @@ export function Sidebar() {
       
       <div className="p-4 mt-auto border-t border-white/10">
         <button 
-          onClick={() => navigate('/')} 
+          onClick={() => {
+            setActiveProject(null, null)
+            navigate('/dashboard')
+          }} 
           className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-lg text-sm transition-colors flex justify-center items-center gap-2"
         >
           <span>←</span> Menu général

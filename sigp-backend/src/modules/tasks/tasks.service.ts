@@ -2,10 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTaskDto, UpdateTaskDto, QueryTasksDto } from './dto/task.dto';
 import { StatutTache } from '@prisma/client';
+import { LedgerService } from '../projects/ledger.service';
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ledgerService: LedgerService,
+  ) {}
 
   private async verifyProject(projectId: string) {
     const p = await this.prisma.projet.findFirst({ where: { id: projectId, deletedAt: null } });
@@ -24,25 +28,47 @@ export class TasksService {
     };
   }
 
-  async create(projectId: string, dto: CreateTaskDto) {
+  async create(projectId: string, dto: CreateTaskDto, userId: string) {
     await this.verifyProject(projectId);
-    const task = await this.prisma.tache.create({
-      data: {
-        projet_id: projectId,
-        wbs_id: dto.wbs_id,
-        ligne_budgetaire_id: dto.ligne_budgetaire_id,
-        code_tache: dto.code_tache,
-        description: dto.description,
-        responsable: dto.responsable,
-        date_debut: dto.date_debut ? new Date(dto.date_debut) : undefined,
-        date_fin: dto.date_fin ? new Date(dto.date_fin) : undefined,
-        cout_prevu: dto.cout_prevu,
-        cout_reel: dto.cout_reel ?? 0,
-        avancement: dto.avancement ?? 0,
-        statut: dto.statut ?? StatutTache.A_FAIRE,
-      },
+    
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.tache.create({
+        data: {
+          projet_id: projectId,
+          wbs_id: dto.wbs_id,
+          ligne_budgetaire_id: dto.ligne_budgetaire_id,
+          code_tache: dto.code_tache,
+          description: dto.description,
+          responsable: dto.responsable,
+          date_debut: dto.date_debut ? new Date(dto.date_debut) : undefined,
+          date_fin: dto.date_fin ? new Date(dto.date_fin) : undefined,
+          cout_prevu: dto.cout_prevu,
+          cout_reel: dto.cout_reel ?? 0,
+          avancement: dto.avancement ?? 0,
+          statut: dto.statut ?? StatutTache.A_FAIRE,
+        },
+      });
+
+      // Log Outbox si la tâche est créée directement avec un statut impliquant des finances
+      if (task.statut === StatutTache.EN_COURS || task.statut === StatutTache.TERMINE) {
+        await this.ledgerService.dispatchToOutbox(tx, {
+          aggregateType: 'TACHE',
+          aggregateId: task.id,
+          eventType: task.statut === StatutTache.TERMINE ? 'DECAISSEMENT' : 'ENGAGEMENT_BUDGETAIRE',
+          auteur_id: userId,
+          payload: {
+            projet_id: task.projet_id,
+            entite_type: 'TACHE',
+            montant_engage: task.statut === StatutTache.EN_COURS ? task.cout_prevu : 0,
+            montant_decaisse: task.statut === StatutTache.TERMINE ? task.cout_reel : 0,
+            description: `Tâche créée au statut ${task.statut}: ${task.description}`,
+            snapshot: { ...task }
+          }
+        });
+      }
+
+      return this.computeFields(task);
     });
-    return this.computeFields(task);
   }
 
   async findAll(projectId: string, query: QueryTasksDto) {
@@ -90,24 +116,80 @@ export class TasksService {
     return this.computeFields(task);
   }
 
-  async update(projectId: string, id: string, dto: UpdateTaskDto) {
-    await this.findOne(projectId, id);
-    const updated = await this.prisma.tache.update({
-      where: { id },
-      data: {
-        wbs_id: dto.wbs_id,
-        ligne_budgetaire_id: dto.ligne_budgetaire_id,
-        description: dto.description,
-        responsable: dto.responsable,
-        date_debut: dto.date_debut ? new Date(dto.date_debut) : undefined,
-        date_fin: dto.date_fin ? new Date(dto.date_fin) : undefined,
-        cout_prevu: dto.cout_prevu,
-        cout_reel: dto.cout_reel,
-        avancement: dto.avancement,
-        statut: dto.statut,
-      },
+  async update(projectId: string, id: string, dto: UpdateTaskDto, userId: string) {
+    const oldTask = await this.findOne(projectId, id);
+    
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.tache.update({
+        where: { id },
+        data: {
+          wbs_id: dto.wbs_id,
+          ligne_budgetaire_id: dto.ligne_budgetaire_id,
+          description: dto.description,
+          responsable: dto.responsable,
+          date_debut: dto.date_debut ? new Date(dto.date_debut) : undefined,
+          date_fin: dto.date_fin ? new Date(dto.date_fin) : undefined,
+          cout_prevu: dto.cout_prevu,
+          cout_reel: dto.cout_reel,
+          avancement: dto.avancement,
+          statut: dto.statut,
+        },
+      });
+
+      // Gestion des transitions de statut pour le Ledger
+      if (dto.statut && dto.statut !== oldTask.statut) {
+        if (dto.statut === StatutTache.EN_COURS) {
+          await this.ledgerService.dispatchToOutbox(tx, {
+            aggregateType: 'TACHE',
+            aggregateId: updated.id,
+            eventType: 'ENGAGEMENT_BUDGETAIRE',
+            auteur_id: userId,
+            payload: {
+              projet_id: updated.projet_id,
+              entite_type: 'TACHE',
+              montant_engage: updated.cout_prevu,
+              montant_decaisse: 0,
+              description: `Engagement de la tâche: ${updated.description}`,
+              snapshot: { ...updated }
+            }
+          });
+        } else if (dto.statut === StatutTache.TERMINE) {
+          await this.ledgerService.dispatchToOutbox(tx, {
+            aggregateType: 'TACHE',
+            aggregateId: updated.id,
+            eventType: 'DECAISSEMENT', // Ou CLOTURE_TACHE
+            auteur_id: userId,
+            payload: {
+              projet_id: updated.projet_id,
+              entite_type: 'TACHE',
+              montant_engage: 0,
+              montant_decaisse: updated.cout_reel,
+              description: `Décaissement sur tâche: ${updated.description}`,
+              snapshot: { ...updated }
+            }
+          });
+        }
+      } else if (oldTask.statut === StatutTache.TERMINE && dto.cout_reel && Number(dto.cout_reel) !== Number(oldTask.cout_reel)) {
+        // Ajustement financier si la tâche était déjà terminée
+        const difference = Number(dto.cout_reel) - Number(oldTask.cout_reel);
+        await this.ledgerService.dispatchToOutbox(tx, {
+          aggregateType: 'TACHE',
+          aggregateId: updated.id,
+          eventType: 'DECAISSEMENT',
+          auteur_id: userId,
+          payload: {
+            projet_id: updated.projet_id,
+            entite_type: 'TACHE',
+            montant_engage: 0,
+            montant_decaisse: difference,
+            description: `Ajustement financier de tâche: ${updated.description}`,
+            snapshot: { ...updated }
+          }
+        });
+      }
+
+      return this.computeFields(updated);
     });
-    return this.computeFields(updated);
   }
 
   async remove(projectId: string, id: string) {

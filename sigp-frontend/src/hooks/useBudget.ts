@@ -1,46 +1,76 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/axios'
-import type { LigneBudgetaireDetail, PaginatedResponse } from '@/types'
+import type { LigneBudgetaire } from '@/types'
 
-export function useBudget(projectId: string) {
+// Types étendus pour le budget calculé par l'API
+export interface BudgetLine {
+  id: string;
+  projet_id: string;
+  code_budget: string;
+  rubrique: string;
+  sous_rubrique?: string;
+  unite?: string;
+  quantite: number;
+  cout_unitaire: number;
+  cout_total: number;
+  financement_bailleur: number;
+  contrepartie_etat: number;
+  commentaire?: string;
+  montant_engage: number;
+  montant_decaisse: number;
+  taux_consommation_pct: number;
+  niveau_alerte: string;
+}
+
+export interface BudgetSummary {
+  projet_id: string;
+  budget_total: number;
+  montant_engage: number;
+  montant_decaisse: number;
+  solde_disponible: number;
+  taux_consommation_pct: number;
+  consommation_par_rubrique: {
+    rubrique: string;
+    budget: number;
+    engage: number;
+    decaisse: number;
+    taux_consommation_pct: number;
+  }[];
+}
+
+export function useBudgetSummary(projectId: string) {
   return useQuery({
-    queryKey: ['budget', projectId],
+    queryKey: ['budget', 'summary', projectId],
     queryFn: async () => {
-      const { data } = await api.get<PaginatedResponse<LigneBudgetaireDetail>>(`/projects/${projectId}/budget`)
+      const { data } = await api.get<BudgetSummary>(`/projects/${projectId}/budget/summary`)
       return data
     },
     enabled: !!projectId,
   })
 }
 
-export function useCreateBudgetLine(projectId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (dto: Partial<LigneBudgetaireDetail>) => {
-      const { data } = await api.post<LigneBudgetaireDetail>(`/projects/${projectId}/budget`, dto)
+export function useBudgetLines(projectId: string) {
+  return useQuery({
+    queryKey: ['budget', 'lines', projectId],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: BudgetLine[], totaux: any }>(`/projects/${projectId}/budget`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budget', projectId] }),
+    enabled: !!projectId,
   })
 }
 
-export function useUpdateBudgetLine(projectId: string) {
+export function useCreateBudget(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, ...dto }: Partial<LigneBudgetaireDetail> & { id: string }) => {
-      const { data } = await api.patch<LigneBudgetaireDetail>(`/projects/${projectId}/budget/${id}`, dto)
+    mutationFn: async (dto: Partial<BudgetLine>) => {
+      const { data } = await api.post<BudgetLine>(`/projects/${projectId}/budget`, dto)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budget', projectId] }),
-  })
-}
-
-export function useDeleteBudgetLine(projectId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await api.delete(`/projects/${projectId}/budget/${id}`)
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['budget', 'summary', projectId] })
+      qc.invalidateQueries({ queryKey: ['budget', 'lines', projectId] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budget', projectId] }),
   })
 }

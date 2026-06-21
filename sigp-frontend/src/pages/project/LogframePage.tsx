@@ -13,7 +13,7 @@ const NIVEAUX = ['IMPACT', 'EFFET', 'RESULTAT', 'ACTIVITE']
 
 export default function LogframePage() {
   const { id: urlProjectId } = useParams()
-  const { activeProjectId } = useUIStore()
+  const { activeProjectId, activeProjectName } = useUIStore()
   
   // 1. Détermination stricte du projectId
   const resolvedProjectId = urlProjectId || activeProjectId || ''
@@ -166,8 +166,10 @@ export default function LogframePage() {
 
   // Exports
   const exportPDF = () => {
+    const projectName = activeProjectName || project?.nom_projet || project?.code_projet || ''
+    const safeFilename = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'export'
     const doc = new jsPDF()
-    doc.text(`Cadre Logique - Projet ${project?.code_projet ?? ''}`, 14, 15)
+    doc.text(`Cadre Logique - ${projectName}`, 14, 15)
     
     const tableData = filteredAndSorted.map(row => [
       row.niveau_intervention,
@@ -187,7 +189,7 @@ export default function LogframePage() {
       styles: { fontSize: 8 }
     })
     
-    doc.save(`Cadre_Logique_${project?.code_projet ?? 'Export'}.pdf`)
+    doc.save(`Cadre_Logique_${safeFilename}.pdf`)
   }
 
   const exportExcel = () => {
@@ -201,7 +203,9 @@ export default function LogframePage() {
     })))
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, "Cadre Logique")
-    XLSX.writeFile(workbook, `Cadre_Logique_${project?.code_projet ?? 'Export'}.xlsx`)
+    const projectName = activeProjectName || project?.nom_projet || project?.code_projet || ''
+    const safeFilename = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'export'
+    XLSX.writeFile(workbook, `Cadre_Logique_${safeFilename}.xlsx`)
   }
 
   return (

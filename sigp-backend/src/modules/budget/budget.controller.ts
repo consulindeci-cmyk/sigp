@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BudgetService } from './budget.service';
 import { CreateBudgetDto, UpdateBudgetDto } from './dto/budget.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Budget')
 @ApiBearerAuth()
@@ -13,8 +14,12 @@ export class BudgetController {
 
   @Post()
   @ApiOperation({ summary: 'Créer une ligne budgétaire' })
-  create(@Param('projectId') projectId: string, @Body() dto: CreateBudgetDto) {
-    return this.budgetService.create(projectId, dto);
+  create(
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateBudgetDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.budgetService.create(projectId, dto, userId);
   }
 
   @Get()
@@ -41,8 +46,9 @@ export class BudgetController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body() dto: UpdateBudgetDto,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.budgetService.update(projectId, id, dto);
+    return this.budgetService.update(projectId, id, dto, userId);
   }
 
   @Delete(':id')

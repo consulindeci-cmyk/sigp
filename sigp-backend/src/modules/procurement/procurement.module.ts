@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ProcurementController } from './procurement.controller';
 import { ProcurementService } from './procurement.service';
+import { ProjectsModule } from '../projects/projects.module';
 
-@Module({ controllers: [ProcurementController], providers: [ProcurementService] })
+@Module({ 
+  imports: [ProjectsModule],
+  controllers: [ProcurementController], 
+  providers: [ProcurementService] 
+})
 export class ProcurementModule {}

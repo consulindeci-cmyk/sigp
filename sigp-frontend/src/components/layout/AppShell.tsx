@@ -1,13 +1,37 @@
-import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Outlet, Navigate, useNavigate, useLocation, useMatch } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useProject } from '@/hooks/useProjects'
 
 export function AppShell() {
   const { isAuthenticated } = useAuthStore()
-  const { activeProjectName } = useUIStore()
+  const { activeProjectId, activeProjectName, setActiveProject } = useUIStore()
   const navigate = useNavigate()
   const location = useLocation()
+
+  const { isError } = useProject(activeProjectId || '')
+  
+  // Extraire l'ID du projet depuis l'URL (ex: /projects/123/dashboard)
+  const projectMatch = useMatch('/projects/:id/*')
+  const urlProjectId = projectMatch?.params.id
+  
+  // Charger les détails du projet de l'URL pour obtenir son nom
+  const { data: urlProject } = useProject(urlProjectId || '')
+
+  useEffect(() => {
+    // 1. Validation automatique du projet fantôme (supprimé en base)
+    if (isError && activeProjectId) {
+      setActiveProject(null, null)
+    }
+    
+    // 2. Synchronisation URL -> Zustand
+    // Si l'utilisateur navigue vers un autre projet via l'URL, on force la mise à jour globale
+    if (urlProjectId && urlProjectId !== activeProjectId && urlProject) {
+      setActiveProject(urlProjectId, urlProject.nom_projet)
+    }
+  }, [isError, activeProjectId, urlProjectId, urlProject, setActiveProject])
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
@@ -38,9 +62,27 @@ export function AppShell() {
           </div>
           
           <div className="flex items-center gap-3">
-            <button className={`${activeProjectName ? 'bg-[#2563EB] hover:bg-blue-700' : 'bg-gray-400 hover:bg-gray-500'} text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors`}>
-              {activeProjectName ? `Projet actif : ${activeProjectName}` : "Aucun projet sélectionné"}
-            </button>
+            {activeProjectId ? (
+              <div className="flex items-center bg-[#2563EB] text-white rounded-lg overflow-hidden shadow-sm">
+                <span className="px-4 py-2 text-sm font-semibold">
+                  Projet actif : {activeProjectName}
+                </span>
+                <button 
+                  onClick={() => {
+                    setActiveProject(null, null)
+                    navigate('/dashboard')
+                  }}
+                  className="px-3 py-2 bg-blue-700 hover:bg-blue-800 transition-colors flex items-center justify-center border-l border-blue-600"
+                  title="Quitter le projet et retourner au Dashboard Général"
+                >
+                  <span className="text-xs font-bold uppercase tracking-wider">Quitter ✕</span>
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gray-400 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                Projet actif : Aucun
+              </div>
+            )}
             <button className="bg-[#F97316] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors hover:bg-orange-600">
               Notifications
             </button>

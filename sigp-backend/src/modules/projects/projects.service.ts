@@ -62,12 +62,27 @@ export class ProjectsService {
         orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder ?? 'desc' },
         include: {
           _count: { select: { taches: true, marches: true, risques: true } },
+          taches: { where: { deletedAt: null }, select: { cout_prevu: true, avancement: true } }
         },
       }),
       this.prisma.projet.count({ where }),
     ]);
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    const processedData = data.map((p) => {
+      let totalPoids = 0;
+      let totalPoidsRealise = 0;
+      for (const t of p.taches) {
+        const poids = Number(t.cout_prevu) || 0;
+        totalPoids += poids;
+        totalPoidsRealise += (Number(t.avancement) / 100) * poids;
+      }
+      const tauxAvancement = totalPoids > 0 ? (totalPoidsRealise / totalPoids) * 100 : 0;
+      
+      const { taches, ...rest } = p;
+      return { ...rest, taux_avancement: Math.round(tauxAvancement * 100) / 100 };
+    });
+
+    return { data: processedData, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: string) {
@@ -103,7 +118,20 @@ export class ProjectsService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const projet = await this.prisma.projet.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        _count: {
+          select: { taches: true, marches: true, risques: true }
+        }
+      }
+    });
+    if (!projet) throw new NotFoundException('Projet introuvable');
+    
+    if (projet._count.taches > 0 || projet._count.marches > 0 || projet._count.risques > 0) {
+      throw new ConflictException("Ce projet contient des données opérationnelles actives et ne peut être supprimé. Veuillez utiliser le statut 'CLOTURE' à la place.");
+    }
+
     return this.prisma.projet.update({
       where: { id },
       data: { deletedAt: new Date() },

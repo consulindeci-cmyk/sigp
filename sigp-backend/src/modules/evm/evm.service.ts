@@ -48,8 +48,9 @@ export class EvmService {
       date_fin: Date | null;
     }>,
     dateControle: Date,
+    projetBudgetTotal: number,
   ): EvmIndicateurs {
-    let bac = 0,
+    let bac = projetBudgetTotal,
       ev = 0,
       ac = 0,
       pv = 0;
@@ -59,7 +60,6 @@ export class EvmService {
       const coutReel = Number(t.cout_reel);
       const avancement = t.avancement ?? 0;
 
-      bac += budgetAlloue;
       ev += budgetAlloue * (avancement / 100);
       ac += coutReel;
 
@@ -108,7 +108,7 @@ export class EvmService {
     });
 
     const dc = dateControle ?? new Date();
-    const evm = this.calculerEvm(taches, dc);
+    const evm = this.calculerEvm(taches, dc, Number(projet.budget_total));
 
     return { ...evm, projet_id: projectId, date_controle: dc.toISOString() };
   }
@@ -184,7 +184,7 @@ export class EvmService {
       dateControle.setMonth(dateControle.getMonth() + 1);
       dateControle.setDate(0); // Dernier jour du mois
 
-      const evm = this.calculerEvm(taches, dateControle);
+      const evm = this.calculerEvm(taches, dateControle, Number(projet.budget_total));
       months.push({
         mois: `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`,
         pv: evm.pv,

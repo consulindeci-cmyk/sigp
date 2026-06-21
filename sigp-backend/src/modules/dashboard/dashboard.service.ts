@@ -29,7 +29,7 @@ export class DashboardService {
 
     // ── Financier ────────────────────────────────────────────────────────
     const projets = await this.prisma.projet.findMany({ where: projetWhere });
-    const budgetTotal = projets.reduce((s, p) => s + Number(p.budget_total), 0);
+    const budgetTotal = projets.reduce((s, p) => s + Number(p.budget_total?.toString() || 0), 0);
 
     const taches = await this.prisma.tache.findMany({ where: { ...childWhere } });
     let budgetEngage = 0,
@@ -39,19 +39,24 @@ export class DashboardService {
       tachesEnCours = 0,
       tachesAFaire = 0,
       tachesEnRetard = 0;
-    let totalAvancement = 0;
+    let sommeAvancementPondere = 0;
+    let sommeCoutPrevu = 0;
 
     const now = new Date();
     for (const t of taches) {
+      const coutPrevuTache = Number(t.cout_prevu?.toString() || 0);
+      sommeCoutPrevu += coutPrevuTache;
+      sommeAvancementPondere += (t.avancement || 0) * coutPrevuTache;
+
       totalTaches++;
-      totalAvancement += t.avancement;
       if (t.statut === StatutTache.TERMINE) {
         tachesTerminees++;
-        budgetDecaisse += Number(t.cout_reel);
+        budgetDecaisse += Number(t.cout_reel?.toString() || 0);
+        budgetEngage += Number(t.cout_prevu?.toString() || 0);
       }
       if (t.statut === StatutTache.EN_COURS) {
         tachesEnCours++;
-        budgetEngage += Number(t.cout_prevu);
+        budgetEngage += Number(t.cout_prevu?.toString() || 0);
       }
       if (t.statut === StatutTache.A_FAIRE) tachesAFaire++;
       if (
@@ -66,10 +71,10 @@ export class DashboardService {
 
     const tauxConsommation =
       budgetTotal > 0
-        ? Math.round(((budgetEngage + budgetDecaisse) / budgetTotal) * 10000) / 100
+        ? Math.round((budgetEngage / budgetTotal) * 10000) / 100
         : 0;
     const tauxAvancement =
-      totalTaches > 0 ? Math.round((totalAvancement / totalTaches) * 100) / 100 : 0;
+      sommeCoutPrevu > 0 ? Math.round((sommeAvancementPondere / sommeCoutPrevu) * 100) / 100 : 0;
 
     // ── Marchés ──────────────────────────────────────────────────────────
     const marches = await this.prisma.marche.findMany({ where: childWhere });
@@ -145,7 +150,7 @@ export class DashboardService {
         budget_total_bac: budgetTotal,
         budget_engage: budgetEngage,
         budget_decaisse: budgetDecaisse,
-        solde_disponible: budgetTotal - budgetEngage - budgetDecaisse,
+        solde_disponible: budgetTotal - budgetEngage,
         taux_consommation_pct: tauxConsommation,
       },
       activites: {

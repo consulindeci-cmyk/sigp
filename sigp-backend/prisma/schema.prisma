@@ -113,6 +113,27 @@ enum ActionAudit {
   UPLOAD
 }
 
+enum TypeJournalEvent {
+  ENGAGEMENT_BUDGETAIRE
+  DECAISSEMENT
+  ANNULATION_ENGAGEMENT
+  REVERSEMENT
+  CREATION_MARCHE
+  CLOTURE_TACHE
+}
+
+enum TypeEntiteLiee {
+  TACHE
+  MARCHE
+  LIGNE_BUDGETAIRE
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
 // ============================================================
 // MODELS
 // ============================================================
@@ -136,7 +157,7 @@ model Utilisateur {
   projets      ProjetUtilisateur[]
   auditLogs    AuditLog[]
   documents    Document[]          @relation("UploadedBy")
-  operations   Operation[]         @relation("OperationCreatedBy")
+  operationsJournal JournalOperation[] @relation("JournalOperationCreatedBy")
 
   @@index([deletedAt, email])
   @@index([reset_password_token])
@@ -165,7 +186,7 @@ model Projet {
   sourcesFinancement SourceFinancement[]
   wbs              WBS[]
   taches           Tache[]
-  operations       Operation[]
+  journalOperations JournalOperation[]
   marches          Marche[]
   risques          Risque[]
   documents        Document[]
@@ -308,31 +329,56 @@ model Tache {
   projet              Projet          @relation(fields: [projet_id], references: [id])
   wbs                 WBS?            @relation(fields: [wbs_id], references: [id])
   ligneBudgetaire     LigneBudgetaire? @relation(fields: [ligne_budgetaire_id], references: [id])
-  operations          Operation[]
 
   @@index([projet_id, deletedAt, statut])
   @@map("taches")
 }
 
-model Operation {
-  id               String      @id @default(uuid())
-  projet_id        String
-  tache_id         String
-  date_operation   DateTime
-  statut           StatutTache
-  montant_engage   Decimal     @default(0) @db.Decimal(15, 2)
-  montant_decaisse Decimal     @default(0) @db.Decimal(15, 2)
-  commentaire      String?
-  cree_par         String
+model JournalOperation {
+  id                 String           @id @default(uuid())
+  numero_sequence    Int              @default(autoincrement())
+  code_operation     String           @unique
+  projet_id          String
+  
+  type_evenement     TypeJournalEvent
+  entite_type        TypeEntiteLiee
+  entite_id          String
+  entite_snapshot    Json?
+  
+  montant_engage     Decimal          @default(0) @db.Decimal(15, 2)
+  montant_decaisse   Decimal          @default(0) @db.Decimal(15, 2)
+  devise             String           @default("XOF")
+  
+  date_operation     DateTime         @default(now())
+  description        String
+  auteur_id          String
+  adresse_ip         String?
+  
+  hash_signature     String
+  previous_hash      String?
+  
+  projet             Projet           @relation(fields: [projet_id], references: [id])
+  auteur             Utilisateur      @relation("JournalOperationCreatedBy", fields: [auteur_id], references: [id])
 
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  @@index([projet_id, date_operation])
+  @@index([numero_sequence])
+  @@map("journal_operations")
+}
 
-  projet           Projet      @relation(fields: [projet_id], references: [id])
-  tache            Tache       @relation(fields: [tache_id], references: [id])
-  createur         Utilisateur @relation("OperationCreatedBy", fields: [cree_par], references: [id])
+model OutboxEvent {
+  id            String       @id @default(uuid())
+  aggregateType String
+  aggregateId   String
+  eventType     String
+  payload       Json
+  auteur_id     String
+  status        OutboxStatus @default(PENDING)
+  createdAt     DateTime     @default(now())
+  processedAt   DateTime?
+  error         String?
 
-  @@map("operations")
+  @@index([status, createdAt])
+  @@map("outbox_events")
 }
 
 model Marche {
