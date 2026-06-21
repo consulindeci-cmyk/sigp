@@ -131,7 +131,7 @@ export default function DashboardPage() {
               label="Projets en cours"
               value={mockDashboardData.projets.en_cours}
               icon={FolderOpen}
-              color="orange"
+              color="yellow"
             />
             <KPICard
               label="Projets terminés"
@@ -153,7 +153,7 @@ export default function DashboardPage() {
               label="Montant Engagé"
               value={formatCurrency(mockDashboardData.financier.budget_engage, 'XOF')}
               icon={Landmark}
-              color="orange"
+              color="yellow"
             />
             <KPICard
               label="Montant Décaissé"
@@ -171,7 +171,7 @@ export default function DashboardPage() {
               label="Avancement Global"
               value={formatPercent(mockDashboardData.activites.avancement_global_pct)}
               icon={TrendingUp}
-              color="teal"
+              color="green"
             />
             <KPICard
               label="Risques Élevés"

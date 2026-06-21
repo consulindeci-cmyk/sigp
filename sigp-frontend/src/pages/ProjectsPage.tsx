@@ -409,7 +409,7 @@ export default function ProjectsPage() {
             <tbody className="divide-y divide-gray-100">
               {sortedProjects.map(p => {
                 const isChecked = selectedIds.has(p.id)
-                const avancement = formatPercent(p.taux_avancement ?? 0)
+                const avancement = formatPercent((p as any).taux_avancement ?? 0)
                 const displayStatut = p.statut === 'ACTIF' ? 'En cours' : p.statut === 'PREPARATION' ? 'Planifié' : p.statut === 'SUSPENDU' ? 'En alerte' : p.statut
                 return (
                   <tr key={p.id} onClick={() => { setActiveProject(p.id, p.nom_projet); navigate(`/projects/${p.id}/dashboard`); }} className={`hover:bg-gray-50 transition-colors cursor-pointer group ${isChecked ? 'bg-blue-50/50' : ''}`}>

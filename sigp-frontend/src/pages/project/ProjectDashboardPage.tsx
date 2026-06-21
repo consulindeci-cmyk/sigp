@@ -41,24 +41,24 @@ export default function ProjectDashboardPage() {
   const montantEngage = summary?.montant_engage ?? 0
   const montantDecaisse = summary?.montant_decaisse ?? 0
   const solde = summary?.solde_disponible ?? 0
-  const avancementGlobal = summary?.taux_avancement_global_pct ?? 0
+  const avancementGlobal = (summary as any)?.taux_avancement_global_pct ?? 0
 
   // -- PTBA
   const activites = ptbaData?.data ?? []
   const activitesTotal = activites.length
-  const activitesTerminees = activites.filter(a => a.statut === 'TERMINE' || a.statut === 'ACHEVE').length
-  const activitesRetard = activites.filter(a => a.statut === 'EN_RETARD').length
+  const activitesTerminees = activites.filter(a => (a.statut as string) === 'TERMINE' || (a.statut as string) === 'ACHEVE').length
+  const activitesRetard = activites.filter(a => (a.statut as string) === 'EN_RETARD').length
 
   // -- Risques
   const risques = risksData?.data ?? []
   const risquesTotal = risques.length
   // Gestion de la casse ou des termes potentiels de la BDD
-  const risquesCritiques = risques.filter(r => r.criticite === 'ELEVEE' || r.criticite === 'CRITIQUE').length
+  const risquesCritiques = risques.filter(r => (r.criticite as any) === 'ELEVEE' || (r.criticite as any) === 'CRITIQUE').length
 
   // -- Marchés
   const marches = ppmData?.data ?? []
   const marchesTotal = marches.length
-  const marchesBloques = marches.filter(m => m.statut === 'BLOQUE' || m.statut === 'EN_RETARD' || m.statut === 'RESILIE').length
+  const marchesBloques = marches.filter(m => (m.statut as string) === 'BLOQUE' || (m.statut as string) === 'EN_RETARD' || m.statut === 'RESILIE').length
 
   // 3. Construction des Alertes Métier
   const alertes: string[] = []
@@ -120,7 +120,7 @@ export default function ProjectDashboardPage() {
               label="Montant Engagé"
               value={formatCurrency(montantEngage, project?.devise)}
               icon={Activity}
-              color="orange"
+              color="yellow"
             />
             <KPICard
               label="Montant Décaissé"
@@ -132,7 +132,7 @@ export default function ProjectDashboardPage() {
               label="Solde Disponible"
               value={formatCurrency(solde, project?.devise)}
               icon={Wallet}
-              color={solde >= 0 ? "teal" : "red"}
+              color={solde >= 0 ? "green" : "red"}
             />
           </div>
         </div>

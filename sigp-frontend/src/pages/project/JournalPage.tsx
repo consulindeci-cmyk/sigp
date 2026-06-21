@@ -54,7 +54,7 @@ export default function JournalPage() {
                 label="Engagé Total"
                 value={formatCurrency(kpis?.engageTotal || 0, project?.devise)}
                 icon={Landmark}
-                color="orange"
+                color="yellow"
               />
               <KPICard
                 label="Décaissé Total"
