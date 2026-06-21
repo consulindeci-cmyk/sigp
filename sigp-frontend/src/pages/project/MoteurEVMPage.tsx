@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Calendar, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Calendar, RefreshCw, TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import { useEvm, useEvmTasks } from '@/hooks/useEvm'
+import { useEvm, useEvmTasks, useEvmTrend } from '@/hooks/useEvm'
 import { useProject } from '@/hooks/useProjects'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { formatNumber } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ interface KpiItem {
   raw?: number
 }
 
-// ─── Données Courbe-en-S statiques (remplacées par les données API si disponibles) ──────
+// ─── Données Courbe-en-S fallback (si API vide) ──────────────────────────────
 
 const SCURVE_DEMO = [
   { mois: 'Jan', pv: 60,  ev: 40,  ac: 45  },
@@ -92,8 +92,9 @@ export default function MoteurEVMPage() {
   const { data: project } = useProject(projectId)
   const { data: evm, isLoading: evmLoading, refetch } = useEvm(projectId, dateControle || undefined)
   const { data: evmTasks, isLoading: tasksLoading } = useEvmTasks(projectId, dateControle || undefined)
+  const { data: trendData, isLoading: trendLoading } = useEvmTrend(projectId)
 
-  const isLoading = evmLoading || tasksLoading
+  const isLoading = evmLoading || tasksLoading || trendLoading
 
   // Valeurs KPI (API si disponibles, sinon démo)
   const bac  = evm?.bac  ?? 500000
@@ -116,13 +117,25 @@ export default function MoteurEVMPage() {
     { label: 'EAC', value: fmt(eac), color: eac > bac ? '#DC2626' : '#16A34A' },
   ]
 
-  // Données graphique — S-Curve depuis les tâches EVM si disponibles, sinon démo
-  const sCurveData = (evmTasks && evmTasks.length > 0)
-    ? (() => {
-        // Grouper par mois si possible — fallback sur DEMO
-        return SCURVE_DEMO
-      })()
+  // Données graphique — courbe en S depuis l'API /evm/trend (données réelles)
+  // Fallback sur données démo si l'API ne retourne rien
+  const sCurveData = (trendData?.evolution_mensuelle?.length)
+    ? trendData.evolution_mensuelle.map(m => ({
+        mois: m.mois.replace(/^\d{4}-/, '').replace(/^0/, ''),  // "2025-01" → "1"
+        pv: Math.round(m.pv / 1000),
+        ev: Math.round(m.ev / 1000),
+        ac: Math.round(m.ac / 1000),
+      }))
     : SCURVE_DEMO
+
+  // Loader initial (premier chargement uniquement)
+  if (isLoading && !evm) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+        <Loader2 size={36} style={{ color: '#2563EB', animation: 'spin 1s linear infinite' }} />
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#F5F6F8', overflowY: 'auto' }}>
@@ -176,12 +189,12 @@ export default function MoteurEVMPage() {
       {/* ── CONTENU ── */}
       <div style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        {/* 7 cartes KPI */}
+        {/* 7 cartes KPI — grille responsive */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
+          gridTemplateColumns: 'repeat(4, 1fr)',
           gap: 12,
-        }}>
+        }} className="evm-kpi-grid">
           {kpis.map(k => (
             <EVMKpiCard key={k.label} {...k} />
           ))}
@@ -388,7 +401,12 @@ export default function MoteurEVMPage() {
 
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .evm-kpi-grid { grid-template-columns: repeat(4, 1fr) !important; }
+        @media (min-width: 1280px) { .evm-kpi-grid { grid-template-columns: repeat(7, 1fr) !important; } }
+        @media (max-width: 768px)  { .evm-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+      `}</style>
     </div>
   )
 }
