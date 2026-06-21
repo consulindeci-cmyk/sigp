@@ -68,12 +68,20 @@ export default function LoginPage() {
   const pwdValue = watch('mot_de_passe') ?? ''
   const strength = getStrength(pwdValue)
 
-  const fillDemo = () => {
-    setValue('email', 'admin@demo.com', { shouldValidate: true })
-    setValue('mot_de_passe', 'demo1234', { shouldValidate: true })
+  const fillCredentials = (email: string, mdp: string) => {
+    setValue('email', email, { shouldValidate: true })
+    setValue('mot_de_passe', mdp, { shouldValidate: true })
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  const DEMO_USERS = [
+    { label: 'Super Admin', email: 'admin@sigp.ci', pwd: 'Admin@2026' },
+    { label: 'Coordonnateur', email: 'coord@sigp.ci', pwd: 'Coord@2026' },
+    { label: 'Financier', email: 'finance@sigp.ci', pwd: 'Finance@2026' },
+    { label: 'Bailleur', email: 'bailleur@banquemonde.org', pwd: 'Bailleur@2026' },
+    { label: 'Auditeur', email: 'audit@sigp.ci', pwd: 'Audit@2026' },
+  ]
 
   return (
     // ROOT : h-screen + overflow-hidden strict
@@ -219,7 +227,7 @@ export default function LoginPage() {
                   {...emailRest}
                   ref={(e) => { hookFormEmailRef(e); (emailRef as any).current = e }}
                   type="email"
-                  placeholder="admin@demo.com"
+                  placeholder="nom@sigp.ci"
                   autoComplete="email"
                   className="flex-1 bg-transparent text-slate-900 text-sm font-medium py-3 pr-3 outline-none placeholder:text-slate-300"
                 />
@@ -340,34 +348,32 @@ export default function LoginPage() {
           {/* Séparateur */}
           <div className="my-4 relative flex items-center">
             <div className="flex-1 border-t border-slate-200" />
-            <span className="mx-3 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-400">Compte démo</span>
+            <span className="mx-3 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-400">Comptes utilisateurs</span>
             <div className="flex-1 border-t border-slate-200" />
           </div>
 
-          {/* Encart démo */}
-          <button type="button" onClick={fillDemo}
-            className="w-full group relative overflow-hidden
-              bg-[#f0fdf8] border border-[#1d9e75]/25 hover:border-[#1d9e75]/50
-              rounded-xl px-4 py-3 transition-all duration-300
-              flex items-center justify-between
-              hover:shadow-[0_4px_15px_rgba(29,158,117,0.1)]">
-            <div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#1d9e75] animate-pulse inline-block" />
-                <span className="text-[#1d9e75] text-xs font-bold">Accès Démonstration</span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <code className="text-[#1d9e75]/80 text-[11px] font-bold font-mono">admin@demo.com</code>
-                <span className="w-1 h-1 rounded-full bg-[#1d9e75]/30 inline-block" />
-                <code className="text-[#1d9e75]/80 text-[11px] font-bold font-mono">demo1234</code>
-              </div>
-            </div>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center border border-[#1d9e75]/25 shadow-sm
-              transition-all duration-300 group-hover:scale-110
-              ${copied ? 'bg-[#1d9e75] border-[#1d9e75] text-white' : 'bg-white text-[#1d9e75] group-hover:bg-[#1d9e75] group-hover:text-white'}`}>
-              {copied ? <CheckCircle2 size={15} /> : <Copy size={14} />}
-            </div>
-          </button>
+          {/* Encarts vrais comptes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[160px] overflow-y-auto sigp-scrollbar pr-1">
+            {DEMO_USERS.map((user, idx) => (
+              <button 
+                key={idx}
+                type="button" 
+                onClick={() => fillCredentials(user.email, user.pwd)}
+                className="w-full group relative overflow-hidden
+                  bg-[#f8fafc] border border-slate-200 hover:border-[#1d9e75]/50
+                  rounded-xl px-3 py-2 transition-all duration-300
+                  flex flex-col text-left hover:bg-[#f0fdf8]
+                  hover:shadow-[0_4px_10px_rgba(29,158,117,0.08)]"
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[#1d9e75] text-[10px] font-bold uppercase tracking-wider">{user.label}</span>
+                </div>
+                <div className="flex flex-col">
+                  <code className="text-slate-600 group-hover:text-[#1d9e75] text-[10px] font-bold font-mono truncate">{user.email}</code>
+                </div>
+              </button>
+            ))}
+          </div>
 
         </div>
       </main>
