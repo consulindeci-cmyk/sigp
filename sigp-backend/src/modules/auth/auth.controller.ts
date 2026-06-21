@@ -39,7 +39,7 @@ export class AuthController {
     const { access_token, refresh_token, user } = result as any;
 
     this.setCookies(res, access_token, refresh_token);
-    return { user };
+    return { user, access_token, refresh_token };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -68,16 +68,16 @@ export class AuthController {
   @ApiOperation({ summary: 'Obtenir un nouveau access_token via refresh_token (cookie)' })
   @ApiResponse({ status: 200, description: 'Tokens renouvelés' })
   @ApiResponse({ status: 401, description: 'Refresh token invalide ou expiré' })
-  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const refreshToken = req.cookies['refresh_token'];
+  async refresh(@Req() req: Request, @Body() body: any, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = body?.refresh_token || req.cookies?.['refresh_token'];
     if (!refreshToken) {
-      throw new UnauthorizedException('Aucun refresh token trouvé dans les cookies');
+      throw new UnauthorizedException('Aucun refresh token trouvé');
     }
     const result = await this.authService.refreshToken(refreshToken);
     const { access_token, refresh_token } = result as any;
     
     this.setCookies(res, access_token, refresh_token);
-    return { message: 'Tokens renouvelés' };
+    return { message: 'Tokens renouvelés', access_token, refresh_token };
   }
 
   @UseGuards(JwtAuthGuard)
