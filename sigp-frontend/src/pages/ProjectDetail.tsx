@@ -41,7 +41,7 @@ export default function ProjectDetail() {
 
         {/* Contenu Principal */}
         <div style={{ flex: 1 }}>
-          {activeTab === 'overview' && <TabOverview />}
+          {activeTab === 'overview' && <TabOverview setActiveTab={setActiveTab} />}
           {activeTab === 'governance' && <Placeholder name="Gouvernance & Acteurs" />}
           {activeTab === 'logframe' && <TabLogframe />}
           {activeTab === 'wbs' && <Placeholder name="Structure de fractionnement du travail (WBS)" />}
