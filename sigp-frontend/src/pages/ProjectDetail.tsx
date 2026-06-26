@@ -4,8 +4,9 @@ import ProjectSidebar from '../components/project/layout/ProjectSidebar';
 
 // Existing tabs
 import TabOverview from '../components/project/TabOverview';
-import TabPTBA from '../components/project/TabPTBA';
-import TabLogframe from '../components/project/TabLogframe';
+import PTBAPage from './project/PTBAPage';
+import LogframePage from './project/LogframePage';
+import WBSPage from './project/WBSPage';
 import TabBudget from '../components/project/TabBudget';
 import TabProcurement from '../components/project/TabProcurement';
 import TabEVM from '../components/project/TabEVM';
@@ -43,10 +44,10 @@ export default function ProjectDetail() {
         <div style={{ flex: 1 }}>
           {activeTab === 'overview' && <TabOverview setActiveTab={setActiveTab} />}
           {activeTab === 'governance' && <Placeholder name="Gouvernance & Acteurs" />}
-          {activeTab === 'logframe' && <TabLogframe />}
-          {activeTab === 'wbs' && <Placeholder name="Structure de fractionnement du travail (WBS)" />}
+          {activeTab === 'logframe' && <LogframePage />}
+          {activeTab === 'wbs' && <WBSPage />}
           
-          {activeTab === 'ptba' && <TabPTBA />}
+          {activeTab === 'ptba' && <PTBAPage />}
           {activeTab === 'activities' && <Placeholder name="Liste détaillée des Activités" />}
           {activeTab === 'journal' && <Placeholder name="Journal des Opérations" />}
           

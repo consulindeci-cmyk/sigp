@@ -27,7 +27,6 @@ html,body{
   font-family:var(--font-body);
   background:var(--canvas);
   color:var(--ink);
-  min-width:1440px;
   font-size:14px;
   line-height:1.45;
 }
@@ -802,3 +801,27 @@ table{border-collapse:collapse;width:100%;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:#C9D2DA;border-radius:5px;}
 ::-webkit-scrollbar-thumb:hover{background:#AEB9C3;}
+
+/* ===== Responsive Adjustments ===== */
+@media (max-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .app-shell {
+    flex-direction: column;
+  }
+  .sidebar {
+    position: relative;
+    width: 100%;
+    height: auto;
+  }
+  .main-area {
+    margin-left: 0;
+  }
+}

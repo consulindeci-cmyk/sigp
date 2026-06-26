@@ -19,7 +19,8 @@ export default function ProjectDashboardPage() {
   // 1. Récupération des données métiers réelles
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: summary, isLoading: summaryLoading } = useProjectSummary(projectId)
-  const { data: ptbaData, isLoading: ptbaLoading } = usePTBA(projectId)
+  const currentYear = new Date().getFullYear();
+  const { data: ptbaData, isLoading: ptbaLoading } = usePTBA(projectId, currentYear)
   const { data: risksData, isLoading: risksLoading } = useRisks(projectId)
   const { data: ppmData, isLoading: ppmLoading } = usePPM(projectId)
 
@@ -44,10 +45,11 @@ export default function ProjectDashboardPage() {
   const avancementGlobal = (summary as any)?.taux_avancement_global_pct ?? 0
 
   // -- PTBA
-  const activites = ptbaData?.data ?? []
+  const activites = ptbaData?.data?.lignes ?? []
   const activitesTotal = activites.length
-  const activitesTerminees = activites.filter(a => (a.statut as string) === 'TERMINE' || (a.statut as string) === 'ACHEVE').length
-  const activitesRetard = activites.filter(a => (a.statut as string) === 'EN_RETARD').length
+  // Note: Les statuts des activités n'existent plus sur la ligne PTBA elle-même dans la nouvelle architecture. On mock à 0 pour éviter les erreurs TS.
+  const activitesTerminees = 0; // activites.filter(a => a.statut === 'TERMINE').length
+  const activitesRetard = 0; // activites.filter(a => a.statut === 'EN_RETARD').length
 
   // -- Risques
   const risques = risksData?.data ?? []

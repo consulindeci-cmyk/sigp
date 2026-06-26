@@ -7,7 +7,7 @@ import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from '@/hooks/u
 import { useProject } from '@/hooks/useProjects'
 import type { Tache, StatutTache } from '@/types'
 import { formatDate } from '@/lib/utils'
-import { useWBS } from '@/hooks/useDashboard'
+import { useWBS } from '@/hooks/useWBS'
 
 type EditingCell = { rowId: string; field: string } | null
 

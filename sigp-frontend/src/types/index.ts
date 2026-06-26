@@ -1,5 +1,5 @@
 // Types alignés avec le schéma Prisma SIGP Backend
-
+export * from './ptba';
 export type Role =
   | 'SUPER_ADMIN' | 'ADMIN_PROJET' | 'COORDONNATEUR_PROJET'
   | 'RESPONSABLE_FINANCIER' | 'RESPONSABLE_TECHNIQUE'
@@ -133,14 +133,25 @@ export interface Risque {
   createdAt: string;
 }
 
+export type StatutWBS = 'NON_COMMENCE' | 'EN_COURS' | 'TERMINE' | 'EN_RETARD' | 'ANNULE';
+
 export interface WBS {
   id: string;
   projet_id: string;
-  code_wbs: string;
-  nom_phase: string;
-  niveau: number;
   parent_id?: string | null;
+  code_wbs: string;
+  titre: string;
+  description?: string;
+  niveau: number;
+  statut?: StatutWBS;
+  responsable?: string;
+  date_debut_prevue?: string;
+  date_fin_prevue?: string;
+  budget_alloue?: number;
+  progression_physique?: number;
   ordre: number;
+  logframe_ref_id?: string | null;
+  children?: WBS[];
 }
 
 export interface LigneBudgetaire {
@@ -167,7 +178,8 @@ export interface PaginatedResponse<T> {
 export interface CadreLogique {
   id: string;
   projet_id: string;
-  niveau_intervention: 'IMPACT' | 'EFFET' | 'RESULTAT' | 'ACTIVITE';
+  parent_id?: string | null;
+  niveau_intervention: 'IMPACT' | 'OBJECTIF' | 'RESULTAT' | 'PRODUIT' | 'ACTIVITE';
   indicateur: string;
   valeur_reference?: string;
   cible?: string;
@@ -175,23 +187,9 @@ export interface CadreLogique {
   hypotheses?: string;
   risques?: string;
   commentaires?: string;
+  children?: CadreLogique[];
 }
 
-export interface PTBA {
-  id: string;
-  projet_id: string;
-  code_activite: string;
-  composante: string;
-  activite: string;
-  budget_prevu: string | number;
-  q1: string | number;
-  q2: string | number;
-  q3: string | number;
-  q4: string | number;
-  responsable?: string;
-  pourcentage_avancement?: number;
-  statut: 'PLANIFIE' | 'EN_COURS' | 'TERMINE' | 'SUSPENDU';
-}
 
 export interface LigneBudgetaireDetail {
   id: string;

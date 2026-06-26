@@ -27,14 +27,5 @@ export function useProjectSummary(projectId: string) {
   })
 }
 
-export function useWBS(projectId: string) {
-  return useQuery({
-    queryKey: ['wbs', projectId],
-    queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/wbs`)
-      return data
-    },
-    enabled: !!projectId,
-  })
-}
+
 
