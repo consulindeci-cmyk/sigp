@@ -1,236 +1,360 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip,
-  LineChart, Line
-} from 'recharts';
-import { formatCurrency, formatPercent } from '@/lib/utils';
-import { KPICard } from '@/components/shared/KPICard';
-import { 
-  Wallet, Landmark, Coins, TrendingUp, AlertTriangle, 
-  FolderKanban, FolderOpen, CheckCircle2, Loader2, Calendar
-} from 'lucide-react';
-
-// TODO: remplacer par les données API du Dashboard
-const mockDashboardData = {
-  projets: {
-    total: 12,
-    en_cours: 8,
-    termines: 4,
-  },
-  financier: {
-    budget_total_bac: 155000000,
-    budget_engage: 85000000,
-    budget_decaisse: 45000000,
-    solde_disponible: 70000000,
-    taux_absorption: 29.03, // decaisse / total * 100
-  },
-  activites: {
-    avancement_global_pct: 42.5,
-  },
-  risques: {
-    eleves: 3,
-    critiques: 1,
-  },
-  // Données pour graphiques
-  evolution_decaissements: [
-    { mois: 'Jan', decaisse: 5000000 },
-    { mois: 'Fév', decaisse: 12000000 },
-    { mois: 'Mar', decaisse: 18000000 },
-    { mois: 'Avr', decaisse: 28000000 },
-    { mois: 'Mai', decaisse: 35000000 },
-    { mois: 'Juin', decaisse: 45000000 },
-  ],
-  repartition_bailleurs: [
-    { nom: 'Banque Mondiale', montant: 80000000 },
-    { nom: 'BAD', montant: 50000000 },
-    { nom: 'État de CI', montant: 25000000 },
-  ]
-};
+import { Link } from 'react-router-dom';
 
 export default function DashboardPage() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [anneeActive, setAnneeActive] = useState('2026');
-
-  // Simulation d'un appel réseau (pour respecter la contrainte d'avoir un état loading)
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [anneeActive]);
-
-  if (hasError) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-[#F5F6F8]">
-        <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
-        <h2 className="text-xl font-bold text-[#0A1628]">Erreur de chargement</h2>
-        <p className="text-gray-500 mt-2">Impossible de récupérer les données du tableau de bord global.</p>
-        <button 
-          onClick={() => setHasError(false)}
-          className="mt-6 px-4 py-2 bg-[#2563EB] text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Réessayer
-        </button>
-      </div>
-    );
-  }
-
-  // Vérification d'état vide
-  const isEmpty = !mockDashboardData || mockDashboardData.projets.total === 0;
-
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 bg-[#F5F6F8] min-h-full">
-      {/* 1. En-tête et Filtres */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+    <section className="screen active" id="screen-dashboard">
+      <div className="page-head">
         <div>
-          <h2 className="text-3xl font-bold text-[#0A1628]">Dashboard de Pilotage Stratégique</h2>
-          <p className="text-gray-500 mt-2">Vue consolidée multisite pour Directeurs, Bailleurs et Comité de pilotage.</p>
+          <div className="page-title">Tableau de bord du portefeuille</div>
+          <div className="page-sub">Vue d'ensemble multi-projets — 24 juin 2026</div>
+        </div>
+        <div className="page-actions">
+          <button className="btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v13m0 0 4-4m-4 4-4-4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            Exporter
+          </button>
+          <Link to="/projects/new" className="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+            Nouveau Projet
+          </Link>
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Total des Projets</span>
+            <span className="kpi-icon navy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>
+            </span>
+          </div>
+          <div className="kpi-value">42</div>
+          <div className="kpi-foot"><span className="kpi-delta up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12 12 5l7 7M12 5v14"/></svg>+3</span> vs trimestre précédent</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Projets Actifs</span>
+            <span className="kpi-icon green">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 12.5 9.5 17 19 7"/></svg>
+            </span>
+          </div>
+          <div className="kpi-value">31</div>
+          <div className="kpi-foot">73.8% du portefeuille</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Projets Terminés</span>
+            <span className="kpi-icon navy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.5 2.5L16 9.5"/></svg>
+            </span>
+          </div>
+          <div className="kpi-value">7</div>
+          <div className="kpi-foot">16.7% du portefeuille</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Projets en Retard</span>
+            <span className="kpi-icon red">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.5l3.5 2"/></svg>
+            </span>
+          </div>
+          <div className="kpi-value">4</div>
+          <div className="kpi-foot"><span className="kpi-delta down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12 12 19l-7-7M12 19V5"/></svg>+1</span> nécessite une attention</div>
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Budget Global</span>
+            <span className="kpi-icon navy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2v20M17 6.5c0-1.7-2-3-5-3s-5 1.3-5 3 2 2.7 5 3 5 1.5 5 3.2-2 3-5 3-5-1.3-5-3"/></svg></span>
+          </div>
+          <div className="kpi-value">$284.6M</div>
+          <div className="kpi-foot">réparti sur 9 bailleurs</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Budget Décaissé</span>
+            <span className="kpi-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12h18M3 12a9 9 0 0 1 9-9M3 12a9 9 0 0 0 9 9"/></svg></span>
+          </div>
+          <div className="kpi-value">$176.2M</div>
+          <div className="kpi-foot">61.9% taux de décaissement</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Contrats de Marchés</span>
+            <span className="kpi-icon navy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3h10l1 4H6l1-4Z"/><path d="M6 7h12l-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7Z"/></svg></span>
+          </div>
+          <div className="kpi-value">118</div>
+          <div className="kpi-foot">23 en circuit d'approbation</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">Risques Critiques</span>
+            <span className="kpi-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17v.1"/></svg></span>
+          </div>
+          <div className="kpi-value">9</div>
+          <div className="kpi-foot">sur 6 projets</div>
+        </div>
+      </div>
+
+      <div className="row-2">
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title">Tendances de Décaissement<span className="muted">Cumul, 12 derniers mois</span></span>
+            <button className="panel-link bg-transparent border-none">Voir le rapport</button>
+          </div>
+          <div className="panel-body" id="chart-disbursement">
+            {/* Chart placeholder */}
+            <div className="h-48 bg-canvas flex items-center justify-center text-slate rounded">Graphique des décaissements</div>
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title">Aperçu du Statut des Projets</span>
+          </div>
+          <div className="panel-body" id="chart-status">
+            <div className="h-48 bg-canvas flex items-center justify-center text-slate rounded">Graphique des statuts</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="row-2">
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title">Répartition du Budget<span className="muted">Par bailleur</span></span>
+          </div>
+          <div className="panel-body tight">
+            <div style={{ padding: '16px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Banque Mondiale</span><span>$96.4M</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill navy" style={{ width: '80%' }}></div></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Union Européenne</span><span>$71.2M</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill navy" style={{ width: '60%' }}></div></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>USAID</span><span>$48.9M</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill navy" style={{ width: '40%' }}></div></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>AFD</span><span>$33.6M</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill navy" style={{ width: '30%' }}></div></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>PNUD</span><span>$21.1M</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill navy" style={{ width: '20%' }}></div></div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Autres bailleurs</span><span>$13.4M</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill slate" style={{ width: '15%' }}></div></div>
+              </div>
+            </div>
+          </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          <div className="bg-gray-100 p-2 rounded-lg flex items-center gap-2 border border-gray-200">
-            <Calendar className="w-5 h-5 text-gray-500" />
-            <select 
-              value={anneeActive}
-              onChange={(e) => setAnneeActive(e.target.value)}
-              className="bg-transparent border-none outline-none text-[#0A1628] font-semibold text-sm cursor-pointer"
-            >
-              <option value="2026">Exercice 2026</option>
-              <option value="2025">Exercice 2025</option>
-              <option value="2024">Exercice 2024</option>
-              <option value="tout">Toutes les années</option>
-            </select>
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title">Répartition des Risques<span className="muted">Par catégorie</span></span>
+          </div>
+          <div className="panel-body tight">
+            <div style={{ padding: '16px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Financiers</span><span>14</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill red" style={{ width: '70%' }}></div></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Opérationnels</span><span>11</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill amber" style={{ width: '55%' }}></div></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Passation des marchés</span><span>9</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill navy" style={{ width: '45%' }}></div></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Environnementaux & Sociaux</span><span>6</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill green" style={{ width: '30%' }}></div></div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span>Politiques / Gouvernance</span><span>5</span>
+                </div>
+                <div className="progress-track"><div className="progress-fill slate" style={{ width: '25%' }}></div></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="py-24 flex flex-col items-center justify-center text-gray-500">
-          <Loader2 className="w-10 h-10 animate-spin text-[#2563EB] mb-4" />
-          <p className="text-lg font-medium">Récupération des indicateurs consolidés...</p>
+      <div className="row-2">
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title">Activités Récentes</span>
+            <button className="panel-link bg-transparent border-none">Voir tout</button>
+          </div>
+          <div className="panel-body tight">
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--green)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">PTBA T2 2026 validé</div>
+                 <div className="lr-meta">PROJ-014 - Électrification Rurale Phase II</div>
+               </div>
+               <div className="lr-time">Il y a 2h</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--navy-500)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Contrat signé — Travaux publics lot 3</div>
+                 <div className="lr-meta">PROJ-009 - Approvisionnement en Eau Urbaine</div>
+               </div>
+               <div className="lr-time">Il y a 5h</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--amber)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Révision budgétaire soumise au bailleur</div>
+                 <div className="lr-meta">PROJ-021 - Renforcement des Systèmes de Santé</div>
+               </div>
+               <div className="lr-time">Il y a 1j</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--navy-500)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Nouveau risque enregistré : exposition aux devises</div>
+                 <div className="lr-meta">PROJ-014 - Électrification Rurale Phase II</div>
+               </div>
+               <div className="lr-time">Il y a 1j</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--green)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Rapport trimestriel bailleur exporté (PDF)</div>
+                 <div className="lr-meta">PROJ-003 - Chaînes de Valeur Agricoles</div>
+               </div>
+               <div className="lr-time">Il y a 2j</div>
+             </div>
+          </div>
         </div>
-      ) : isEmpty ? (
-        <div className="py-24 flex flex-col items-center justify-center text-gray-500 bg-white rounded-2xl border border-gray-200 border-dashed">
-          <FolderKanban className="w-12 h-12 text-gray-300 mb-4" />
-          <p className="text-lg font-medium text-[#0A1628]">Aucun projet enregistré</p>
-          <p className="text-sm">Le système ne contient pas encore de données financières ou opérationnelles.</p>
+
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title">Échéances à Venir</span>
+            <button className="panel-link bg-transparent border-none">Calendrier</button>
+          </div>
+          <div className="panel-body tight">
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--red)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Ouverture des offres — Mini-réseaux solaires lot 1</div>
+                 <div className="lr-meta">PROJ-014</div>
+               </div>
+               <div className="lr-time">Demain</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--amber)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Rapport financier T2 dû à la délégation UE</div>
+                 <div className="lr-meta">PROJ-021</div>
+               </div>
+               <div className="lr-time">Dans 3 jours</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--navy-500)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Début de la mission de revue à mi-parcours</div>
+                 <div className="lr-meta">PROJ-009</div>
+               </div>
+               <div className="lr-time">Dans 6 jours</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--slate)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Audit annuel — Début des travaux sur le terrain</div>
+                 <div className="lr-meta">PROJ-003</div>
+               </div>
+               <div className="lr-time">Dans 11 jours</div>
+             </div>
+             <div className="list-row">
+               <div className="list-dot" style={{ backgroundColor: 'var(--slate)' }}></div>
+               <div className="lr-main">
+                 <div className="lr-title">Atelier de préparation PTBA 2027</div>
+                 <div className="lr-meta">Tout le portefeuille</div>
+               </div>
+               <div className="lr-time">Dans 18 jours</div>
+             </div>
+          </div>
         </div>
-      ) : (
-        <>
-          {/* 2. KPIs d'État des Projets (Ligne 1) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <KPICard
-              label="Projets Total"
-              value={mockDashboardData.projets.total}
-              icon={FolderKanban}
-              color="blue"
-            />
-            <KPICard
-              label="Projets en cours"
-              value={mockDashboardData.projets.en_cours}
-              icon={FolderOpen}
-              color="yellow"
-            />
-            <KPICard
-              label="Projets terminés"
-              value={mockDashboardData.projets.termines}
-              icon={CheckCircle2}
-              color="green"
-            />
-          </div>
+      </div>
 
-          {/* 3. KPIs Financiers et Opérationnels (Ligne 2) */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <KPICard
-              label="Budget Total (BAC)"
-              value={formatCurrency(mockDashboardData.financier.budget_total_bac, 'XOF')}
-              icon={Wallet}
-              color="blue"
-            />
-            <KPICard
-              label="Montant Engagé"
-              value={formatCurrency(mockDashboardData.financier.budget_engage, 'XOF')}
-              icon={Landmark}
-              color="yellow"
-            />
-            <KPICard
-              label="Montant Décaissé"
-              value={formatCurrency(mockDashboardData.financier.budget_decaisse, 'XOF')}
-              icon={Coins}
-              color="green"
-            />
-            <KPICard
-              label="Solde Disponible"
-              value={formatCurrency(mockDashboardData.financier.solde_disponible, 'XOF')}
-              icon={Wallet}
-              color="blue"
-            />
-            <KPICard
-              label="Avancement Global"
-              value={formatPercent(mockDashboardData.activites.avancement_global_pct)}
-              icon={TrendingUp}
-              color="green"
-            />
-            <KPICard
-              label="Risques Élevés"
-              value={mockDashboardData.risques.eleves}
-              icon={AlertTriangle}
-              color="red"
-            />
-          </div>
+      <div className="panel">
+        <div className="panel-head">
+          <span className="panel-title">Alertes <span className="muted">Nécessitant une action</span></span>
+          <button className="panel-link bg-transparent border-none">Voir tout</button>
+        </div>
+        <div className="panel-body tight">
+           <div className="alert-row" style={{ padding: '16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: '12px' }}>
+             <div className="alert-ico" style={{ backgroundColor: 'var(--red-bg)', color: 'var(--red)', padding: '6px', borderRadius: '4px' }}>
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+             </div>
+             <div>
+               <div className="ar-title" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '2px' }}>IPC sous le seuil (0.84) — Approvisionnement en Eau Urbaine</div>
+               <div className="ar-meta" style={{ fontSize: '12px', color: 'var(--slate)' }}>Dépassement des coûts en hausse sur 3 mois consécutifs</div>
+             </div>
+           </div>
+           
+           <div className="alert-row" style={{ padding: '16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: '12px' }}>
+             <div className="alert-ico" style={{ backgroundColor: 'var(--red-bg)', color: 'var(--red)', padding: '6px', borderRadius: '4px' }}>
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+             </div>
+             <div>
+               <div className="ar-title" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '2px' }}>IPD sous le seuil (0.79) — Électrification Rurale Phase II</div>
+               <div className="ar-meta" style={{ fontSize: '12px', color: 'var(--slate)' }}>Retard de calendrier sur les activités du chemin critique</div>
+             </div>
+           </div>
 
-          {/* 4. Graphiques Restitution */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Graphique d'évolution */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-              <h3 className="text-lg font-bold text-[#0A1628] mb-6">Évolution des Décaissements (Cumulé)</h3>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={mockDashboardData.evolution_decaissements} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                    <XAxis dataKey="mois" tick={{ fill: '#6B7280', fontSize: 12 }} />
-                    <YAxis 
-                      tickFormatter={(val) => val >= 1000000 ? `${(val / 1000000).toFixed(0)}M` : val} 
-                      tick={{ fill: '#6B7280', fontSize: 12 }} 
-                    />
-                    <Tooltip 
-                      formatter={(value: any) => formatCurrency(String(value), 'XOF')} 
-                      labelStyle={{ color: '#0A1628', fontWeight: 'bold' }}
-                    />
-                    <Line type="monotone" dataKey="decaisse" stroke="#0F766E" strokeWidth={3} dot={{ r: 4, fill: '#0F766E' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+           <div className="alert-row" style={{ padding: '16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: '12px' }}>
+             <div className="alert-ico" style={{ backgroundColor: 'var(--amber-bg)', color: 'var(--amber)', padding: '6px', borderRadius: '4px' }}>
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+             </div>
+             <div>
+               <div className="ar-title" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '2px' }}>3 contrats de passation en attente d'approbation &gt; 14 jours</div>
+               <div className="ar-meta" style={{ fontSize: '12px', color: 'var(--slate)' }}>Goulot d'étranglement dans le flux d'approbation — Examen du Responsable Financier nécessaire</div>
+             </div>
+           </div>
 
-            {/* Graphique de répartition bailleurs */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-              <h3 className="text-lg font-bold text-[#0A1628] mb-6">Répartition par Bailleur de Fonds</h3>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={mockDashboardData.repartition_bailleurs} layout="vertical" margin={{ top: 20, right: 30, left: 50, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
-                    <XAxis type="number" 
-                      tickFormatter={(val) => val >= 1000000 ? `${(val / 1000000).toFixed(0)}M` : val}
-                      tick={{ fill: '#6B7280', fontSize: 12 }} 
-                    />
-                    <YAxis dataKey="nom" type="category" tick={{ fill: '#0A1628', fontSize: 12, fontWeight: 500 }} width={100} />
-                    <Tooltip 
-                      formatter={(value: any) => formatCurrency(String(value), 'XOF')} 
-                      cursor={{fill: '#F3F4F6'}} 
-                    />
-                    <Bar dataKey="montant" fill="#2563EB" radius={[0, 4, 4, 0]} barSize={30} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+           <div className="alert-row" style={{ padding: '16px', display: 'flex', gap: '12px' }}>
+             <div className="alert-ico" style={{ backgroundColor: 'var(--amber-bg)', color: 'var(--amber)', padding: '6px', borderRadius: '4px' }}>
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+             </div>
+             <div>
+               <div className="ar-title" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '2px' }}>Taux de décaissement sous la cible annuelle</div>
+               <div className="ar-meta" style={{ fontSize: '12px', color: 'var(--slate)' }}>Renforcement des Systèmes de Santé — 41% décaissé à la mi-année</div>
+             </div>
+           </div>
+        </div>
+      </div>
 
-          </div>
-        </>
-      )}
-    </div>
+    </section>
   );
 }

@@ -1,134 +1,78 @@
-import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { useUIStore } from '@/stores/uiStore'
-import { 
-  LayoutDashboard, FolderOpen, Target, CalendarDays, Wallet, 
-  ClipboardList, TrendingUp, ShoppingCart, ShieldAlert, FileText, Users,
-  Menu, ChevronLeft, LogOut
-} from 'lucide-react'
+import { Link, useLocation } from 'react-router-dom';
 
 export function Sidebar() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const { activeProjectId, sidebarOpen, toggleSidebar, setActiveProject, setSidebarOpen } = useUIStore()
-  
-  const links = [
-    { name: 'Dashboard', to: activeProjectId ? `/projects/${activeProjectId}/dashboard` : '/dashboard', isProjectMenu: false, icon: LayoutDashboard },
-    { name: 'Projets', to: '/projects', isProjectMenu: false, icon: FolderOpen },
-    { name: 'Cadre logique', to: activeProjectId ? `/projects/${activeProjectId}/logframe` : '/logframe', isProjectMenu: true, icon: Target },
-    { name: 'PTBA', to: activeProjectId ? `/projects/${activeProjectId}/ptba` : '/ptba', isProjectMenu: true, icon: CalendarDays },
-    { name: 'Budget & finances', to: activeProjectId ? `/projects/${activeProjectId}/budget` : '/budget', isProjectMenu: true, icon: Wallet },
-    { name: 'Journal opérations', to: activeProjectId ? `/projects/${activeProjectId}/journal` : '/journal', isProjectMenu: true, icon: ClipboardList },
-    { name: 'Valeur acquise EVM', to: activeProjectId ? `/projects/${activeProjectId}/moteur-evm` : '/moteur-evm', isProjectMenu: true, icon: TrendingUp },
-    { name: 'Passation marchés', to: activeProjectId ? `/projects/${activeProjectId}/ppm` : '/ppm', isProjectMenu: true, icon: ShoppingCart },
-    { name: 'Risques', to: activeProjectId ? `/projects/${activeProjectId}/risks` : '/risks', isProjectMenu: true, icon: ShieldAlert },
-    { name: 'Rapports', to: activeProjectId ? `/projects/${activeProjectId}/reports` : '/reports', isProjectMenu: true, icon: FileText },
-    { name: 'Utilisateurs', to: '/settings', isProjectMenu: false, icon: Users }
-  ]
+  const location = useLocation();
+  const path = location.pathname;
 
   return (
-    <>
-      {/* Overlay Mobile */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+    <aside className="sidebar">
+      <div className="sidebar-brand">
+        <div className="mark">GP</div>
+        <div>
+          <span className="word">GPD ERP</span>
+          <span className="sub">Gestion de Programme</span>
+        </div>
+      </div>
 
-      {/* Sidebar Component */}
-      <aside 
-        className={`
-          fixed lg:static inset-y-0 left-0 z-50 bg-[#0A1628] flex flex-col shrink-0 h-full 
-          transition-all duration-300 ease-in-out
-          ${sidebarOpen ? 'w-[260px] translate-x-0' : 'w-[260px] lg:w-[76px] -translate-x-full lg:translate-x-0'}
-        `}
-      >
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <span className={`text-xs font-bold text-gray-400 uppercase tracking-wider transition-opacity duration-300 ${!sidebarOpen && 'lg:opacity-0'}`}>
-            MENU
+      <nav className="sidebar-nav">
+        <Link to="/dashboard" className={`nav-item ${path.includes('/dashboard') ? 'active' : ''}`}>
+          <span className="nav-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="3" y="3" width="7" height="9" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="5" rx="1.5"/>
+              <rect x="14" y="12" width="7" height="9" rx="1.5"/>
+              <rect x="3" y="16" width="7" height="5" rx="1.5"/>
+            </svg>
           </span>
-          <button 
-            onClick={toggleSidebar}
-            className="text-gray-400 hover:text-white transition-colors lg:block hidden p-1 rounded-md hover:bg-white/10"
-          >
-            <Menu size={18} className={`transition-transform duration-300 ${sidebarOpen ? 'rotate-180' : ''}`} />
-          </button>
-          <button 
-            onClick={() => setSidebarOpen(false)}
-            className="text-gray-400 hover:text-white transition-colors lg:hidden p-1 rounded-md hover:bg-white/10"
-          >
-            <ChevronLeft size={20} />
-          </button>
-        </div>
-        
-        <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto mt-2 pb-6 sigp-scrollbar">
-          {links.map((link) => {
-            let isActive = false
-            if (link.name === 'Projets') {
-              isActive = location.pathname === '/projects'
-            } else {
-              const lastPart = link.to.split('/').pop()
-              if (lastPart) {
-                isActive = location.pathname.includes(`/${lastPart}`)
-              }
-            }
-            const Icon = link.icon
-              
-            return (
-              <NavLink 
-                key={link.name} 
-                to={link.to}
-                onClick={() => {
-                  if (window.innerWidth < 1024) setSidebarOpen(false)
-                }}
-                className={`
-                  group relative flex items-center px-3 py-2.5 rounded-xl font-medium text-sm transition-all
-                  ${isActive 
-                    ? 'bg-[#2563EB] text-white shadow-sm' 
-                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                  }
-                `}
-              >
-                <Icon size={18} className={`shrink-0 ${sidebarOpen ? 'mr-3' : 'lg:mx-auto'}`} />
-                <span className={`transition-opacity duration-300 ${!sidebarOpen && 'lg:hidden'}`}>
-                  {link.name}
-                </span>
+          Tableau de bord
+        </Link>
+        <Link to="/projects" className={`nav-item ${path.includes('/projects') ? 'active' : ''}`}>
+          <span className="nav-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>
+            </svg>
+          </span>
+          Projets
+        </Link>
+        <Link to="/users" className={`nav-item ${path.includes('/users') ? 'active' : ''}`}>
+          <span className="nav-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="9" cy="8" r="3.2"/>
+              <path d="M2.5 20c0-3.5 2.9-6 6.5-6s6.5 2.5 6.5 6"/>
+              <circle cx="17.5" cy="8.5" r="2.6"/>
+              <path d="M15.8 14.3c2.8.3 4.7 2.4 4.7 5.7"/>
+            </svg>
+          </span>
+          Utilisateurs
+        </Link>
+        <Link to="/documents" className={`nav-item ${path.includes('/documents') ? 'active' : ''}`}>
+          <span className="nav-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+              <path d="M14 3v4h4"/>
+              <path d="M8.5 12h7M8.5 15.5h7M8.5 8.5h3"/>
+            </svg>
+          </span>
+          Documents
+        </Link>
+        <Link to="/settings" className={`nav-item ${path.includes('/settings') ? 'active' : ''}`}>
+          <span className="nav-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H2.5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V2.5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
+            </svg>
+          </span>
+          Paramètres
+        </Link>
+      </nav>
 
-                {/* Tooltip on collapse */}
-                {!sidebarOpen && (
-                  <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-2 py-1 bg-gray-900 text-white text-xs font-medium rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none lg:block hidden">
-                    {link.name}
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -ml-1 border-4 border-transparent border-r-gray-900" />
-                  </div>
-                )}
-              </NavLink>
-            )
-          })}
-        </nav>
-        
-        <div className="p-4 mt-auto border-t border-white/10">
-          <button 
-            onClick={() => {
-              setActiveProject(null, null)
-              navigate('/dashboard')
-            }} 
-            className={`
-              w-full bg-white/10 hover:bg-white/20 text-white font-bold py-2.5 rounded-xl text-sm transition-colors flex justify-center items-center gap-2 group relative
-            `}
-          >
-            <LogOut size={16} className={!sidebarOpen ? 'lg:mx-auto shrink-0' : ''} />
-            <span className={`transition-opacity duration-300 ${!sidebarOpen && 'lg:hidden'}`}>Menu général</span>
-
-            {!sidebarOpen && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-2 py-1 bg-gray-900 text-white text-xs font-medium rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none lg:block hidden">
-                Menu général
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 -ml-1 border-4 border-transparent border-r-gray-900" />
-              </div>
-            )}
-          </button>
+      <div className="sidebar-foot">
+        <div className="avatar-sm">MN</div>
+        <div className="who">
+          <div className="name">Mariam N'Diaye</div>
+          <div className="role">Directrice de Programme</div>
         </div>
-      </aside>
-    </>
-  )
+      </div>
+    </aside>
+  );
 }
-
