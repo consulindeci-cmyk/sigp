@@ -33,7 +33,8 @@ export default function ProjectSidebar({ activeTab, setActiveTab }: ProjectSideb
       items: [
         { id: "budget", label: "Budget", status: "green", meta: "Défini" },
         { id: "funding", label: "Sources de financement", status: "green", meta: "100%" },
-        { id: "procurement", label: "Engagements & Contrats", status: "orange", meta: "14 contrats" },
+        { id: "ppm", label: "Plan de Passation (PPM)", status: "orange", meta: "Planification" },
+        { id: "contracts", label: "Gestion des Contrats", status: "orange", meta: "En cours" },
         { id: "disbursements", label: "Décaissements", status: "orange", meta: "68.7%" }
       ]
     },

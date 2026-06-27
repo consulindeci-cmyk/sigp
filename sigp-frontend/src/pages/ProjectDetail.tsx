@@ -9,6 +9,7 @@ import LogframePage from './project/LogframePage';
 import WBSPage from './project/WBSPage';
 import BudgetPage from './project/BudgetPage';
 import PPMPage from './project/PPMPage';
+import ContractsPage from './project/ContractsPage';
 import TabEVM from '../components/project/TabEVM';
 import TabRisks from '../components/project/TabRisks';
 import TabDocuments from '../components/project/TabDocuments';
@@ -53,7 +54,8 @@ export default function ProjectDetail() {
           
           {activeTab === 'budget' && <BudgetPage />}
           {activeTab === 'funding' && <Placeholder name="Sources de Financement & Conventions" />}
-          {activeTab === 'procurement' && <PPMPage />}
+          {activeTab === 'ppm' && <PPMPage />}
+          {activeTab === 'contracts' && <ContractsPage />}
           {activeTab === 'disbursements' && <Placeholder name="Suivi des Décaissements" />}
           
           {activeTab === 'evm' && <TabEVM />}
