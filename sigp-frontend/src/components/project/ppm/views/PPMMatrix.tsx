@@ -5,9 +5,10 @@ import { Filter } from 'lucide-react';
 
 interface PPMMatrixProps {
   lignes: PPMLigne[];
+  onRowClick?: (id: string) => void;
 }
 
-export function PPMMatrix({ lignes }: PPMMatrixProps) {
+export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       
@@ -55,8 +56,11 @@ export function PPMMatrix({ lignes }: PPMMatrixProps) {
             
             {/* Header Groupes */}
             <tr style={{ background: 'var(--navy-900)', color: 'white' }}>
-              <th colSpan={5} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', position: 'sticky', left: 0, zIndex: 11, background: 'var(--navy-900)' }}>
-                Identification & Configuration du Marché
+              <th colSpan={1} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '1px solid var(--navy-700)', position: 'sticky', left: 0, zIndex: 12, background: 'var(--navy-900)' }}>
+                Identifiant
+              </th>
+              <th colSpan={4} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
+                Configuration du Marché
               </th>
               <th colSpan={2} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
                 Données Financières
@@ -72,7 +76,7 @@ export function PPMMatrix({ lignes }: PPMMatrixProps) {
             {/* Header Colonnes */}
             <tr style={{ background: 'var(--navy-800)', color: 'var(--slate-300)' }}>
               {/* Identification */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', position: 'sticky', left: 0, zIndex: 11, background: 'var(--navy-800)', width: '200px' }}>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', position: 'sticky', left: 0, zIndex: 12, background: 'var(--navy-800)', width: '200px' }}>
                 Référence & WBS
               </th>
               <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Description</th>
@@ -107,7 +111,11 @@ export function PPMMatrix({ lignes }: PPMMatrixProps) {
               </tr>
             ) : (
               lignes.map(ligne => (
-                <PPMMatrixRow key={ligne.id} ligne={ligne} />
+                <PPMMatrixRow 
+                  key={ligne.id} 
+                  ligne={ligne} 
+                  onClick={() => onRowClick && onRowClick(ligne.id)} 
+                />
               ))
             )}
           </tbody>

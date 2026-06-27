@@ -6,7 +6,9 @@ import { usePPMVersions } from '@/hooks/usePPMVersions';
 import { formatMoney } from '@/utils/format';
 import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
-import { LayoutGrid, GitCommit, FileText, Send, CheckCircle2 } from 'lucide-react';
+import { PPMFormSlideOver } from '@/components/project/ppm/forms/PPMFormSlideOver';
+import { LayoutGrid, GitCommit, FileText, Send, CheckCircle2, TrendingUp } from 'lucide-react';
+import { PPMLigne } from '@/types';
 
 export default function PPMPage() {
   const { id: urlProjectId } = useParams();
@@ -14,9 +16,13 @@ export default function PPMPage() {
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
   const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions();
-  const { lignes, isLoading: isLoadingPPM, totalEstimeBase } = usePPM(activeVersionId);
+  const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(activeVersionId);
 
   const [activeTab, setActiveTab] = useState<'MATRIX' | 'WORKFLOW' | 'BI'>('MATRIX');
+  
+  // Form State
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedLigneId, setSelectedLigneId] = useState<string | null>(null);
 
   const isLoading = isLoadingVersions || isLoadingPPM;
 
@@ -43,6 +49,21 @@ export default function PPMPage() {
     }
   };
 
+  const handleOpenForm = (id?: string) => {
+    setSelectedLigneId(id || null);
+    setIsFormOpen(true);
+  };
+
+  const handleSaveForm = async (data: any) => {
+    if (selectedLigneId) {
+      await updateLigne(selectedLigneId, data);
+    } else {
+      await addLigne(data);
+    }
+  };
+
+  const selectedLigne = selectedLigneId ? lignes.find(l => l.id === selectedLigneId) : null;
+
   return (
     <div className="page-container">
       {/* Header compact façon ERP */}
@@ -58,7 +79,7 @@ export default function PPMPage() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
               Exporter Excel
             </button>
-            <button className="btn btn-primary">
+            <button className="btn btn-primary" onClick={() => handleOpenForm()}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
               Nouveau Marché
             </button>
@@ -102,14 +123,14 @@ export default function PPMPage() {
           onClick={() => setActiveTab('MATRIX')}
         >
           <LayoutGrid size={16} />
-          Planification des Marchés
+          Matrice Globale
         </button>
         <button 
           className={`tab-button ${activeTab === 'WORKFLOW' ? 'active' : ''}`}
           onClick={() => setActiveTab('WORKFLOW')}
         >
           <GitCommit size={16} />
-          Workflow & Approbations
+          Workflow d'Approbation
         </button>
         <button 
           className={`tab-button ${activeTab === 'BI' ? 'active' : ''}`}
@@ -131,7 +152,7 @@ export default function PPMPage() {
           <>
             {activeTab === 'MATRIX' && (
               <div style={{ height: 'calc(100vh - 220px)', minHeight: '500px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--line-soft)', overflow: 'hidden' }}>
-                <PPMMatrix lignes={lignes} />
+                <PPMMatrix lignes={lignes} onRowClick={handleOpenForm} />
               </div>
             )}
             
@@ -149,16 +170,14 @@ export default function PPMPage() {
           </>
         )}
       </div>
-    </div>
-  );
-}
 
-// Composant local pour éviter d'importer une icône manquante
-function TrendingUp({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-      <polyline points="17 6 23 6 23 12"></polyline>
-    </svg>
+      <PPMFormSlideOver 
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        ligne={selectedLigne}
+        onSave={handleSaveForm}
+        onDelete={deleteLigne}
+      />
+    </div>
   );
 }

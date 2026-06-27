@@ -15,7 +15,7 @@ export default function BudgetPage() {
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
   const [versionSelectionnee, setVersionSelectionnee] = useState<string>('latest');
-  const [activeTab, setActiveTab] = useState<'MATRIX' | 'FINANCES' | 'REVISIONS'>('MATRIX');
+  const [activeTab, setActiveTab] = useState<'MATRIX' | 'FINANCES' | 'REVISIONS' | 'BI'>('MATRIX');
   
   const { data: budget, isLoading: isLoadingBudget, error: errorBudget } = useBudget(resolvedProjectId);
   const { data: budgetVersion, isLoading: isLoadingVersion } = useBudgetVersion(resolvedProjectId, versionSelectionnee);
@@ -168,6 +168,9 @@ export default function BudgetPage() {
           <button style={{ padding: '12px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'REVISIONS' ? '2px solid var(--navy-600)' : '2px solid transparent', color: activeTab === 'REVISIONS' ? 'var(--navy-900)' : 'var(--slate)', fontWeight: activeTab === 'REVISIONS' ? 600 : 500, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setActiveTab('REVISIONS')}>
             <GitCommit size={14} /> Révisions & Historique
           </button>
+          <button style={{ padding: '12px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'BI' ? '2px solid var(--navy-600)' : '2px solid transparent', color: activeTab === 'BI' ? 'var(--navy-900)' : 'var(--slate)', fontWeight: activeTab === 'BI' ? 600 : 500, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setActiveTab('BI')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg> Dashboard BI
+          </button>
         </div>
 
       {/* CONTENT AREA */}
@@ -192,7 +195,7 @@ export default function BudgetPage() {
              <BudgetMatrix budgetVersion={budgetVersion} />
           ) : activeTab === 'REVISIONS' ? (
              <BudgetRevisionsView budgetVersion={budgetVersion} />
-          ) : activeTab === 'FINANCES' ? (
+          ) : activeTab === 'BI' ? (
              <BudgetAnalyticsDashboard budgetVersion={budgetVersion} />
           ) : (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--slate)', height: '100%' }}>

@@ -8,7 +8,7 @@ import PTBAPage from './project/PTBAPage';
 import LogframePage from './project/LogframePage';
 import WBSPage from './project/WBSPage';
 import BudgetPage from './project/BudgetPage';
-import TabProcurement from '../components/project/TabProcurement';
+import PPMPage from './project/PPMPage';
 import TabEVM from '../components/project/TabEVM';
 import TabRisks from '../components/project/TabRisks';
 import TabDocuments from '../components/project/TabDocuments';
@@ -41,7 +41,7 @@ export default function ProjectDetail() {
         <ProjectSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         {/* Contenu Principal */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           {activeTab === 'overview' && <TabOverview setActiveTab={setActiveTab} />}
           {activeTab === 'governance' && <Placeholder name="Gouvernance & Acteurs" />}
           {activeTab === 'logframe' && <LogframePage />}
@@ -53,7 +53,7 @@ export default function ProjectDetail() {
           
           {activeTab === 'budget' && <BudgetPage />}
           {activeTab === 'funding' && <Placeholder name="Sources de Financement & Conventions" />}
-          {activeTab === 'procurement' && <TabProcurement />}
+          {activeTab === 'procurement' && <PPMPage />}
           {activeTab === 'disbursements' && <Placeholder name="Suivi des Décaissements" />}
           
           {activeTab === 'evm' && <TabEVM />}

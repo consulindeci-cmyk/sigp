@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { PPMVersion, PPMLigne } from '@/types';
+import { PPMLigne } from '@/types';
+import { budgetValidationService } from '@/services/budgetValidationService';
 
 // Mock data for PPM lines
-const mockPPMLignes: PPMLigne[] = [
+let mockPPMLignes: PPMLigne[] = [
   {
     id: 'ppm-l1',
     ppm_version_id: 'ppm-v1.0',
@@ -65,16 +66,75 @@ export function usePPM(versionId?: string) {
   const [lignes, setLignes] = useState<PPMLigne[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  // Recharge les lignes
+  const fetchLignes = () => {
     setIsLoading(true);
-    const timer = setTimeout(() => {
-      // Filtrer selon la version demandée
+    // Simule réseau
+    setTimeout(() => {
       const filtered = mockPPMLignes.filter(l => l.ppm_version_id === versionId);
       setLignes(filtered);
       setIsLoading(false);
-    }, 800);
-    return () => clearTimeout(timer);
+    }, 400);
+  };
+
+  useEffect(() => {
+    fetchLignes();
   }, [versionId]);
+
+  // Mutations
+  const addLigne = async (nouvelleLigne: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => {
+    if (!versionId) throw new Error("Aucune version PPM active");
+
+    // Appel du service de validation budgétaire commun
+    const validation = await budgetValidationService.checkBudgetAvailability(
+      nouvelleLigne.budget_ligne_id, 
+      nouvelleLigne.montant_estime_base
+    );
+    if (!validation.isAvailable) {
+      throw new Error(validation.message);
+    }
+
+    const ligne: PPMLigne = {
+      ...nouvelleLigne,
+      id: `ppm-l${Date.now()}`,
+      ppm_version_id: versionId,
+      statut: 'PLANIFIE',
+      version_hash: `hash-${Date.now()}`
+    };
+
+    mockPPMLignes = [...mockPPMLignes, ligne];
+    fetchLignes();
+    return ligne;
+  };
+
+  const updateLigne = async (id: string, updates: Partial<PPMLigne>) => {
+    const ligneExistante = mockPPMLignes.find(l => l.id === id);
+    if (!ligneExistante) throw new Error("Ligne introuvable");
+
+    // Si on modifie le montant ou la ligne budgétaire, revalider
+    const newBudgetLigneId = updates.budget_ligne_id || ligneExistante.budget_ligne_id;
+    const newMontantBase = updates.montant_estime_base !== undefined ? updates.montant_estime_base : ligneExistante.montant_estime_base;
+
+    // TODO: En réalité, vérifier seulement le delta si c'est la même ligne budgétaire
+    // mais pour cette étape on vérifie le montant total demandé vs. solde disponible
+    const validation = await budgetValidationService.checkBudgetAvailability(newBudgetLigneId, newMontantBase);
+    
+    if (!validation.isAvailable) {
+      throw new Error(validation.message);
+    }
+
+    mockPPMLignes = mockPPMLignes.map(l => 
+      l.id === id 
+        ? { ...l, ...updates, version_hash: `hash-${Date.now()}` }
+        : l
+    );
+    fetchLignes();
+  };
+
+  const deleteLigne = async (id: string) => {
+    mockPPMLignes = mockPPMLignes.filter(l => l.id !== id);
+    fetchLignes();
+  };
 
   // Calculs mémorisés
   const totalEstimeBase = useMemo(() => {
@@ -84,6 +144,9 @@ export function usePPM(versionId?: string) {
   return {
     lignes,
     isLoading,
-    totalEstimeBase
+    totalEstimeBase,
+    addLigne,
+    updateLigne,
+    deleteLigne
   };
 }
