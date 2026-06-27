@@ -1,5 +1,5 @@
 import React from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { AlertTriangle, Wallet, Activity, Target, ShieldAlert, FileText, Loader2, Landmark, Coins } from 'lucide-react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { KPICard } from '@/components/shared/KPICard'
@@ -22,7 +22,7 @@ export default function ProjectDashboardPage() {
   const currentYear = new Date().getFullYear();
   const { data: ptbaData, isLoading: ptbaLoading } = usePTBA(projectId, currentYear)
   const { data: risksData, isLoading: risksLoading } = useRisks(projectId)
-  const { data: ppmData, isLoading: ppmLoading } = usePPM(projectId)
+  const { lignes: ppmData, isLoading: ppmLoading } = usePPM(projectId)
 
   const isLoading = projectLoading || summaryLoading || ptbaLoading || risksLoading || ppmLoading
 
@@ -58,9 +58,8 @@ export default function ProjectDashboardPage() {
   const risquesCritiques = risques.filter(r => (r.criticite as any) === 'ELEVEE' || (r.criticite as any) === 'CRITIQUE').length
 
   // -- Marchés
-  const marches = ppmData?.data ?? []
-  const marchesTotal = marches.length
-  const marchesBloques = marches.filter(m => (m.statut as string) === 'BLOQUE' || (m.statut as string) === 'EN_RETARD' || m.statut === 'RESILIE').length
+  const marches = ppmData ?? []
+  const marchesBloques = marches.filter((m: any) => m.statut === 'BLOQUE' || m.statut === 'EN_RETARD' || m.statut === 'ANNULE').length
 
   // 3. Construction des Alertes Métier
   const alertes: string[] = []
@@ -165,16 +164,26 @@ export default function ProjectDashboardPage() {
               <ShieldAlert className="w-5 h-5 text-[#2563EB]" />
               <h3 className="text-lg font-bold text-[#0A1628]">Contrôle & Exécution</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-col justify-center items-center text-center">
-                <p className="text-sm font-semibold text-gray-500 mb-2">Registre des Risques</p>
-                <p className="text-3xl font-bold text-orange-600">{risquesTotal}</p>
-                <p className="text-xs text-red-500 mt-1 font-medium">{risquesCritiques} critique(s)</p>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 className="text-lg font-bold text-gray-900">Passation des marchés</h3>
+                <Link to={`/projects/${projectId}/ppm`} className="text-sm font-medium text-blue-600 hover:text-blue-700">Voir tout</Link>
               </div>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-col justify-center items-center text-center">
-                <p className="text-sm font-semibold text-gray-500 mb-2">Passation de Marchés</p>
-                <p className="text-3xl font-bold text-[#4B5563]">{marchesTotal}</p>
-                <p className="text-xs text-red-500 mt-1 font-medium">{marchesBloques} bloqué(s)/en retard</p>
+              <div className="p-0">
+                <div className="divide-y divide-gray-100">
+                  {marches.slice(0, 3).map((m: any) => (
+                    <div key={m.id} className="p-4 hover:bg-gray-50 flex justify-between items-center">
+                      <div>
+                        <p className="font-semibold text-gray-900">{m.description || m.reference_marche}</p>
+                        <p className="text-sm text-gray-500 mt-1">{m.methode} • {m.statut}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-gray-900">{formatCurrency(m.montant_estime_base || 0, 'XOF')}</p>
+                        <p className="text-xs text-gray-500">{m.dates_cles?.attribution_prevue || 'À définir'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

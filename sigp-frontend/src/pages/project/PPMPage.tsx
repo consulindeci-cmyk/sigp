@@ -1,147 +1,164 @@
-import React from 'react'
-import { useParams } from 'react-router-dom'
-import { FileText, Send, ClipboardCheck, PenTool, Briefcase, Loader2 } from 'lucide-react'
-import { usePPM } from '@/hooks/usePPM'
-import { useProject } from '@/hooks/useProjects'
-import { formatCurrency } from '@/lib/utils'
-
-const STEPS = [
-  { label: 'Préparation', color: '#2563EB', icon: FileText },
-  { label: 'Publication', color: '#F97316', icon: Send },
-  { label: 'Évaluation', color: '#0F766E', icon: ClipboardCheck },
-  { label: 'Signature', color: '#16A34A', icon: PenTool },
-  { label: 'Exécution', color: '#0A1628', icon: Briefcase },
-]
-
-const DUMMY_MARCHES = [
-  { id: '1', description: 'Construction 50 forages', type: 'Travaux', methode: 'AOI', revue: 'A priori', datePrevue: '15/01/2026', dateSignature: '30/03/2026', montant: 400000, statut: 'Signé' },
-  { id: '2', description: 'Audit financier', type: 'Consultant', methode: 'SFQC', revue: 'A posteriori', datePrevue: '01/09/2026', dateSignature: '15/11/2026', montant: 30000, statut: 'Prévu' },
-  { id: '3', description: 'Équipements solaires', type: 'Fournitures', methode: 'AON', revue: 'A priori', datePrevue: '10/05/2026', dateSignature: '—', montant: 250000, statut: 'En cours' },
-]
-
-function getStatutColor(statut: string) {
-  const s = statut.toLowerCase()
-  if (s.includes('signé')) return 'text-indigo-600 bg-indigo-50'
-  if (s.includes('prévu') || s.includes('planifie')) return 'text-blue-600 bg-blue-50'
-  if (s.includes('en cours')) return 'text-amber-600 bg-amber-50'
-  if (s.includes('annule') || s.includes('resilie')) return 'text-red-600 bg-red-50'
-  return 'text-gray-600 bg-gray-100'
-}
+import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useUIStore } from '@/stores/uiStore';
+import { usePPM } from '@/hooks/usePPM';
+import { usePPMVersions } from '@/hooks/usePPMVersions';
+import { formatMoney } from '@/utils/format';
+import { VersionSelector } from '@/components/common/workflow/VersionSelector';
+import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
+import { LayoutGrid, GitCommit, FileText, Send, CheckCircle2 } from 'lucide-react';
 
 export default function PPMPage() {
-  const { id: projectId = '' } = useParams()
-  const { data: project } = useProject(projectId)
-  const { data: ppmData, isLoading } = usePPM(projectId)
+  const { id: urlProjectId } = useParams();
+  const { activeProjectId } = useUIStore();
+  const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  if (isLoading) {
+  const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions();
+  const { lignes, isLoading: isLoadingPPM, totalEstimeBase } = usePPM(activeVersionId);
+
+  const [activeTab, setActiveTab] = useState<'MATRIX' | 'WORKFLOW' | 'BI'>('MATRIX');
+
+  const isLoading = isLoadingVersions || isLoadingPPM;
+
+  if (!resolvedProjectId) {
     return (
-      <div className="flex h-full items-center justify-center bg-[#F5F6F8]">
-        <Loader2 className="w-10 h-10 animate-spin text-[#2563EB]" />
+      <div className="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <div className="es-title">Aucun projet sélectionné</div>
+        <div className="es-sub">Veuillez sélectionner un projet pour afficher le Plan de Passation des Marchés.</div>
       </div>
-    )
+    );
   }
 
-  // Utilisation des données de l'API si disponibles, sinon Fallback démo
-  const rawMarches = ppmData?.data ?? []
-  
-  const displayData = rawMarches.length > 0 
-    ? rawMarches.map((m: any) => ({
-        id: m.id,
-        description: m.description_marche,
-        type: m.type_marche,
-        methode: m.methode,
-        revue: 'A priori', // Par défaut car non présent dans l'API actuelle
-        datePrevue: m.date_prevue ? new Date(m.date_prevue).toLocaleDateString('fr-FR') : '—',
-        dateSignature: '—',
-        montant: Number(m.montant_estime) || 0,
-        statut: m.statut === 'PLANIFIE' ? 'Prévu' : m.statut === 'EN_COURS' ? 'En cours' : m.statut === 'SIGNE' ? 'Signé' : m.statut
-      }))
-    : DUMMY_MARCHES
+  const activeVersion = versions.find(v => v.id === activeVersionId);
+
+  const renderStatusBadge = (statut?: string) => {
+    switch (statut) {
+      case 'APPROUVE': return <span className="chip chip-success">Approuvé</span>;
+      case 'BROUILLON': return <span className="chip chip-slate">Brouillon</span>;
+      case 'SOUMIS': return <span className="chip chip-warning">Soumis</span>;
+      case 'VALIDATION_BAILLEUR': return <span className="chip chip-warning">Attente ANO</span>;
+      case 'CLOTURE': return <span className="chip chip-slate">Clôturé</span>;
+      default: return <span className="chip">{statut || 'N/A'}</span>;
+    }
+  };
 
   return (
-    <div className="flex flex-col min-h-full bg-[#F5F6F8] p-6 lg:p-8">
-      
-      {/* 1. En-tête de page */}
-      <div className="mb-8">
-        <h1 className="text-[28px] font-bold text-[#0A1628] leading-tight">
-          Passation des marchés
-        </h1>
-        <p className="text-[#6B7280] mt-1.5 text-sm font-medium">
-          Suivi du PPM : méthode, revue, dates prévues, signatures, montants et statuts.
-        </p>
-      </div>
-
-      {/* 2. Tableau */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-8">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left whitespace-nowrap">
-            <thead className="bg-[#0A1628] text-white">
-              <tr>
-                <th className="px-6 py-4 font-bold tracking-wide">Marché</th>
-                <th className="px-6 py-4 font-bold tracking-wide">Type</th>
-                <th className="px-6 py-4 font-bold tracking-wide">Méthode</th>
-                <th className="px-6 py-4 font-bold tracking-wide">Revue</th>
-                <th className="px-6 py-4 font-bold tracking-wide">Date prévue</th>
-                <th className="px-6 py-4 font-bold tracking-wide">Signature</th>
-                <th className="px-6 py-4 font-bold tracking-wide text-right">Montant</th>
-                <th className="px-6 py-4 font-bold tracking-wide">Statut</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {displayData.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50 transition-colors cursor-pointer">
-                  <td className="px-6 py-4 font-medium text-gray-900">{row.description}</td>
-                  <td className="px-6 py-4 text-gray-600">{row.type}</td>
-                  <td className="px-6 py-4 font-semibold text-gray-700">{row.methode}</td>
-                  <td className="px-6 py-4 text-gray-600">{row.revue}</td>
-                  <td className="px-6 py-4 text-gray-600">{row.datePrevue}</td>
-                  <td className="px-6 py-4 text-gray-600">{row.dateSignature}</td>
-                  <td className="px-6 py-4 font-mono font-medium text-gray-900 text-right">
-                    {formatCurrency(row.montant, project?.devise ?? 'XOF').replace('FCFA', '').trim()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatutColor(row.statut)}`}>
-                      {row.statut}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 3. Carte Frise de suivi des marchés */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 lg:p-8 mt-auto">
-        <h3 className="text-lg font-bold text-[#0A1628] mb-10">
-          Frise de suivi des marchés
-        </h3>
-        
-        <div className="relative flex justify-between items-start max-w-4xl mx-auto mb-10 px-4">
-          {/* Ligne grise connectrice */}
-          <div className="absolute top-6 left-10 right-10 h-[2px] bg-gray-200 -z-0"></div>
+    <div className="page-container">
+      {/* Header compact façon ERP */}
+      <div className="page-header">
+        <div className="ph-top">
+          <div className="ph-title-group">
+            <h1 className="ph-title">Plan de Passation des Marchés (PPM)</h1>
+            {renderStatusBadge(activeVersion?.statut)}
+          </div>
           
-          {/* Étapes */}
-          {STEPS.map((step, idx) => (
-            <div key={idx} className="relative z-10 flex flex-col items-center gap-3 bg-white px-2">
-              <div 
-                className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm transition-transform hover:scale-105"
-                style={{ backgroundColor: step.color }}
-              >
-                <step.icon size={22} strokeWidth={2.5} />
-              </div>
-              <span className="text-sm font-bold text-gray-800">
-                {step.label}
-              </span>
-            </div>
-          ))}
+          <div className="ph-actions">
+            <button className="btn btn-secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Exporter Excel
+            </button>
+            <button className="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+              Nouveau Marché
+            </button>
+          </div>
         </div>
-        
-        <p className="text-center text-[#6B7280] text-sm font-medium">
-          Interaction : un clic sur un marché ouvre la fiche détaillée avec pièces justificatives, avis de non-objection et contrat.
-        </p>
+
+        {/* KPI Strip & Version Selector */}
+        <div className="ph-bottom">
+          <div className="kpi-strip">
+            <div className="kpi-item">
+              <div className="kpi-label">Montant Total Estimé (PPM)</div>
+              <div className="kpi-value text-slate-800">
+                {formatMoney(totalEstimeBase)}
+              </div>
+            </div>
+            <div className="kpi-item">
+              <div className="kpi-label">Lignes de Marché</div>
+              <div className="kpi-value">{lignes.length} {lignes.length > 1 ? 'Lignes' : 'Ligne'}</div>
+            </div>
+          </div>
+          
+          <div className="ph-tools">
+            <VersionSelector 
+              versions={versions.map(v => ({ 
+                id: v.id, 
+                label: v.numero_version, 
+                isActive: v.id === activeVersionId,
+                statut: v.statut 
+              }))}
+              selectedId={activeVersionId}
+              onChange={setActiveVersionId}
+            />
+          </div>
+        </div>
       </div>
 
+      {/* Navigation Onglets */}
+      <div className="tabs-container">
+        <button 
+          className={`tab-button ${activeTab === 'MATRIX' ? 'active' : ''}`}
+          onClick={() => setActiveTab('MATRIX')}
+        >
+          <LayoutGrid size={16} />
+          Planification des Marchés
+        </button>
+        <button 
+          className={`tab-button ${activeTab === 'WORKFLOW' ? 'active' : ''}`}
+          onClick={() => setActiveTab('WORKFLOW')}
+        >
+          <GitCommit size={16} />
+          Workflow & Approbations
+        </button>
+        <button 
+          className={`tab-button ${activeTab === 'BI' ? 'active' : ''}`}
+          onClick={() => setActiveTab('BI')}
+        >
+          <TrendingUp size={16} />
+          Analytics PPM
+        </button>
+      </div>
+
+      {/* Contenu principal */}
+      <div className="page-content p-4">
+        {isLoading ? (
+          <div className="flex h-64 items-center justify-center">
+            <div className="spinner"></div>
+            <span className="ml-3 text-slate-500 font-medium">Chargement du PPM...</span>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'MATRIX' && (
+              <div style={{ height: 'calc(100vh - 220px)', minHeight: '500px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--line-soft)', overflow: 'hidden' }}>
+                <PPMMatrix lignes={lignes} />
+              </div>
+            )}
+            
+            {activeTab === 'WORKFLOW' && (
+              <div style={{ padding: '2rem', textAlign: 'center', background: 'var(--surface)', borderRadius: '8px', border: '1px dashed var(--line-strong)' }}>
+                <span style={{ fontSize: '14px', color: 'var(--slate)' }}>[Étape 4 : Workflow d'Approbation à venir]</span>
+              </div>
+            )}
+
+            {activeTab === 'BI' && (
+              <div style={{ padding: '2rem', textAlign: 'center', background: 'var(--surface)', borderRadius: '8px', border: '1px dashed var(--line-strong)' }}>
+                <span style={{ fontSize: '14px', color: 'var(--slate)' }}>[Étape 5 : Analytics PPM à venir]</span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
-  )
+  );
+}
+
+// Composant local pour éviter d'importer une icône manquante
+function TrendingUp({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+      <polyline points="17 6 23 6 23 12"></polyline>
+    </svg>
+  );
 }

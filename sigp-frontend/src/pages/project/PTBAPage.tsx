@@ -132,10 +132,10 @@ export default function PTBAPage() {
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         
         {/* TOP METRICS & WIDGETS ROW */}
-        <div style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--canvas)', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--canvas)', borderBottom: '1px solid var(--line)', flexShrink: 0, flexWrap: 'wrap' }}>
           
           {/* KPI Mini-Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', flex: '0 0 450px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', flex: '1 1 400px' }}>
             <div style={{ background: 'var(--surface)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--line-soft)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
               <div style={{ fontSize: '11px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Budget Planifié</div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--navy-900)', fontFamily: 'monospace' }}>{ptba ? formatMoney(ptba.budget_total) : '-'}</div>

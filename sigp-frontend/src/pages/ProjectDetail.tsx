@@ -7,7 +7,7 @@ import TabOverview from '../components/project/TabOverview';
 import PTBAPage from './project/PTBAPage';
 import LogframePage from './project/LogframePage';
 import WBSPage from './project/WBSPage';
-import TabBudget from '../components/project/TabBudget';
+import BudgetPage from './project/BudgetPage';
 import TabProcurement from '../components/project/TabProcurement';
 import TabEVM from '../components/project/TabEVM';
 import TabRisks from '../components/project/TabRisks';
@@ -51,7 +51,7 @@ export default function ProjectDetail() {
           {activeTab === 'activities' && <Placeholder name="Liste détaillée des Activités" />}
           {activeTab === 'journal' && <Placeholder name="Journal des Opérations" />}
           
-          {activeTab === 'budget' && <TabBudget />}
+          {activeTab === 'budget' && <BudgetPage />}
           {activeTab === 'funding' && <Placeholder name="Sources de Financement & Conventions" />}
           {activeTab === 'procurement' && <TabProcurement />}
           {activeTab === 'disbursements' && <Placeholder name="Suivi des Décaissements" />}

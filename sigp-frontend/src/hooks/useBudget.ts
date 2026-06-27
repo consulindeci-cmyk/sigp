@@ -1,76 +1,43 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '@/lib/axios'
-import type { LigneBudgetaire } from '@/types'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { mockBudget, mockBudgetVersion } from '@/mocks/budgetMock';
+import type { Budget, BudgetVersion } from '@/types/budget';
 
-// Types étendus pour le budget calculé par l'API
-export interface BudgetLine {
-  id: string;
-  projet_id: string;
-  code_budget: string;
-  rubrique: string;
-  sous_rubrique?: string;
-  unite?: string;
-  quantite: number;
-  cout_unitaire: number;
-  cout_total: number;
-  financement_bailleur: number;
-  contrepartie_etat: number;
-  commentaire?: string;
-  montant_engage: number;
-  montant_decaisse: number;
-  taux_consommation_pct: number;
-  niveau_alerte: string;
-}
+// Simulation délai réseau
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export interface BudgetSummary {
-  projet_id: string;
-  budget_total: number;
-  montant_engage: number;
-  montant_decaisse: number;
-  solde_disponible: number;
-  taux_consommation_pct: number;
-  consommation_par_rubrique: {
-    rubrique: string;
-    budget: number;
-    engage: number;
-    decaisse: number;
-    taux_consommation_pct: number;
-  }[];
-}
-
-export function useBudgetSummary(projectId: string) {
+export function useBudget(projetId: string) {
   return useQuery({
-    queryKey: ['budget', 'summary', projectId],
-    queryFn: async () => {
-      const { data } = await api.get<BudgetSummary>(`/projects/${projectId}/budget/summary`)
-      return data
+    queryKey: ['budget', projetId],
+    queryFn: async (): Promise<Budget> => {
+      await delay(800);
+      return mockBudget;
     },
-    enabled: !!projectId,
-  })
+    enabled: !!projetId,
+  });
 }
 
-export function useBudgetLines(projectId: string) {
+export function useBudgetVersion(projetId: string, versionId?: string) {
   return useQuery({
-    queryKey: ['budget', 'lines', projectId],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: BudgetLine[], totaux: any }>(`/projects/${projectId}/budget`)
-      return data
+    queryKey: ['budget-version', projetId, versionId],
+    queryFn: async (): Promise<BudgetVersion> => {
+      await delay(500);
+      return mockBudgetVersion;
     },
-    enabled: !!projectId,
-  })
+    enabled: !!projetId,
+  });
 }
 
-export function useCreateBudget(projectId: string) {
-  const qc = useQueryClient()
+export function useBudgetWorkflow(projetId: string) {
+  const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: async (dto: Partial<BudgetLine>) => {
-      const { data } = await api.post<BudgetLine>(`/projects/${projectId}/budget`, dto)
-      return data
+    mutationFn: async (payload: { budgetId: string; nouveauStatut: string; commentaire?: string }) => {
+      await delay(1000);
+      return { success: true, statut: payload.nouveauStatut };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budget', 'summary', projectId] })
-      qc.invalidateQueries({ queryKey: ['budget', 'lines', projectId] })
-      qc.invalidateQueries({ queryKey: ['dashboard'] })
-    },
-  })
+      queryClient.invalidateQueries({ queryKey: ['budget', projetId] });
+      queryClient.invalidateQueries({ queryKey: ['budget-version', projetId] });
+    }
+  });
 }

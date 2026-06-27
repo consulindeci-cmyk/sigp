@@ -177,8 +177,12 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
     return (
       <React.Fragment key={q}>
         <th 
+          role="button"
+          tabIndex={0}
+          aria-expanded={isExpanded}
           style={{ minWidth: '100px', cursor: 'pointer', background: isExpanded ? 'var(--navy-50)' : 'var(--surface)', borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 12px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--navy-800)', borderBottom: '2px solid var(--line-strong)' }}
           onClick={() => toggleQuarter(q)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuarter(q); } }}
           title="Cliquez pour détailler par mois"
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>

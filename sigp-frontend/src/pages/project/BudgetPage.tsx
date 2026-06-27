@@ -1,196 +1,211 @@
-import React from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useUIStore } from '@/stores/uiStore'
-import { useBudgetSummary, useBudgetLines } from '@/hooks/useBudget'
-import { Loader2, Wallet, PlusCircle } from 'lucide-react'
+import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useUIStore } from '@/stores/uiStore';
+import { useBudget, useBudgetVersion, useBudgetWorkflow } from '@/hooks/useBudget';
+import { formatMoney } from '@/utils/format';
+import { GitCommit, CheckCircle2, AlertCircle, LayoutGrid, Flame, TrendingUp, DollarSign } from 'lucide-react';
+import { BudgetMatrix } from '@/components/project/budget/views/BudgetMatrix';
+import { BudgetRevisionsView } from '@/components/project/budget/views/BudgetRevisionsView';
+import { BudgetAnalyticsDashboard } from '@/components/project/budget/views/BudgetAnalyticsDashboard';
+import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 
-// Utilitaire de formatage
-const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(n)
+export default function BudgetPage() {
+  const { id: urlProjectId } = useParams();
+  const { activeProjectId } = useUIStore();
+  const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-// Fonction de couleur dynamique pour les barres de progression
-const getProgressColor = (percent: number) => {
-  if (percent >= 90) return 'bg-[#DC2626]' // Rouge (Critique)
-  if (percent >= 80) return 'bg-[#F97316]' // Orange (Vigilance)
-  return 'bg-[#16A34A]' // Vert (OK)
-}
+  const [versionSelectionnee, setVersionSelectionnee] = useState<string>('latest');
+  const [activeTab, setActiveTab] = useState<'MATRIX' | 'FINANCES' | 'REVISIONS'>('MATRIX');
+  
+  const { data: budget, isLoading: isLoadingBudget, error: errorBudget } = useBudget(resolvedProjectId);
+  const { data: budgetVersion, isLoading: isLoadingVersion } = useBudgetVersion(resolvedProjectId, versionSelectionnee);
+  const workflowMutation = useBudgetWorkflow(resolvedProjectId);
 
-// Fonction de couleur textuelle pour les alertes du tableau
-const getAlertColor = (alerte: string) => {
-  if (alerte === 'CRITIQUE') return 'text-[#DC2626]'
-  if (alerte === 'VIGILANCE') return 'text-[#F97316]'
-  return 'text-[#16A34A]'
-}
-
-export default function BudgetFinancePage() {
-  const { id: urlProjectId } = useParams()
-  const { activeProjectId } = useUIStore()
-  const resolvedProjectId = urlProjectId || activeProjectId || ''
-  const navigate = useNavigate()
-
-  const { data: summary, isLoading: isLoadingSummary } = useBudgetSummary(resolvedProjectId)
-  const { data: linesData, isLoading: isLoadingLines } = useBudgetLines(resolvedProjectId)
+  const isLoading = isLoadingBudget || isLoadingVersion;
+  const error = errorBudget;
 
   if (!resolvedProjectId) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[#F5F6F8] p-6 h-full">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center max-w-md">
-          <h2 className="text-xl font-bold text-[#0A1628] mb-2">Aucun projet sélectionné</h2>
-          <p className="text-gray-500 mb-6">
-            Veuillez sélectionner un projet depuis le menu pour afficher le budget.
-          </p>
-        </div>
+      <div className="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <div className="es-title">Aucun projet sélectionné</div>
+        <div className="es-sub">Veuillez sélectionner un projet pour afficher son Budget.</div>
       </div>
-    )
+    );
   }
 
-  const isLoading = isLoadingSummary || isLoadingLines
+  const renderStatusBadge = (statut?: string) => {
+    switch (statut) {
+      case 'APPROUVE': return <span className="chip chip-success">Approuvé</span>;
+      case 'BROUILLON': return <span className="chip chip-slate">Brouillon</span>;
+      case 'SOUMIS': return <span className="chip chip-warning">Soumis</span>;
+      case 'EN_REVISION': return <span className="chip chip-danger">En Révision</span>;
+      case 'ARCHIVE': return <span className="chip chip-slate">Archivé</span>;
+      default: return <span className="chip">{statut || 'N/A'}</span>;
+    }
+  };
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-[#F5F6F8] h-full">
-        <Loader2 className="w-10 h-10 animate-spin text-[#2563EB]" />
-      </div>
-    )
-  }
+  const handleActionWorkflow = (action: 'SOUMETTRE' | 'APPROUVER' | 'REJETER') => {
+    if (!budget) return;
+    
+    let targetStatus = budgetVersion?.statut || 'BROUILLON';
+    if (action === 'SOUMETTRE') targetStatus = 'SOUMIS';
+    if (action === 'APPROUVER') targetStatus = 'APPROUVE';
+    
+    workflowMutation.mutate({ budgetId: budget.id, nouveauStatut: targetStatus, commentaire: `Action : ${action}` });
+  };
 
-  // Vérification de l'Empty State
-  // S'assurer que typescript est satisfait avec `as any` temporaire si `budgetStatus` n'est pas encore dans le type
-  const isBudgetEmpty = (summary as any)?.budgetStatus === 'EMPTY'
+  // Agrégations financières depuis la version mockée
+  const totalBAC = budgetVersion?.montant_total_revise || 0;
+  const totalPreEngage = budgetVersion?.lignes?.reduce((acc, l) => acc + l.montant_pre_engage, 0) || 0;
+  const totalEngage = budgetVersion?.lignes?.reduce((acc, l) => acc + l.montant_engage, 0) || 0;
+  const totalDecaisse = budgetVersion?.lignes?.reduce((acc, l) => acc + l.montant_decaisse, 0) || 0;
+  const totalDisponible = budgetVersion?.lignes?.reduce((acc, l) => acc + l.solde_disponible, 0) || 0;
 
   return (
-    <div className="flex-1 overflow-x-hidden overflow-y-auto bg-[#F5F6F8]">
-      <div className="max-w-7xl mx-auto px-6 md:px-8 py-8 space-y-8">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--surface)' }}>
+      
+      {/* HEADER COCKPIT (Responsive) */}
+      <div className="panel" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* SECTION 1 — EN-TÊTE */}
-        <div className="flex flex-col text-left">
-          <h1 className="text-3xl font-bold text-[#0A1628] mb-1">
-            Budget & suivi financier
-          </h1>
-          <p className="text-[#6B7280] text-sm">
-            Contrôle des budgets, engagements, décaissements, soldes et seuils d'alerte.
-          </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px' }}>
+          <div style={{ flex: '1 1 min-content', minWidth: '280px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--navy-900)' }}>
+                Budget & Suivi Financier
+              </h1> 
+              {renderStatusBadge(budgetVersion?.statut)}
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <VersionSelector 
+              versions={[
+                { id: 'latest', label: budgetVersion?.numero_version || 'Actuelle', isActive: true, statut: budgetVersion?.statut || 'BROUILLON' },
+                { id: 'v1.0', label: 'v1.0', description: 'Budget Initial', isActive: false, statut: 'ARCHIVE' }
+              ]}
+              selectedId={versionSelectionnee}
+              onChange={setVersionSelectionnee}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {budgetVersion?.statut === 'BROUILLON' && (
+              <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '12px' }} onClick={() => handleActionWorkflow('SOUMETTRE')} disabled={workflowMutation.isPending}>
+                <CheckCircle2 size={13} /> Soumettre
+              </button>
+            )}
+            {budgetVersion?.statut === 'SOUMIS' && (
+              <>
+                <button className="btn" style={{ padding: '4px 12px', fontSize: '12px', color: 'var(--red)' }} onClick={() => handleActionWorkflow('REJETER')} disabled={workflowMutation.isPending}>
+                  Rejeter
+                </button>
+                <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '12px', background: 'var(--green-600)', borderColor: 'var(--green-600)' }} onClick={() => handleActionWorkflow('APPROUVER')} disabled={workflowMutation.isPending}>
+                  Approuver
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* DASHBOARD COMPACT & TABS (Flex Column) */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+        
+        <div style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--canvas)', borderBottom: '1px solid var(--line)', flexShrink: 0, flexWrap: 'wrap' }}>
+          
+          {/* KPI Mini-Cards (Densité ERP) */}
+          <div style={{ display: 'flex', gap: '12px', flex: '1 1 600px', flexWrap: 'wrap' }}>
+            {/* Jauge 1: BAC */}
+            <div style={{ flex: '1 1 140px', background: 'var(--surface)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--line-soft)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Budget Révisé (BAC)</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--navy-900)', fontFamily: 'monospace' }}>{formatMoney(totalBAC)}</div>
+            </div>
+            
+            {/* Jauge 2: Pré-engagé */}
+            <div style={{ flex: '1 1 140px', background: 'var(--surface)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--line-soft)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Pré-engagements (DA)</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--amber-600)', fontFamily: 'monospace' }}>{formatMoney(totalPreEngage)}</div>
+            </div>
+            
+            {/* Jauge 3: Engagé */}
+            <div style={{ flex: '1 1 140px', background: 'var(--surface)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--line-soft)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Engagements (Contrats)</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--orange-600)', fontFamily: 'monospace' }}>{formatMoney(totalEngage)}</div>
+            </div>
+
+            {/* Jauge 4: Décaissé */}
+            <div style={{ flex: '1 1 140px', background: 'var(--surface)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--line-soft)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Décaissements</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--green-600)', fontFamily: 'monospace' }}>{formatMoney(totalDecaisse)}</div>
+            </div>
+
+            {/* Jauge 5: Disponible */}
+            <div style={{ flex: '1 1 140px', background: 'var(--surface)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--line-soft)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Solde Disponible</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--blue-600)', fontFamily: 'monospace' }}>{formatMoney(totalDisponible)}</div>
+            </div>
+          </div>
+
+          {/* S-Curve Widget Simulé (Plus grand et orienté BI, Responsive) */}
+          <div style={{ flex: '1 1 320px', maxWidth: '400px', background: 'var(--surface)', padding: '16px', borderRadius: '8px', border: '1px solid var(--line-soft)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column' }} role="figure" aria-label="S-Curve Financière">
+             <div style={{ fontSize: '11px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}><TrendingUp size={14}/> Décaissements (S-Curve)</div>
+             <div style={{ flex: 1, minHeight: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--canvas)', borderRadius: '4px', border: '1px dashed var(--line-strong)' }}>
+                <span style={{ fontSize: '12px', color: 'var(--slate)', fontWeight: 500 }}>[Widget BI - S-Curve]</span>
+             </div>
+          </div>
+
         </div>
 
-        {isBudgetEmpty ? (
-          // EMPTY STATE METIER
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 flex flex-col items-center justify-center text-center mt-12">
-            <div className="w-16 h-16 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center mb-6">
-              <Wallet size={32} />
+        {/* TABS (Navigation ERP) */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--line-strong)', background: 'var(--surface)', padding: '0 16px', flexShrink: 0 }}>
+          <button style={{ padding: '12px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'MATRIX' ? '2px solid var(--navy-600)' : '2px solid transparent', color: activeTab === 'MATRIX' ? 'var(--navy-900)' : 'var(--slate)', fontWeight: activeTab === 'MATRIX' ? 600 : 500, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setActiveTab('MATRIX')}>
+            <LayoutGrid size={14} /> Matrice Globale
+          </button>
+          <button style={{ padding: '12px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'FINANCES' ? '2px solid var(--navy-600)' : '2px solid transparent', color: activeTab === 'FINANCES' ? 'var(--navy-900)' : 'var(--slate)', fontWeight: activeTab === 'FINANCES' ? 600 : 500, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setActiveTab('FINANCES')}>
+            <DollarSign size={14} /> Suivi des Financements
+          </button>
+          <button style={{ padding: '12px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'REVISIONS' ? '2px solid var(--navy-600)' : '2px solid transparent', color: activeTab === 'REVISIONS' ? 'var(--navy-900)' : 'var(--slate)', fontWeight: activeTab === 'REVISIONS' ? 600 : 500, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setActiveTab('REVISIONS')}>
+            <GitCommit size={14} /> Révisions & Historique
+          </button>
+        </div>
+
+      {/* CONTENT AREA */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface)' }}>
+          {isLoading ? (
+            <div className="empty-state" style={{ padding: '60px 0', height: '100%' }}>
+              <div className="spinner" style={{ width: '32px', height: '32px', border: '3px solid var(--line-soft)', borderTopColor: 'var(--navy-900)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
             </div>
-            <h2 className="text-2xl font-bold text-[#0A1628] mb-2">Aucun budget défini pour ce projet</h2>
-            <p className="text-[#6B7280] max-w-md mb-8">
-              Veuillez créer des lignes budgétaires pour visualiser la consommation et les indicateurs financiers de votre projet.
-            </p>
-            <button 
-              onClick={() => alert("Fonction de création de budget à venir")} 
-              className="flex items-center gap-2 bg-[#2563EB] hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold transition-colors shadow-sm"
-            >
-              <PlusCircle size={20} />
-              Créer un budget
-            </button>
-          </div>
-        ) : (
-          // INTERFACE ACTIVE
-          <>
-            {/* SECTION 2 — KPI FINANCIERS */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col justify-center">
-                <span className="text-[#6B7280] text-sm font-medium mb-1">Initial</span>
-                <span className="text-2xl font-bold text-[#2563EB]">{fmt(summary?.budget_total || 0)}</span>
+          ) : error ? (
+             <div className="empty-state" style={{ height: '100%' }}>
+               <AlertCircle size={32} color="var(--red)" />
+               <div className="es-title" style={{ color: 'var(--red)' }}>Erreur de chargement</div>
+               <div className="es-sub">Impossible de charger le Budget.</div>
+             </div>
+          ) : !budgetVersion ? (
+             <div className="empty-state" style={{ height: '100%' }}>
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="32" height="32" color="var(--slate)"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+               <div className="es-title">Aucun Budget actif</div>
+               <div className="es-sub">Le budget de ce projet n'a pas encore été initialisé.</div>
+             </div>
+          ) : activeTab === 'MATRIX' ? (
+             <BudgetMatrix budgetVersion={budgetVersion} />
+          ) : activeTab === 'REVISIONS' ? (
+             <BudgetRevisionsView budgetVersion={budgetVersion} />
+          ) : activeTab === 'FINANCES' ? (
+             <BudgetAnalyticsDashboard budgetVersion={budgetVersion} />
+          ) : (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--slate)', height: '100%' }}>
+              <div style={{ marginBottom: '16px' }}>
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="48" height="48" style={{ color: 'var(--line-strong)' }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col justify-center">
-                <span className="text-[#6B7280] text-sm font-medium mb-1">Engagé</span>
-                <span className="text-2xl font-bold text-[#F97316]">{fmt(summary?.montant_engage || 0)}</span>
-              </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col justify-center">
-                <span className="text-[#6B7280] text-sm font-medium mb-1">Décaissé</span>
-                <span className="text-2xl font-bold text-[#16A34A]">{fmt(summary?.montant_decaisse || 0)}</span>
-              </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col justify-center">
-                <span className="text-[#6B7280] text-sm font-medium mb-1">Disponible</span>
-                <span className="text-2xl font-bold text-[#16A34A]">{fmt(summary?.solde_disponible || 0)}</span>
-              </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col justify-center">
-                <span className="text-[#6B7280] text-sm font-medium mb-1">Taux conso.</span>
-                <span className="text-2xl font-bold text-[#F97316]">{summary?.taux_consommation_pct || 0}%</span>
-              </div>
+              <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--ink)' }}>Développement de la vue (Étape suivante)</p>
+              <p style={{ marginTop: '8px', maxWidth: '400px', margin: '8px auto 0' }}>La vue {activeTab} sera développée lors d'une prochaine étape, conformément au Master Document.</p>
             </div>
-
-            {/* SECTION 3 — DEUX CARTES CÔTE À CÔTE */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              
-              {/* CARTE A : Consommation par rubrique */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
-                <h2 className="text-lg font-bold text-[#0A1628] mb-6">
-                  Consommation par rubrique
-                </h2>
-                <div className="space-y-6 flex-1">
-                  {summary?.consommation_par_rubrique?.map((item, idx) => {
-                    const progress = item.taux_consommation_pct > 100 ? 100 : item.taux_consommation_pct
-                    return (
-                      <div key={idx}>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-semibold text-[#0A1628]">{item.rubrique}</span>
-                          <span className="text-sm font-bold text-[#0A1628]">{item.taux_consommation_pct}%</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-3">
-                          <div 
-                            className={`h-full rounded-full ${getProgressColor(item.taux_consommation_pct)}`} 
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* CARTE B : Détail financier */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
-                <h2 className="text-lg font-bold text-[#0A1628] mb-6">
-                  Détail financier
-                </h2>
-                
-                <div className="overflow-y-auto max-h-[350px] border border-gray-100 rounded-xl relative">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-[#0A1628] text-white">
-                        <th className="px-4 py-3 text-sm font-bold w-1/3">Rubrique</th>
-                        <th className="px-4 py-3 text-sm font-bold">Budget</th>
-                        <th className="px-4 py-3 text-sm font-bold">Engagé</th>
-                        <th className="px-4 py-3 text-sm font-bold">Alerte</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {linesData?.data?.map((ligne, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-4 text-sm font-medium text-[#0A1628]">
-                            {ligne.rubrique || 'Non définie'}
-                          </td>
-                          <td className="px-4 py-4 text-sm font-mono text-[#6B7280]">
-                            {fmt(ligne.cout_total)}
-                          </td>
-                          <td className="px-4 py-4 text-sm font-mono text-[#6B7280]">
-                            {fmt(ligne.montant_engage)}
-                          </td>
-                          <td className={`px-4 py-4 text-sm font-bold ${getAlertColor(ligne.niveau_alerte)}`}>
-                            {ligne.niveau_alerte === 'CRITIQUE' ? 'Critique' : ligne.niveau_alerte === 'VIGILANCE' ? 'Vigilance' : 'OK'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <p className="text-[#6B7280] text-xs italic mt-4">
-                  Règle : alerte orange &gt; 80%, rouge &gt; 90% ou dépassement du budget.
-                </p>
-              </div>
-
-            </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
+
     </div>
-  )
+  );
 }
