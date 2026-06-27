@@ -72,7 +72,7 @@ function PPMMatrixRowComponent({ ligne, onClick }: PPMMatrixRowProps) {
       className="matrix-row hover:bg-slate-50 transition-colors group"
     >
       {/* 1. Identifiants & Configuration */}
-      <td style={{ padding: '8px 16px', borderRight: '1px solid var(--line-soft)', borderBottom: '1px solid var(--line-soft)', position: 'sticky', left: 0, zIndex: 10, background: 'white', minWidth: '200px' }}>
+      <td className="bg-white group-hover:bg-slate-50" style={{ padding: '8px 16px', borderRight: '1px solid var(--line-soft)', borderBottom: '1px solid var(--line-soft)', position: 'sticky', left: 0, zIndex: 1 }}>
         <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--navy-800)' }}>{ligne.reference_marche}</div>
         <div style={{ fontSize: '11px', color: 'var(--slate)' }}>WBS: {ligne.wbs_id}</div>
       </td>
