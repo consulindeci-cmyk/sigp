@@ -152,46 +152,60 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
 
   return (
     <>
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
+      <div 
+        style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.4)',
+          backdropFilter: 'blur(4px)', zIndex: 1000, transition: 'opacity 0.3s'
+        }} 
+        onClick={onClose} 
+      />
       
-      <div className="fixed inset-y-0 right-0 w-[600px] bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-bold text-slate-800">
+      <div 
+        style={{
+          position: 'fixed', top: 0, bottom: 0, right: 0, width: '600px',
+          backgroundColor: 'white', boxShadow: '-10px 0 25px -5px rgba(0, 0, 0, 0.1), -8px 0 10px -6px rgba(0, 0, 0, 0.1)',
+          zIndex: 1050, display: 'flex', flexDirection: 'column',
+          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.3s ease-in-out'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--line-soft)' }}>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--navy-900)' }}>
             {ligne ? 'Modifier la ligne de marché' : 'Nouvelle ligne de marché'}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--slate)' }}>
             <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
-              <AlertCircle size={20} className="mt-0.5 shrink-0" />
-              <div className="text-sm font-medium">{error}</div>
+            <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: 'var(--red-bg, #fef2f2)', border: '1px solid var(--red-border, #fecaca)', borderRadius: '8px', display: 'flex', alignItems: 'flex-start', gap: '12px', color: 'var(--red-text, #b91c1c)' }}>
+              <AlertCircle size={20} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div style={{ fontSize: '14px', fontWeight: 500 }}>{error}</div>
             </div>
           )}
 
-          <form id="ppm-form" onSubmit={handleSubmit} className="space-y-8">
+          <form id="ppm-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
             {/* Section 1: Identification */}
             <section>
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b pb-2">Identification</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--navy-900)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--line-soft)' }}>Identification</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Référence du marché *</label>
-                  <input required type="text" className="input w-full" value={reference} onChange={e => setReference(e.target.value)} placeholder="Ex: AOI-001/2026" />
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Référence du marché *</label>
+                  <input required type="text" className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={reference} onChange={e => setReference(e.target.value)} placeholder="Ex: AOI-001/2026" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">WBS *</label>
-                  <input required type="text" className="input w-full" value={wbsId} onChange={e => setWbsId(e.target.value)} placeholder="wbs-1-1" />
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>WBS *</label>
+                  <input required type="text" className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={wbsId} onChange={e => setWbsId(e.target.value)} placeholder="wbs-1-1" />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Description *</label>
-                  <textarea required className="input w-full min-h-[80px]" value={description} onChange={e => setDescription(e.target.value)} />
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Description *</label>
+                  <textarea required className="input" style={{ width: '100%', minHeight: '80px', boxSizing: 'border-box' }} value={description} onChange={e => setDescription(e.target.value)} />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Ligne Budgétaire (Source) *</label>
-                  <select required className="input w-full" value={budgetLigneId} onChange={e => setBudgetLigneId(e.target.value)}>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Ligne Budgétaire (Source) *</label>
+                  <select required className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={budgetLigneId} onChange={e => setBudgetLigneId(e.target.value)}>
                     <option value="">-- Sélectionner --</option>
                     <option value="bl-1">Budget Ligne 1 (Travaux)</option>
                     <option value="bl-2">Budget Ligne 2 (Services)</option>
@@ -203,11 +217,11 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
 
             {/* Section 2: Configuration */}
             <section>
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b pb-2">Configuration</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--navy-900)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--line-soft)' }}>Configuration</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie *</label>
-                  <select required className="input w-full" value={categorie} onChange={e => setCategorie(e.target.value as any)}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Catégorie *</label>
+                  <select required className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={categorie} onChange={e => setCategorie(e.target.value as any)}>
                     <option value="TRAVAUX">Travaux</option>
                     <option value="BIENS">Biens</option>
                     <option value="SERVICES_CONSULTANTS">Services Consultants</option>
@@ -215,8 +229,8 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Méthode *</label>
-                  <select required className="input w-full" value={methode} onChange={e => setMethode(e.target.value as any)}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Méthode *</label>
+                  <select required className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={methode} onChange={e => setMethode(e.target.value as any)}>
                     <option value="AOI">AOI</option>
                     <option value="AON">AON</option>
                     <option value="QCBS">QCBS</option>
@@ -224,15 +238,15 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Revue *</label>
-                  <select required className="input w-full" value={typeRevue} onChange={e => setTypeRevue(e.target.value as any)}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Revue *</label>
+                  <select required className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={typeRevue} onChange={e => setTypeRevue(e.target.value as any)}>
                     <option value="PRIOR">A Priori (PRIOR)</option>
                     <option value="POST">A Posteriori (POST)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Bailleur *</label>
-                  <select required className="input w-full" value={bailleurId} onChange={e => setBailleurId(e.target.value)}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Bailleur *</label>
+                  <select required className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={bailleurId} onChange={e => setBailleurId(e.target.value)}>
                     <option value="">-- Sélectionner --</option>
                     <option value="b-ida">IDA (Banque Mondiale)</option>
                     <option value="b-afd">AFD</option>
@@ -243,27 +257,27 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
 
             {/* Section 3: Finances */}
             <section>
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b pb-2">Données Financières</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--navy-900)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--line-soft)' }}>Données Financières</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Devise *</label>
-                  <select required className="input w-full" value={deviseCode} onChange={e => setDeviseCode(e.target.value)}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Devise *</label>
+                  <select required className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={deviseCode} onChange={e => setDeviseCode(e.target.value)}>
                     <option value="XOF">XOF</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Taux de change (vers XOF) *</label>
-                  <input required type="number" min="1" step="0.01" className="input w-full" value={tauxChange} onChange={e => setTauxChange(Number(e.target.value))} disabled={deviseCode === 'XOF'} />
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Taux de change (vers XOF) *</label>
+                  <input required type="number" min="1" step="0.01" className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={tauxChange} onChange={e => setTauxChange(Number(e.target.value))} disabled={deviseCode === 'XOF'} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Montant Estimé (Devise) *</label>
-                  <input required type="number" min="0" className="input w-full" value={montantDevise} onChange={e => setMontantDevise(Number(e.target.value))} />
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Montant Estimé (Devise) *</label>
+                  <input required type="number" min="0" className="input" style={{ width: '100%', boxSizing: 'border-box' }} value={montantDevise} onChange={e => setMontantDevise(Number(e.target.value))} />
                 </div>
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Montant Base (XOF)</label>
-                  <div className="font-mono text-lg font-bold text-slate-900">
+                <div style={{ backgroundColor: 'var(--canvas)', padding: '12px', borderRadius: '8px', border: '1px solid var(--line-soft)' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>Montant Base (XOF)</label>
+                  <div style={{ fontFamily: 'monospace', fontSize: '18px', fontWeight: 700, color: 'var(--navy-900)' }}>
                     {new Intl.NumberFormat('fr-FR').format(montantBase)}
                   </div>
                 </div>
@@ -271,17 +285,22 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
               
               {/* Feedback Budgétaire UI */}
               {soldeDisponible !== null && (
-                <div className={`mt-4 p-3 rounded-md text-sm border flex items-center justify-between ${montantBase > soldeDisponible ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
-                  <span className="font-medium">Solde Budgétaire Ligne ({budgetLigneId}) :</span>
-                  <span className="font-mono font-bold">{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(soldeDisponible)}</span>
+                <div style={{ 
+                  marginTop: '16px', padding: '12px', borderRadius: '6px', fontSize: '14px', border: '1px solid', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  ...(montantBase > soldeDisponible 
+                    ? { backgroundColor: 'var(--red-bg, #fef2f2)', borderColor: 'var(--red-border, #fecaca)', color: 'var(--red-text, #b91c1c)' }
+                    : { backgroundColor: 'var(--green-bg, #f0fdf4)', borderColor: 'var(--green-border, #bbf7d0)', color: 'var(--green-text, #15803d)' })
+                }}>
+                  <span style={{ fontWeight: 500 }}>Solde Budgétaire Ligne ({budgetLigneId}) :</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(soldeDisponible)}</span>
                 </div>
               )}
             </section>
 
             {/* Section 4: Chronogramme */}
             <section>
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b pb-2">Chronogramme Prévisionnel</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--navy-900)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--line-soft)' }}>Chronogramme Prévisionnel</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 {Object.entries({
                   preparation_dao_prevue: 'Préparation DAO',
                   lancement_dao_prevue: 'Lancement DAO',
@@ -292,10 +311,11 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
                   demarrage_prevue: 'Démarrage'
                 }).map(([key, label]) => (
                   <div key={key}>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">{label}</label>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: 'var(--slate)', marginBottom: '4px' }}>{label}</label>
                     <input 
                       type="date" 
-                      className="input w-full text-sm" 
+                      className="input" 
+                      style={{ width: '100%', fontSize: '14px', boxSizing: 'border-box' }} 
                       value={dates[key as keyof typeof dates]} 
                       onChange={e => setDates({ ...dates, [key]: e.target.value })}
                     />
@@ -306,18 +326,18 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
           </form>
         </div>
 
-        <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+        <div style={{ padding: '24px', borderTop: '1px solid var(--line-soft)', backgroundColor: 'var(--canvas)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {ligne && onDelete ? (
-            <button type="button" onClick={handleDelete} disabled={isSubmitting} className="btn btn-outline text-red-600 border-red-200 hover:bg-red-50">
-              <Trash2 size={16} /> Supprimer
+            <button type="button" onClick={handleDelete} disabled={isSubmitting} className="btn" style={{ backgroundColor: 'var(--red-bg, #fef2f2)', color: 'var(--red, #ef4444)', border: '1px solid var(--red-border, #fecaca)' }}>
+              <Trash2 size={16} style={{ marginRight: '8px' }} /> Supprimer
             </button>
           ) : <div></div>}
           
-          <div className="flex gap-3">
+          <div style={{ display: 'flex', gap: '12px' }}>
             <button type="button" onClick={onClose} disabled={isSubmitting} className="btn btn-secondary">
               Annuler
             </button>
-            <button type="submit" form="ppm-form" disabled={isSubmitting} className="btn btn-primary">
+            <button type="submit" form="ppm-form" disabled={isSubmitting} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Save size={16} />
               {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
             </button>

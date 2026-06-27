@@ -55,50 +55,50 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
           <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             
             {/* Header Groupes */}
-            <tr style={{ background: 'var(--navy-900)', color: 'white' }}>
-              <th colSpan={1} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '1px solid var(--navy-700)', position: 'sticky', left: 0, zIndex: 12, background: 'var(--navy-900)' }}>
+            <tr>
+              <th colSpan={1} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '1px solid var(--navy-700)', position: 'sticky', left: 0, zIndex: 20, background: 'var(--navy-900)', color: 'white' }}>
                 Identifiant
               </th>
-              <th colSpan={4} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
+              <th colSpan={4} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center', background: 'var(--navy-900)', color: 'white' }}>
                 Configuration du Marché
               </th>
-              <th colSpan={2} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
+              <th colSpan={2} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center', background: 'var(--navy-900)', color: 'white' }}>
                 Données Financières
               </th>
-              <th colSpan={7} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
+              <th colSpan={7} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center', background: 'var(--navy-900)', color: 'white' }}>
                 Chronogramme Prévisionnel (Gantt)
               </th>
-              <th colSpan={1} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>
+              <th colSpan={1} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center', background: 'var(--navy-900)', color: 'white' }}>
                 Suivi
               </th>
             </tr>
             
             {/* Header Colonnes */}
-            <tr style={{ background: 'var(--navy-800)', color: 'var(--slate-300)' }}>
+            <tr>
               {/* Identification */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', position: 'sticky', left: 0, zIndex: 12, background: 'var(--navy-800)', width: '200px' }}>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', position: 'sticky', left: 0, zIndex: 20, background: 'var(--navy-800)', color: 'var(--slate-300)', width: '200px', minWidth: '200px' }}>
                 Référence & WBS
               </th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Description</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Catégorie</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Méthode</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Revue</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Description</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Catégorie</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Méthode</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Revue</th>
               
               {/* Financier */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'right', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Montant (Devise)</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'right', borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', color: 'white' }}>Montant (Base)</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'right', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Montant (Devise)</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'right', borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'white' }}>Montant (Base)</th>
               
               {/* Chronogramme */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Prép. DAO</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Lanc. DAO</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Offres</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Évaluation</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>ANO</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Attribution</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', color: 'white' }}>Signature</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Prép. DAO</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Lanc. DAO</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Offres</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Évaluation</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>ANO</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Attribution</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'white' }}>Signature</th>
               
               {/* Suivi */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderBottom: '1px solid var(--navy-900)' }}>Statut Actuel</th>
+              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderBottom: '1px solid var(--navy-900)', background: 'var(--navy-800)', color: 'var(--slate-300)' }}>Statut Actuel</th>
             </tr>
           </thead>
           
