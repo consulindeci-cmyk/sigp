@@ -1,11 +1,11 @@
 import React from 'react';
-import { cn } from '../../../lib/utils';
+import { cn } from '@/lib/utils';
 
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('rounded-lg border border-line bg-surface text-ink shadow-sm', className)}
+      className={cn('rounded-xl border border-border bg-card text-card-foreground shadow-sm', className)}
       {...props}
     />
   )
@@ -16,7 +16,7 @@ const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('flex flex-col space-y-1.5 p-6 border-b border-line-soft', className)}
+      className={cn('flex flex-col space-y-1.5 p-6', className)}
       {...props}
     />
   )
@@ -27,7 +27,7 @@ const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HT
   ({ className, ...props }, ref) => (
     <h3
       ref={ref}
-      className={cn('text-lg font-semibold leading-none tracking-tight', className)}
+      className={cn('font-semibold leading-none tracking-tight text-foreground', className)}
       {...props}
     />
   )
@@ -38,7 +38,7 @@ const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttribu
   ({ className, ...props }, ref) => (
     <p
       ref={ref}
-      className={cn('text-sm text-slate', className)}
+      className={cn('text-sm text-muted-foreground', className)}
       {...props}
     />
   )
@@ -63,4 +63,4 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 );
 CardFooter.displayName = 'CardFooter';
 
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter };

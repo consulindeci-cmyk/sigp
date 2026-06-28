@@ -103,12 +103,12 @@ export const ContractDataTable: React.FC<ContractDataTableProps> = React.memo(({
           header: 'Statut Actuel',
           cell: info => {
             const s = info.getValue() as string;
-            let variant: "default" | "secondary" | "outline" | "success" | "warning" | "danger" = 'default';
+            let variant: "default" | "secondary" | "outline" | "success" | "warning" | "destructive" = 'default';
             
             if (['EN_EXECUTION'].includes(s)) variant = 'success';
             else if (['SIGNE'].includes(s)) variant = 'warning';
             else if (['BROUILLON'].includes(s)) variant = 'secondary';
-            else if (['RESILIE', 'SUSPENDU'].includes(s)) variant = 'danger';
+            else if (['RESILIE', 'SUSPENDU'].includes(s)) variant = 'destructive';
             else if (['TERMINE', 'CLOTURE'].includes(s)) variant = 'outline';
             
             return <Badge variant={variant}>{s.replace(/_/g, ' ')}</Badge>;

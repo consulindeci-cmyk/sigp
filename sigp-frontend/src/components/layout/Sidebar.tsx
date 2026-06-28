@@ -1,78 +1,185 @@
+import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useUIStore } from '@/stores/uiStore';
+import { cn } from '@/lib/utils';
+import {
+  LayoutDashboard,
+  FolderKanban,
+  Users,
+  FileText,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 
-export function Sidebar() {
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ElementType;
+}
+
+interface SidebarProps {
+  isMobile?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Navigation items
+// ---------------------------------------------------------------------------
+const navItems: NavItem[] = [
+  { to: '/dashboard',  label: 'Tableau de bord', icon: LayoutDashboard },
+  { to: '/projects',   label: 'Projets',          icon: FolderKanban    },
+  { to: '/users',      label: 'Utilisateurs',     icon: Users           },
+  { to: '/documents',  label: 'Documents',        icon: FileText        },
+  { to: '/settings',   label: 'Paramètres',       icon: Settings        },
+];
+
+// ---------------------------------------------------------------------------
+// Sidebar
+// ---------------------------------------------------------------------------
+export function Sidebar({ isMobile = false }: SidebarProps) {
   const location = useLocation();
   const path = location.pathname;
+  const { sidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore();
+
+  // Sur mobile, la sidebar est toujours visuellement « ouverte » dans son drawer
+  const isExpanded = isMobile ? true : sidebarOpen;
+
+  const handleMobileClick = () => {
+    if (isMobile) setSidebarOpen(false);
+  };
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-brand">
-        <div className="mark">GP</div>
-        <div>
-          <span className="word">GPD ERP</span>
-          <span className="sub">Gestion de Programme</span>
+    // ⚠ `relative` est obligatoire ici pour que le bouton toggle (absolute -right-3)
+    // soit positionné par rapport à ce wrapper et non à un ancêtre.
+    <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground">
+
+      {/* ── Brand Header ──────────────────────────────────────────────── */}
+      <div
+        className={cn(
+          'flex items-center h-16 border-b border-sidebar-border px-4 transition-all duration-300 shrink-0',
+          isExpanded ? 'justify-between' : 'justify-center'
+        )}
+      >
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="flex items-center justify-center h-8 w-8 rounded-md bg-primary text-primary-foreground font-bold shrink-0 text-sm">
+            GP
+          </div>
+          {isExpanded && (
+            <div className="flex flex-col animate-in fade-in duration-300 whitespace-nowrap overflow-hidden">
+              <span className="text-sm font-bold tracking-tight text-sidebar-foreground leading-tight">
+                GPD ERP
+              </span>
+              <span className="text-[10px] text-sidebar-foreground/60 uppercase tracking-wider">
+                Gestion de Programme
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      <nav className="sidebar-nav">
-        <Link to="/dashboard" className={`nav-item ${path.includes('/dashboard') ? 'active' : ''}`}>
-          <span className="nav-ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <rect x="3" y="3" width="7" height="9" rx="1.5"/>
-              <rect x="14" y="3" width="7" height="5" rx="1.5"/>
-              <rect x="14" y="12" width="7" height="9" rx="1.5"/>
-              <rect x="3" y="16" width="7" height="5" rx="1.5"/>
-            </svg>
-          </span>
-          Tableau de bord
-        </Link>
-        <Link to="/projects" className={`nav-item ${path.includes('/projects') ? 'active' : ''}`}>
-          <span className="nav-ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>
-            </svg>
-          </span>
-          Projets
-        </Link>
-        <Link to="/users" className={`nav-item ${path.includes('/users') ? 'active' : ''}`}>
-          <span className="nav-ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <circle cx="9" cy="8" r="3.2"/>
-              <path d="M2.5 20c0-3.5 2.9-6 6.5-6s6.5 2.5 6.5 6"/>
-              <circle cx="17.5" cy="8.5" r="2.6"/>
-              <path d="M15.8 14.3c2.8.3 4.7 2.4 4.7 5.7"/>
-            </svg>
-          </span>
-          Utilisateurs
-        </Link>
-        <Link to="/documents" className={`nav-item ${path.includes('/documents') ? 'active' : ''}`}>
-          <span className="nav-ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
-              <path d="M14 3v4h4"/>
-              <path d="M8.5 12h7M8.5 15.5h7M8.5 8.5h3"/>
-            </svg>
-          </span>
-          Documents
-        </Link>
-        <Link to="/settings" className={`nav-item ${path.includes('/settings') ? 'active' : ''}`}>
-          <span className="nav-ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H2.5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V2.5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
-            </svg>
-          </span>
-          Paramètres
-        </Link>
+      {/* ── Navigation ────────────────────────────────────────────────── */}
+      <nav
+        className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5"
+        aria-label="Navigation principale"
+      >
+        {navItems.map((item) => {
+          const isActive = path.startsWith(item.to);
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={handleMobileClick}
+              title={!isExpanded ? item.label : undefined}
+              aria-current={isActive ? 'page' : undefined}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group relative',
+                isActive
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+              )}
+            >
+              {/* Icône */}
+              <item.icon
+                className={cn(
+                  'h-5 w-5 shrink-0 transition-colors',
+                  isActive
+                    ? 'text-primary'
+                    : 'text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80'
+                )}
+              />
+
+              {/* Label (mode expanded) */}
+              {isExpanded && (
+                <span className="text-sm animate-in fade-in duration-200 whitespace-nowrap truncate">
+                  {item.label}
+                </span>
+              )}
+
+              {/* Tooltip (mode collapsed) — z-index élevé + overflow visible */}
+              {!isExpanded && (
+                <div
+                  className={cn(
+                    'pointer-events-none absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2',
+                    'px-2.5 py-1.5 rounded-md text-xs font-medium whitespace-nowrap',
+                    'bg-popover text-popover-foreground border border-border shadow-dropdown',
+                    'opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-[60]',
+                    // Flèche gauche
+                    'before:content-[""] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2',
+                    'before:border-4 before:border-transparent before:border-r-border'
+                  )}
+                  role="tooltip"
+                >
+                  {item.label}
+                </div>
+              )}
+            </Link>
+          );
+        })}
       </nav>
 
-      <div className="sidebar-foot">
-        <div className="avatar-sm">MN</div>
-        <div className="who">
-          <div className="name">Mariam N'Diaye</div>
-          <div className="role">Directrice de Programme</div>
+      {/* ── Utilisateur / Footer ───────────────────────────────────────── */}
+      <div className="p-4 border-t border-sidebar-border shrink-0">
+        <div className={cn('flex items-center gap-3', !isExpanded && 'justify-center')}>
+          <div className="h-9 w-9 rounded-full bg-sidebar-accent flex items-center justify-center text-sm font-semibold shrink-0 border border-sidebar-border text-sidebar-foreground">
+            MN
+          </div>
+          {isExpanded && (
+            <div className="flex flex-col overflow-hidden animate-in fade-in duration-300">
+              <span className="text-sm font-medium truncate text-sidebar-foreground">
+                Mariam N'Diaye
+              </span>
+              <span className="text-xs text-sidebar-foreground/50 truncate">
+                Directrice de Programme
+              </span>
+            </div>
+          )}
         </div>
       </div>
-    </aside>
+
+      {/* ── Bouton Toggle (Desktop uniquement) ────────────────────────── */}
+      {/* absolute -right-3 fonctionne car le wrapper parent a `relative` */}
+      {!isMobile && (
+        <button
+          onClick={toggleSidebar}
+          aria-label={sidebarOpen ? 'Réduire la sidebar' : 'Élargir la sidebar'}
+          className={cn(
+            'absolute -right-3 top-[4.5rem]',
+            'h-6 w-6 rounded-full',
+            'border border-sidebar-border bg-sidebar text-sidebar-foreground',
+            'flex items-center justify-center',
+            'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+            'shadow-card transition-colors z-10'
+          )}
+        >
+          {sidebarOpen
+            ? <ChevronLeft  className="h-3 w-3" />
+            : <ChevronRight className="h-3 w-3" />
+          }
+        </button>
+      )}
+    </div>
   );
 }

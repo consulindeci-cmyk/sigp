@@ -64,21 +64,15 @@ export default function ContractsPage() {
       <div className="flex-1 overflow-auto flex flex-col p-6 bg-canvas">
         <div className="bg-surface border border-line rounded-lg flex flex-col flex-1 overflow-hidden shadow-sm">
           <FilterBar>
-            <Select 
-              className="w-48"
-              options={[
-                { label: 'Tous les Bailleurs', value: '' },
-                { label: 'Bailleur 1', value: '1' }
-              ]} 
-            />
-            <Select 
-              className="w-48"
-              options={[
-                { label: 'Tous les Statuts', value: '' },
-                { label: 'EN EXECUTION', value: 'EN_EXECUTION' },
-                { label: 'SIGNE', value: 'SIGNE' }
-              ]} 
-            />
+            <Select className="w-48">
+              <option value="">Tous les Bailleurs</option>
+              <option value="1">Bailleur 1</option>
+            </Select>
+            <Select className="w-48">
+              <option value="">Tous les Statuts</option>
+              <option value="EN_EXECUTION">EN EXECUTION</option>
+              <option value="SIGNE">SIGNE</option>
+            </Select>
           </FilterBar>
           
           <div className="flex-1 overflow-auto p-4">

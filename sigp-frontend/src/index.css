@@ -1,26 +1,84 @@
-:root{
-  --navy-900:#0B2D4D;
-  --navy-700:#123A5F;
-  --navy-500:#1F5482;
-  --navy-100:#E7EEF5;
-  --canvas:#F4F6F8;
-  --surface:#FFFFFF;
-  --line:#DDE3E9;
-  --line-soft:#E9EDF1;
-  --ink:#1A2733;
-  --slate:#5B6B7C;
-  --slate-light:#8A97A4;
-  --green:#1F8A5C;
-  --green-bg:#E7F4ED;
-  --amber:#B9690E;
-  --amber-bg:#FCEEDC;
-  --red:#C23B2E;
-  --red-bg:#FBE9E6;
-  --font-display:'Source Serif 4', serif;
-  --font-body:'Inter', sans-serif;
-  --font-mono:'IBM Plex Mono', monospace;
-  --sidebar-w:248px;
-  --topbar-h:56px;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* HSL Design Tokens (Premium ERP - Linear/Notion style) */
+  --background: 210 20% 98%; /* Very light grayish blue (Canvas) */
+  --foreground: 222 47% 11%; /* Very dark navy (Ink) */
+
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+
+  /* Primary: Deep Navy */
+  --primary: 210 75% 17%;
+  --primary-foreground: 210 40% 98%;
+
+  /* Secondary: Soft Slate */
+  --secondary: 210 20% 92%;
+  --secondary-foreground: 222 47% 11%;
+
+  /* Muted: Lighter Slate */
+  --muted: 210 20% 96%;
+  --muted-foreground: 215 16% 47%;
+
+  /* Accent: Bright Blue for active states */
+  --accent: 214 100% 50%;
+  --accent-foreground: 210 40% 98%;
+
+  /* Semantics */
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 48 96% 89%;
+  --success: 142 71% 45%;
+  --success-foreground: 138 76% 97%;
+  --info: 214 100% 50%;
+  --info-foreground: 210 40% 98%;
+
+  /* Borders & Rings */
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 210 75% 17%;
+
+  /* Layout Radius */
+  --radius: 0.5rem;
+
+  /* Sidebar Tokens (Dark Navy Theme) */
+  --sidebar-background: 222 47% 11%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-border: 215 28% 17%;
+  --sidebar-accent: 215 28% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+
+  /* Legacy Fallback Tokens (DO NOT DELETE - Used for progressive migration) */
+  --navy-900: #0B2D4D;
+  --navy-700: #123A5F;
+  --navy-500: #1F5482;
+  --navy-100: #E7EEF5;
+  --canvas: #F4F6F8;
+  --surface: #FFFFFF;
+  --line: #DDE3E9;
+  --line-soft: #E9EDF1;
+  --ink: #1A2733;
+  --slate: #5B6B7C;
+  --slate-light: #8A97A4;
+  --green: #1F8A5C;
+  --green-bg: #E7F4ED;
+  --amber: #B9690E;
+  --amber-bg: #FCEEDC;
+  --red: #C23B2E;
+  --red-bg: #FBE9E6;
+  
+  --font-display: 'Source Serif 4', serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  
+  --sidebar-w: 248px;
+  --topbar-h: 56px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{

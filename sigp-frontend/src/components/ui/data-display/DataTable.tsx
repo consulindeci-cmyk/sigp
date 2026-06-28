@@ -8,7 +8,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import { cn } from '../../../lib/utils';
+import { cn } from '@/lib/utils';
 import { Button } from '../forms/Button';
 
 export interface DataTableProps<TData, TValue> {
@@ -39,65 +39,67 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <div className={cn("u-stack", className)}>
-      <div className="table-responsive-wrapper rounded-md border border-line bg-surface">
-        <table className="table-erp">
-          <thead className="bg-canvas">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  const isSticky = (header.column.columnDef.meta as any)?.isSticky;
-                  return (
-                    <th
-                      key={header.id}
-                      className={cn(
-                        "sticky-header p-3 text-left text-xs font-semibold uppercase tracking-wider text-slate",
-                        isSticky && "sticky-corner bg-sticky-canvas"
-                      )}
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-line-soft hover:bg-slate-50 transition-colors">
-                  {row.getVisibleCells().map((cell) => {
-                    const isSticky = (cell.column.columnDef.meta as any)?.isSticky;
+    <div className={cn("space-y-4", className)}>
+      <div className="w-full overflow-hidden rounded-md border border-border bg-background">
+        <div className="w-full overflow-x-auto -webkit-overflow-scrolling-touch">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b border-border">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => {
+                    const isSticky = (header.column.columnDef.meta as any)?.isSticky;
                     return (
-                      <td
-                        key={cell.id}
+                      <th
+                        key={header.id}
                         className={cn(
-                          "p-3 text-sm text-ink align-middle",
-                          isSticky && "sticky-col bg-sticky-surface border-r border-line"
+                          "px-4 py-3 font-semibold whitespace-nowrap",
+                          isSticky && "sticky left-0 z-20 bg-muted/95 backdrop-blur-sm shadow-[1px_0_0_0_hsl(var(--border))]"
                         )}
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
                     );
                   })}
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={columns.length} className="h-24 text-center text-slate">
-                  Aucune donnée disponible.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ))}
+            </thead>
+            <tbody className="divide-y divide-border">
+              {table.getRowModel().rows?.length ? (
+                table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-muted/50 transition-colors">
+                    {row.getVisibleCells().map((cell) => {
+                      const isSticky = (cell.column.columnDef.meta as any)?.isSticky;
+                      return (
+                        <td
+                          key={cell.id}
+                          className={cn(
+                            "px-4 py-3 align-middle",
+                            isSticky && "sticky left-0 z-10 bg-background shadow-[1px_0_0_0_hsl(var(--border))]"
+                          )}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                    Aucune donnée disponible.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {enablePagination && (
         <div className="flex items-center justify-between px-2">
-          <div className="text-sm text-slate">
+          <div className="text-sm text-muted-foreground">
             Page {table.getState().pagination.pageIndex + 1} sur {table.getPageCount()}
           </div>
           <div className="flex items-center space-x-2">

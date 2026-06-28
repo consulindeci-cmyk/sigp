@@ -1,4 +1,9 @@
 import React from 'react';
+import { Button } from '@/components/ui/forms/Button';
+import { Badge } from '@/components/ui/data-display/Badge';
+import { Card, CardContent } from '@/components/ui/data-display/Card';
+import { AlertTriangle, Download, Edit2, CheckCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ProjectHeaderProps {
   isEditing: boolean;
@@ -12,103 +17,107 @@ export default function ProjectHeader({ isEditing, setIsEditing }: ProjectHeader
   const financialProgress = 68.7;
   
   return (
-    <div className="panel" style={{ marginBottom: '20px', borderTop: '4px solid var(--navy-700)', borderRadius: '8px' }}>
-      <div className="panel-body" style={{ padding: '24px' }}>
+    <Card className="mb-6 border-t-4 border-t-primary rounded-t-lg">
+      <CardContent className="p-6">
         
         {/* Top Row: Title & Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <span className="cell-mono" style={{ fontSize: '14px', background: 'var(--navy-100)', padding: '4px 8px', borderRadius: '4px', color: 'var(--navy-900)' }}>PROJ-014</span>
-              <span className="chip" style={{ background: 'var(--amber-bg)', color: 'var(--amber)' }}>En retard</span>
-              <span className="chip" style={{ background: 'var(--red-bg)', color: 'var(--red)' }}>Priorité: Critique</span>
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+              <span className="font-mono text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded">PROJ-014</span>
+              <Badge variant="warning">En retard</Badge>
+              <Badge variant="destructive">Priorité: Critique</Badge>
             </div>
-            <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--navy-900)', margin: 0 }}>Électrification Rurale Phase II</h1>
+            <h1 className="text-2xl font-bold text-foreground m-0 tracking-tight">Électrification Rurale Phase II</h1>
           </div>
           
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className={`btn ${isEditing ? 'btn-primary' : ''}`} onClick={() => setIsEditing(!isEditing)}>
-              {isEditing ? '✓ Terminer l\'édition' : '✏️ Éditer la coquille'}
-            </button>
-            <button className="btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M12 3v13m0 0 4-4m-4 4-4-4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <Button 
+              variant={isEditing ? "default" : "outline"} 
+              onClick={() => setIsEditing(!isEditing)}
+              className="flex-1 md:flex-none"
+              leftIcon={isEditing ? <CheckCircle className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+            >
+              {isEditing ? 'Terminer l\'édition' : 'Éditer la coquille'}
+            </Button>
+            <Button variant="secondary" className="flex-1 md:flex-none" leftIcon={<Download className="w-4 h-4" />}>
               Exporter
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Middle Row: Meta info */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid var(--line-soft)' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--slate)' }}>Bailleur Principal</span>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)' }}>Agence Française de Développement (AFD)</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-border">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Bailleur Principal</span>
+            <span className="text-sm font-semibold text-foreground">Agence Française de Développement (AFD)</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--slate)' }}>Chef de Projet</span>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)' }}>Hassan Diallo</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chef de Projet</span>
+            <span className="text-sm font-semibold text-foreground">Hassan Diallo</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--slate)' }}>Budget Initial (BAC)</span>
-            <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--navy-700)' }}>$24,600,000.00</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Budget Initial (BAC)</span>
+            <span className="text-sm font-bold text-primary">$24,600,000.00</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--slate)' }}>Calendrier</span>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)' }}>Jan 2023 – Déc 2026</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Calendrier</span>
+            <span className="text-sm font-semibold text-foreground">Jan 2023 – Déc 2026</span>
           </div>
         </div>
 
         {/* Bottom Row: Jauges & Alertes */}
-        <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
+        <div className="flex flex-col lg:flex-row gap-8 items-start lg:items-center">
           
-          <div style={{ flex: 1, display: 'flex', gap: '30px' }}>
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
             {/* Jauge 1: Complétude */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--slate)' }}>Complétude du Dossier</span>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--amber)' }}>{completeness}%</span>
+            <div className="w-full">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-muted-foreground">Complétude du Dossier</span>
+                <span className="text-xs font-bold text-warning">{completeness}%</span>
               </div>
-              <div style={{ width: '100%', height: '6px', background: 'var(--line-soft)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${completeness}%`, height: '100%', background: 'var(--amber)' }}></div>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-warning transition-all duration-500" style={{ width: `${completeness}%` }} />
               </div>
             </div>
 
             {/* Jauge 2: Physique */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--slate)' }}>Progression Physique (EVM)</span>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--red)' }}>{physicalProgress}%</span>
+            <div className="w-full">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-muted-foreground">Progression Physique (EVM)</span>
+                <span className="text-xs font-bold text-destructive">{physicalProgress}%</span>
               </div>
-              <div style={{ width: '100%', height: '6px', background: 'var(--line-soft)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${physicalProgress}%`, height: '100%', background: 'var(--red)' }}></div>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-destructive transition-all duration-500" style={{ width: `${physicalProgress}%` }} />
               </div>
             </div>
 
             {/* Jauge 3: Financière */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--slate)' }}>Progression Financière</span>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--green)' }}>{financialProgress}%</span>
+            <div className="w-full">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-muted-foreground">Progression Financière</span>
+                <span className="text-xs font-bold text-success">{financialProgress}%</span>
               </div>
-              <div style={{ width: '100%', height: '6px', background: 'var(--line-soft)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${financialProgress}%`, height: '100%', background: 'var(--green)' }}></div>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-success transition-all duration-500" style={{ width: `${financialProgress}%` }} />
               </div>
             </div>
           </div>
 
           {/* Alertes */}
-          <div style={{ background: 'var(--red-bg)', padding: '12px 16px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '12px', minWidth: '300px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(194, 59, 46, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01"/></svg>
+          <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-md flex items-start gap-3 min-w-0 lg:min-w-[300px] w-full lg:w-auto">
+            <div className="shrink-0 p-1 bg-destructive/10 text-destructive rounded-full mt-0.5">
+              <AlertTriangle className="w-4 h-4" />
             </div>
             <div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--red)' }}>2 Alertes Critiques</div>
-              <div style={{ fontSize: '12px', color: 'var(--red)', opacity: 0.8 }}>CPI en baisse (0.79), 3 risques majeurs.</div>
+              <div className="text-sm font-bold text-destructive">2 Alertes Critiques</div>
+              <div className="text-xs text-destructive/80 mt-0.5">CPI en baisse (0.79), 3 risques majeurs.</div>
             </div>
           </div>
 
         </div>
 
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

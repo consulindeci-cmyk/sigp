@@ -36,7 +36,7 @@ export default function UICatalogPage() {
           <Button variant="secondary">Secondary</Button>
           <Button variant="outline">Outline</Button>
           <Button variant="ghost">Ghost</Button>
-          <Button variant="danger">Danger</Button>
+          <Button variant="destructive">Danger</Button>
           <Button isLoading>Loading</Button>
           <Button size="sm">Small</Button>
           <Button size="lg">Large</Button>
@@ -48,7 +48,7 @@ export default function UICatalogPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
           <Input placeholder="Input classique..." />
           <Input placeholder="Avec icône (ex: Recherche)" leftIcon={<Search className="w-4 h-4" />} />
-          <Input placeholder="En erreur..." error="Ce champ est requis." />
+          <Input placeholder="En erreur..." error={true} />
           <Input placeholder="Désactivé" disabled />
         </div>
       </section>
@@ -61,7 +61,7 @@ export default function UICatalogPage() {
           <Badge variant="outline">Outline</Badge>
           <Badge variant="success">Success</Badge>
           <Badge variant="warning">Warning</Badge>
-          <Badge variant="danger">Danger</Badge>
+          <Badge variant="destructive">Danger</Badge>
         </div>
       </section>
 
@@ -101,7 +101,7 @@ export default function UICatalogPage() {
               <ModalClose asChild>
                 <Button variant="outline">Annuler</Button>
               </ModalClose>
-              <Button variant="danger">Supprimer</Button>
+              <Button variant="destructive">Supprimer</Button>
             </ModalFooter>
           </ModalContent>
         </Modal>

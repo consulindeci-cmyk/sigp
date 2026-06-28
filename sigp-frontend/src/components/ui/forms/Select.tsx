@@ -1,31 +1,30 @@
 import React from 'react';
-import { cn } from '../../../lib/utils';
+import { cn } from '@/lib/utils';
+import { ChevronDown } from 'lucide-react';
 
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
-  error?: string;
-  options: { label: string; value: string | number }[];
+  error?: boolean;
+  wrapperClassName?: string;
 }
 
 export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, error, options, ...props }, ref) => {
+  ({ className, error, wrapperClassName, children, ...props }, ref) => {
     return (
-      <div className="w-full">
+      <div className={cn("relative w-full", wrapperClassName)}>
         <select
           className={cn(
-            "flex h-9 w-full rounded-md border border-line bg-canvas px-3 py-1 text-sm text-ink shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-navy-500 disabled:cursor-not-allowed disabled:opacity-50 appearance-none bg-[url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%235B6B7C\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>')] bg-no-repeat bg-[position:right_0.5rem_center] bg-[length:1em_1em]",
-            error && "border-red focus-visible:ring-red",
+            'flex h-10 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 pr-8 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors',
+            error && 'border-destructive focus-visible:ring-destructive',
             className
           )}
           ref={ref}
           {...props}
         >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          {children}
         </select>
-        {error && <p className="mt-1 text-xs text-red font-medium">{error}</p>}
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+          <ChevronDown className="h-4 w-4" />
+        </div>
       </div>
     );
   }
