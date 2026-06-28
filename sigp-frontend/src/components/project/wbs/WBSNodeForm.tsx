@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import type { WBS, StatutWBS } from '@/types';
 import { useLogframe } from '@/hooks/useLogframe';
+import { Button } from '@/components/ui/forms/Button';
+import { X, AlertCircle } from 'lucide-react';
 
 interface WBSNodeFormProps {
   initialData?: Partial<WBS>;
@@ -34,49 +36,56 @@ export function WBSNodeForm({ initialData, parentId, onSubmit, onCancel }: WBSNo
   const isParent = !parentId && !initialData?.parent_id;
 
   return (
-    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(11, 45, 77, 0.4)', backdropFilter: 'blur(4px)' }}>
-      <div className="panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '600px', margin: '20px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
-        <div className="panel-head">
-          <div className="panel-title">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-background rounded-xl shadow-lg border border-border w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/30 shrink-0">
+          <h2 className="text-lg font-bold text-foreground">
             {initialData?.id ? 'Modifier l\'élément WBS' : (parentId ? 'Nouvelle sous-activité' : 'Nouvelle composante principale')}
-          </div>
-          <button onClick={onCancel} style={{ background: 'transparent', border: 'none', color: 'var(--slate)' }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </h2>
+          <button 
+            type="button"
+            onClick={onCancel} 
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted"
+          >
+            <X size={20} />
           </button>
         </div>
         
-        <div className="panel-body">
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Body */}
+        <div className="p-6 overflow-y-auto">
+          <form id="wbs-form" onSubmit={handleSubmit} className="flex flex-col gap-6">
             
-            <div className="form-grid">
-              <div className="form-field full">
-                <label>Titre de l'élément *</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="text-sm font-semibold text-foreground">Titre de l'élément *</label>
                 <input 
                   required
                   type="text" 
                   value={formData.titre || ''} 
                   onChange={e => setFormData({...formData, titre: e.target.value})}
                   placeholder="Ex: Construction du bâtiment principal"
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 />
               </div>
 
-              <div className="form-field">
-                <label>Responsable</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-foreground">Responsable</label>
                 <input 
                   type="text" 
                   value={formData.responsable || ''} 
                   onChange={e => setFormData({...formData, responsable: e.target.value})}
                   placeholder="Nom ou département"
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 />
               </div>
 
-              <div className="form-field">
-                <label>Statut</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-foreground">Statut</label>
                 <select 
                   value={formData.statut} 
                   onChange={e => setFormData({...formData, statut: e.target.value as StatutWBS})}
-                  className="filter-select"
-                  style={{ width: '100%' }}
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 >
                   <option value="NON_COMMENCE">Non commencé</option>
                   <option value="EN_COURS">En cours</option>
@@ -86,52 +95,55 @@ export function WBSNodeForm({ initialData, parentId, onSubmit, onCancel }: WBSNo
                 </select>
               </div>
 
-              <div className="form-field">
-                <label>Date de début prévue</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-foreground">Date de début prévue</label>
                 <input 
                   type="date"
                   value={formData.date_debut_prevue || ''} 
                   onChange={e => setFormData({...formData, date_debut_prevue: e.target.value})}
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 />
               </div>
 
-              <div className="form-field">
-                <label>Date de fin prévue</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-foreground">Date de fin prévue</label>
                 <input 
                   type="date"
                   value={formData.date_fin_prevue || ''} 
                   onChange={e => setFormData({...formData, date_fin_prevue: e.target.value})}
+                  className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 />
               </div>
             </div>
 
             {!isParent && (
-              <div className="form-grid" style={{ marginTop: '4px', paddingTop: '20px', borderTop: '1px solid var(--line-soft)' }}>
-                <div className="form-field">
-                  <label>Budget alloué (XOF)</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-5 border-t border-border">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold text-foreground">Budget alloué (XOF)</label>
                   <input 
                     type="number"
                     value={formData.budget_alloue || ''} 
                     onChange={e => setFormData({...formData, budget_alloue: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                   />
                 </div>
                 
-                <div className="form-field">
-                  <label>Progression physique (%)</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold text-foreground">Progression physique (%)</label>
                   <input 
                     type="number" min="0" max="100"
                     value={formData.progression_physique || 0} 
                     onChange={e => setFormData({...formData, progression_physique: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                   />
                 </div>
 
-                <div className="form-field full">
-                  <label>Liaison Cadre Logique (Activité/Produit)</label>
+                <div className="flex flex-col gap-1.5 md:col-span-2">
+                  <label className="text-sm font-semibold text-foreground">Liaison Cadre Logique (Activité/Produit)</label>
                   <select 
                     value={formData.logframe_ref_id || ''} 
                     onChange={e => setFormData({...formData, logframe_ref_id: e.target.value})}
-                    className="filter-select"
-                    style={{ width: '100%' }}
+                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                   >
                     <option value="">-- Aucune liaison --</option>
                     {logframeItems
@@ -147,25 +159,31 @@ export function WBSNodeForm({ initialData, parentId, onSubmit, onCancel }: WBSNo
             )}
             
             {isParent && (
-              <div style={{ marginTop: '4px', paddingTop: '16px', borderTop: '1px solid var(--line-soft)' }}>
-                <div className="alert-row" style={{ padding: 0, border: 'none' }}>
-                  <div className="alert-ico navy">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                  </div>
+              <div className="pt-5 border-t border-border">
+                <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                   <div>
-                    <div className="ar-title">Calcul automatique</div>
-                    <div className="ar-meta">Le budget et la progression de cette composante seront calculés automatiquement en fonction de ses sous-activités.</div>
+                    <div className="text-sm font-bold text-foreground">Calcul automatique</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      Le budget et la progression de cette composante seront calculés automatiquement en fonction de ses sous-activités.
+                    </div>
                   </div>
                 </div>
               </div>
             )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-              <button type="button" onClick={onCancel} className="btn">Annuler</button>
-              <button type="submit" className="btn btn-primary">Enregistrer</button>
-            </div>
           </form>
         </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30 shrink-0">
+          <Button variant="outline" onClick={onCancel} type="button">
+            Annuler
+          </Button>
+          <Button variant="default" type="submit" form="wbs-form">
+            Enregistrer
+          </Button>
+        </div>
+
       </div>
     </div>
   );

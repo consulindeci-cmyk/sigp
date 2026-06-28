@@ -2,12 +2,9 @@ import { useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Plus, Trash2, Loader2, Filter, Save } from 'lucide-react'
 import { PageHeader } from '@/components/layout/AppShell'
-import { StatusBadge } from '@/components/shared/Badges'
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from '@/hooks/useTasks'
 import { useProject } from '@/hooks/useProjects'
 import type { Tache, StatutTache } from '@/types'
-import { formatDate } from '@/lib/utils'
-import { useWBS } from '@/hooks/useWBS'
 
 type EditingCell = { rowId: string; field: string } | null
 
@@ -25,7 +22,6 @@ export default function SaisiePOAPage() {
   const [editValue, setEditValue] = useState('')
 
   const { data: project } = useProject(projectId)
-  const { data: wbsData } = useWBS(projectId)
   const { data, isLoading } = useTasks(projectId, { limit: 200, statut: statutFilter || undefined })
   const createMutation = useCreateTask(projectId)
   const updateMutation = useUpdateTask(projectId)
@@ -136,9 +132,9 @@ export default function SaisiePOAPage() {
       />
 
       {/* Filtre statut */}
-      <div className="flex items-center gap-3 px-6 py-2 border-b border-navy-500 bg-navy-800/20">
+      <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-2 border-b border-navy-500 bg-navy-800/20">
         <Filter size={13} className="text-sigp-muted" />
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {['', ...STATUTS].map((s) => (
             <button
               key={s}

@@ -6,7 +6,7 @@ export default function TabDocuments() {
         <div className="page-actions">
           <div style={{ position: 'relative' }}>
             <svg style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: 'var(--slate-light)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <input type="text" placeholder="Rechercher des documents…" style={{ height: '36px', border: '1px solid var(--line)', borderRadius: '7px', padding: '0 12px 0 32px', fontSize: '13px', width: '220px', outline: 'none' }} />
+            <input type="text" placeholder="Rechercher des documents…" style={{ height: '36px', border: '1px solid var(--line)', borderRadius: '7px', padding: '0 12px 0 32px', fontSize: '13px', width: '100%', maxWidth: '220px', outline: 'none' }} />
           </div>
           <button className="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4m0 0 4 4m-4-4-4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Uploader Document</button>
         </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import { memo } from 'react';
 import { GitCommit } from 'lucide-react';
 
 export interface VersionItem {
@@ -15,9 +15,7 @@ interface VersionSelectorProps {
   onChange: (id: string) => void;
 }
 
-export const VersionSelector = React.memo(({ versions, selectedId, onChange }: VersionSelectorProps) => {
-  const selectedVersion = versions.find(v => v.id === selectedId) || versions.find(v => v.isActive);
-
+export const VersionSelector = memo(({ versions, selectedId, onChange }: VersionSelectorProps) => {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
       <GitCommit size={13} color="var(--slate)" aria-hidden="true" />

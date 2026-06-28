@@ -6,7 +6,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import {
   Eye, EyeOff, AlertCircle, Mail, Lock, Shield,
   LayoutDashboard, Coins, AlertTriangle, FileText,
-  User, Copy, CheckCircle2, Check
+  User, Check
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -36,7 +36,6 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
   const [isShaking, setIsShaking] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const emailRef = useRef<HTMLInputElement>(null)
 
@@ -71,8 +70,6 @@ export default function LoginPage() {
   const fillCredentials = (email: string, mdp: string) => {
     setValue('email', email, { shouldValidate: true })
     setValue('mot_de_passe', mdp, { shouldValidate: true })
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   const DEMO_USERS = [
@@ -225,7 +222,7 @@ export default function LoginPage() {
                 </span>
                 <input
                   {...emailRest}
-                  ref={(e) => { hookFormEmailRef(e); (emailRef as any).current = e }}
+                  ref={(e) => { hookFormEmailRef(e); (emailRef as React.MutableRefObject<HTMLInputElement | null>).current = e }}
                   type="email"
                   placeholder="nom@sigp.ci"
                   autoComplete="email"

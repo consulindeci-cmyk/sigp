@@ -85,7 +85,7 @@ export function useUpdateLogframe(projectId: string) {
 export function useDeleteLogframe(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (_id: string) => {
       await new Promise(resolve => setTimeout(resolve, 300));
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['logframe', projectId] }),

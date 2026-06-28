@@ -1,56 +1,161 @@
+import { useMemo } from 'react';
+import { DataTable } from '@/components/ui/data-table/DataTable';
+import { ColumnDef } from '@tanstack/react-table';
+import { Badge } from '@/components/ui/data-display/Badge';
+import { Button } from '@/components/ui/forms/Button';
+import { Plus } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Types & Mock Data
+// ---------------------------------------------------------------------------
+type RiskCriticality = 'Critique' | 'Modéré' | 'Faible';
+type RiskStatus = 'Surveillance accrue' | 'Maîtrisé' | 'Clos';
+
+interface Risk {
+  id: string;
+  name: string;
+  category: string;
+  probability: string;
+  impact: string;
+  criticality: RiskCriticality;
+  owner: string;
+  mitigation: string;
+  status: RiskStatus;
+}
+
+const MOCK_RISKS: Risk[] = [
+  {
+    id: 'R-01',
+    name: 'Retard de livraison des transformateurs',
+    category: "Chaîne d'approvisionnement",
+    probability: 'Élevée',
+    impact: 'Majeur',
+    criticality: 'Critique',
+    owner: 'Équipe Achats',
+    mitigation: 'Sourcer des fournisseurs alternatifs régionaux',
+    status: 'Surveillance accrue',
+  },
+  // Add more mock data if necessary or keep it as the single row
+];
+
 export default function TabRisks() {
+  const columns = useMemo<ColumnDef<Risk>[]>(() => [
+    {
+      accessorKey: 'name',
+      header: 'RISQUE',
+      cell: ({ row }) => <span className="font-medium">{row.getValue('name')}</span>,
+    },
+    {
+      accessorKey: 'category',
+      header: 'CATÉGORIE',
+    },
+    {
+      accessorKey: 'probability',
+      header: 'PROBABILITÉ',
+    },
+    {
+      accessorKey: 'impact',
+      header: 'IMPACT',
+    },
+    {
+      accessorKey: 'criticality',
+      header: 'CRITICITÉ',
+      cell: ({ row }) => {
+        const crit = row.getValue('criticality') as RiskCriticality;
+        let variant: 'default' | 'success' | 'warning' | 'destructive' = 'default';
+        if (crit === 'Critique') variant = 'destructive';
+        if (crit === 'Modéré') variant = 'warning';
+        if (crit === 'Faible') variant = 'success';
+        
+        return <Badge variant={variant}>{crit}</Badge>;
+      },
+    },
+    {
+      accessorKey: 'owner',
+      header: 'PROPRIÉTAIRE',
+    },
+    {
+      accessorKey: 'mitigation',
+      header: 'PLAN D\'ATTÉNUATION',
+    },
+    {
+      accessorKey: 'status',
+      header: 'STATUT',
+      cell: ({ row }) => {
+        const status = row.getValue('status') as RiskStatus;
+        let variant: 'default' | 'outline' | 'secondary' = 'outline';
+        if (status === 'Surveillance accrue') variant = 'default';
+        if (status === 'Clos') variant = 'secondary';
+
+        return <Badge variant={variant}>{status}</Badge>;
+      },
+    },
+  ], []);
+
   return (
-    <div className="tab-panel active" id="tab-risks">
-      <div className="page-head" style={{ marginBottom: '14px' }}>
-        <div><div className="section-label" style={{ margin: 0 }}>Registre des Risques</div></div>
-        <div className="page-actions">
-          <button className="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>Nouveau Risque</button>
+    <div className="flex flex-col gap-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-foreground">Registre des Risques</h2>
+        <Button variant="default" className="gap-2">
+          <Plus className="h-4 w-4" />
+          Nouveau Risque
+        </Button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Total des Risques</div>
+          <div className="text-3xl font-semibold text-foreground">11</div>
+        </div>
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Critiques</div>
+          <div className="text-3xl font-semibold text-destructive">3</div>
+        </div>
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Modérés</div>
+          <div className="text-3xl font-semibold text-warning">5</div>
+        </div>
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Faibles</div>
+          <div className="text-3xl font-semibold text-success">3</div>
         </div>
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-top"><span className="kpi-label">Total des Risques</span></div><div className="kpi-value">11</div></div>
-        <div className="kpi-card"><div className="kpi-top"><span className="kpi-label">Critiques</span></div><div className="kpi-value" style={{ color: 'var(--red)' }}>3</div></div>
-        <div className="kpi-card"><div className="kpi-top"><span className="kpi-label">Modérés</span></div><div className="kpi-value" style={{ color: 'var(--amber)' }}>5</div></div>
-        <div className="kpi-card"><div className="kpi-top"><span className="kpi-label">Faibles</span></div><div className="kpi-value" style={{ color: 'var(--green)' }}>3</div></div>
-      </div>
-
-      <div className="row-2-rev">
-        <div className="panel">
-          <div className="panel-head"><span className="panel-title">Matrice des Risques<span className="muted">Probabilité × Impact</span></span></div>
-          <div className="panel-body" id="risk-heatmap">
-             <div className="h-48 bg-canvas flex items-center justify-center text-slate rounded">Heatmap des Risques</div>
+      {/* Matrices / Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-background rounded-lg border border-border flex flex-col shadow-sm">
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="font-semibold text-foreground">Matrice des Risques</h3>
+            <p className="text-xs text-muted-foreground">Probabilité × Impact</p>
+          </div>
+          <div className="p-5 flex-1 flex items-center justify-center bg-muted/30 rounded-b-lg min-h-[12rem]">
+            <span className="text-sm text-muted-foreground">Heatmap des Risques</span>
           </div>
         </div>
-        <div className="panel">
-          <div className="panel-head"><span className="panel-title">Suivi<span className="muted">Aperçu des statuts</span></span></div>
-          <div className="panel-body" id="risk-monitoring">
-             <div className="h-48 bg-canvas flex items-center justify-center text-slate rounded">Graphe de suivi</div>
+        
+        <div className="bg-background rounded-lg border border-border flex flex-col shadow-sm">
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="font-semibold text-foreground">Suivi</h3>
+            <p className="text-xs text-muted-foreground">Aperçu des statuts</p>
+          </div>
+          <div className="p-5 flex-1 flex items-center justify-center bg-muted/30 rounded-b-lg min-h-[12rem]">
+            <span className="text-sm text-muted-foreground">Graphe de suivi</span>
           </div>
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-head"><span className="panel-title">Registre des Risques</span></div>
-        <div className="panel-body tight">
-          <table className="data-table">
-            <thead><tr>
-              <th style={{ minWidth: '200px' }}>Risque</th><th>Catégorie</th><th>Probabilité</th><th>Impact</th><th>Criticité</th>
-              <th>Propriétaire</th><th style={{ minWidth: '220px' }}>Plan d'Atténuation</th><th>Statut</th>
-            </tr></thead>
-            <tbody>
-              <tr>
-                <td className="cell-strong">Retard de livraison des transformateurs</td>
-                <td>Chaîne d'approvisionnement</td>
-                <td>Élevée</td>
-                <td>Majeur</td>
-                <td><div className="crit-badge" style={{ backgroundColor: 'var(--red)' }}>Critique</div></td>
-                <td>Équipe Achats</td>
-                <td>Sourcer des fournisseurs alternatifs régionaux</td>
-                <td><span className="chip at-risk">Surveillance accrue</span></td>
-              </tr>
-            </tbody>
-          </table>
+      {/* Table */}
+      <div className="bg-background rounded-lg border border-border shadow-sm flex flex-col">
+        <div className="px-5 py-4 border-b border-border">
+          <h3 className="font-semibold text-foreground">Registre des Risques</h3>
+        </div>
+        <div className="p-5">
+          <DataTable 
+            columns={columns} 
+            data={MOCK_RISKS} 
+          />
         </div>
       </div>
     </div>

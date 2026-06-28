@@ -1,5 +1,4 @@
-import React from 'react';
-import WidgetWrapper from '../../common/WidgetWrapper';
+﻿import WidgetWrapper from '../../common/WidgetWrapper';
 import { EvmDataPoint, WidgetState } from '../../../types/dashboard';
 
 interface Props {
@@ -7,7 +6,7 @@ interface Props {
   state?: WidgetState;
 }
 
-export default function EvmChart({ data, state = 'success' }: Props) {
+export default function EvmChart({ data: _data, state = 'success' }: Props) {
   return (
     <WidgetWrapper title="Courbe en S (PV vs EV vs AC)" state={state}>
       <svg width="100%" height="180" viewBox="0 0 400 180" preserveAspectRatio="none">

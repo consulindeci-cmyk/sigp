@@ -1,95 +1,97 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import { useContracts } from '@/hooks/useContracts';
-import { ContractDataTable } from '@/components/project/contracts/views/ContractDataTable';
-import { FilterBar } from '@/components/ui/forms/FilterBar';
-import { Select } from '@/components/ui/forms/Select';
-
-// On n'importe aucun composant complexe (DataTable, Forms) dans cette étape de fondation.
-// Seulement la structure de base.
+import { DataTable } from '@/components/ui/data-table/DataTable';
+import { Button } from '@/components/ui/forms/Button';
+import { Plus } from 'lucide-react';
+import { formatMoney } from '@/utils/format';
+import { getContractColumns } from '@/components/project/contracts/views/contractColumns';
+import { contractFilters } from '@/components/project/contracts/views/contractFilters';
+import type { Contract } from '@/types/contract';
 
 export default function ContractsPage() {
   const { id: urlProjectId } = useParams();
   const { activeProjectId } = useUIStore();
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  const { contracts, isLoading } = useContracts(resolvedProjectId);
+  const { data: contracts = [], isLoading, error } = useContracts(resolvedProjectId);
 
-  // Optimisation prévue : useMemo pour les futurs calculs financiers / agrégations
-  const totalContracts = useMemo(() => contracts.length, [contracts]);
+  const handleEdit = (_contract: Contract) => {};
+  const handleView = (_contract: Contract) => {};
+
+  const columns = useMemo(() => getContractColumns({ onEdit: handleEdit, onView: handleView }), []);
+
+  // ── KPI Calculations ───────────────────────────────────────────────────
+  const { totalContracts, montantEngage } = useMemo(() => {
+    let engage = 0;
+    contracts.forEach(c => {
+      if (c.statut !== 'BROUILLON' && c.statut !== 'RESILIE' && c.statut !== 'SUSPENDU') {
+        engage += c.montant_initial_base || 0;
+      }
+    });
+
+    return {
+      totalContracts: contracts.length,
+      montantEngage: engage,
+    };
+  }, [contracts]);
 
   if (!resolvedProjectId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-canvas">
-        <h2 className="text-xl font-bold text-navy-900 mb-2">Aucun projet sélectionné</h2>
-        <p className="text-slate">Veuillez sélectionner un projet pour afficher la gestion des contrats.</p>
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-background rounded-lg border border-border">
+        <h2 className="text-xl font-bold text-foreground mb-2">Aucun projet sélectionné</h2>
+        <p className="text-muted-foreground">Veuillez sélectionner un projet pour afficher la gestion des contrats.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-canvas">
-      {/* HEADER DE LA PAGE CONTRATS */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-surface border-b border-line">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-navy-900">Gestion des Contrats</h1>
-          <p className="text-sm text-slate">Suivi de l'exécution physique et financière des marchés signés.</p>
+    <div className="flex flex-col gap-6 h-full">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Gestion des Contrats</h1>
+          <p className="text-sm text-muted-foreground mt-1">Suivi de l'exécution physique et financière des marchés signés.</p>
         </div>
-        
-        <div className="flex items-center gap-3">
-          <button className="px-4 py-2 text-sm font-medium text-white bg-navy-600 rounded-md hover:bg-navy-700 transition-colors">
+        <div className="flex items-center gap-3 shrink-0">
+          <Button variant="default" leftIcon={<Plus className="h-4 w-4" />}>
             Nouveau Contrat
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* KPI / RÉSUMÉ (Structure) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 border-b border-line-soft bg-surface">
-        <div className="p-4 border border-line-soft rounded-lg bg-canvas">
-          <div className="text-xs font-semibold text-slate uppercase tracking-wide mb-1">Total Contrats Actifs</div>
-          <div className="text-2xl font-bold text-navy-900">{totalContracts}</div>
+      {/* KPI CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Total Contrats</div>
+          <div className="text-3xl font-semibold text-foreground">{totalContracts}</div>
         </div>
-        <div className="p-4 border border-line-soft rounded-lg bg-canvas">
-          <div className="text-xs font-semibold text-slate uppercase tracking-wide mb-1">Montant Engagé</div>
-          <div className="text-2xl font-bold text-navy-900 text-orange-600">---</div>
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Montant Engagé (XOF)</div>
+          <div className="text-3xl font-semibold text-warning">{formatMoney(montantEngage)}</div>
         </div>
-        <div className="p-4 border border-line-soft rounded-lg bg-canvas">
-          <div className="text-xs font-semibold text-slate uppercase tracking-wide mb-1">Taux d'Exécution</div>
-          <div className="text-2xl font-bold text-navy-900 text-green-600">---</div>
-        </div>
-      </div>
-
-      {/* ZONE DE CONTENU PRINCIPALE */}
-      <div className="flex-1 overflow-auto flex flex-col p-6 bg-canvas">
-        <div className="bg-surface border border-line rounded-lg flex flex-col flex-1 overflow-hidden shadow-sm">
-          <FilterBar>
-            <Select className="w-48">
-              <option value="">Tous les Bailleurs</option>
-              <option value="1">Bailleur 1</option>
-            </Select>
-            <Select className="w-48">
-              <option value="">Tous les Statuts</option>
-              <option value="EN_EXECUTION">EN EXECUTION</option>
-              <option value="SIGNE">SIGNE</option>
-            </Select>
-          </FilterBar>
-          
-          <div className="flex-1 overflow-auto p-4">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <span className="text-slate font-medium">Chargement des contrats...</span>
-              </div>
-            ) : contracts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-center border-2 border-dashed border-line rounded-lg">
-                <p className="text-slate font-medium">Aucun contrat trouvé pour ce projet.</p>
-              </div>
-            ) : (
-              <ContractDataTable contracts={contracts} />
-            )}
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Taux d'Exécution Global</div>
+          <div className="text-3xl font-semibold text-success">
+            {totalContracts > 0 ? 'N/A' : '0%'}
           </div>
         </div>
       </div>
+
+      {/* MOTEUR DATATABLE (Golden Standard) */}
+      <DataTable
+        columns={columns}
+        data={contracts}
+        isLoading={isLoading}
+        isError={!!error}
+        errorMessage={error instanceof Error ? error.message : "Erreur de chargement des contrats"}
+        searchKey="identification"
+        searchPlaceholder="Rechercher (Réf, Objet, Titulaire)..."
+        filters={contractFilters}
+        enableRowSelection={true}
+        onRowClick={handleView}
+      />
     </div>
   );
 }

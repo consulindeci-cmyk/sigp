@@ -10,8 +10,6 @@ interface LogframeMatrixProps {
   onAddChild: (parentId: string, parentLevel: string) => void;
 }
 
-const NIVEAUX_HIERARCHIE = ['IMPACT', 'OBJECTIF', 'RESULTAT', 'PRODUIT', 'ACTIVITE'];
-
 const getNiveauClass = (niveau: string) => {
   switch(niveau) {
     case 'IMPACT': return 'impact';

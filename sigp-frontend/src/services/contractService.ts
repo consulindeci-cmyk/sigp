@@ -1,28 +1,31 @@
-import { Contract, ContractAmendment, ContractDeliverable } from '../types/contract';
+import api from '@/lib/axios';
+import type { Contract } from '../types/contract';
 
-/**
- * Service métier vide pour la Gestion des Contrats (Phase 7 - Étape 1).
- * Il sera connecté à l'API lors d'une phase ultérieure.
- */
 export const contractService = {
   getContracts: async (projectId: string): Promise<Contract[]> => {
-    // API call will go here
-    return [];
+    const { data } = await api.get<Contract[]>(`/projects/${projectId}/contracts`);
+    return data;
   },
-  
+
   getContractById: async (contractId: string): Promise<Contract | null> => {
-    return null;
+    const { data } = await api.get<Contract>(`/contracts/${contractId}`);
+    return data;
   },
 
   createContract: async (contractData: Partial<Contract>): Promise<Contract> => {
-    throw new Error("Not implemented");
+    const { data } = await api.post<Contract>('/contracts', contractData);
+    return data;
   },
 
   updateContract: async (contractId: string, contractData: Partial<Contract>, versionHash: string): Promise<Contract> => {
-    throw new Error("Not implemented");
+    const { data } = await api.patch<Contract>(`/contracts/${contractId}`, {
+      ...contractData,
+      version_hash: versionHash,
+    });
+    return data;
   },
 
   deleteContract: async (contractId: string): Promise<void> => {
-    throw new Error("Not implemented");
-  }
+    await api.delete(`/contracts/${contractId}`);
+  },
 };

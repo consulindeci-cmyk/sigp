@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+﻿import { useMemo, memo } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 
 interface SunburstData {
@@ -12,7 +12,7 @@ interface SunburstChartProps {
 
 const COLORS = ['var(--navy-600)', 'var(--sky-500)', 'var(--amber-500)'];
 
-export const SunburstChart = React.memo(({ data }: SunburstChartProps) => {
+export const SunburstChart = memo(({ data }: SunburstChartProps) => {
   const chartData = useMemo(() => data, [data]);
 
   return (
@@ -29,7 +29,7 @@ export const SunburstChart = React.memo(({ data }: SunburstChartProps) => {
             dataKey="value"
             stroke="none"
           >
-            {chartData.map((entry, index) => (
+            {chartData.map((_entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>

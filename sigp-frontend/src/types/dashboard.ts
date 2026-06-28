@@ -108,3 +108,107 @@ export interface ProjectEvent {
   type: 'validation' | 'payment' | 'alert' | 'milestone';
   description: string;
 }
+
+// ==========================================
+// 8. PORTFOLIO KPIs
+// ==========================================
+export interface PortfolioKPI {
+  totalProjets: number;
+  projetsActifs: number;
+  projetsTermines: number;
+  projetsEnRetard: number;
+  budgetGlobal: string;
+  budgetDecaisse: string;
+  tauxDecaissement: string;
+  contratsActifs: number;
+  contratsEnApprobation: number;
+  risquesCritiques: number;
+  risquesCritiquesProgram: string;
+  nombreBailleurs: number;
+}
+
+// ==========================================
+// 9. BUDGET BREAKDOWN BY BAILLEUR
+// ==========================================
+export type DashboardProgressColor = 'default' | 'primary' | 'success' | 'warning' | 'destructive';
+
+export interface BudgetBailleur {
+  label: string;
+  value: string;
+  percent: number;
+  color: DashboardProgressColor;
+}
+
+// ==========================================
+// 10. RISK BREAKDOWN BY CATEGORY
+// ==========================================
+export interface RiskCategory {
+  label: string;
+  value: number;
+  percent: number;
+  color: DashboardProgressColor;
+}
+
+// ==========================================
+// 11. RECENT ACTIVITIES
+// ==========================================
+export interface RecentActivity {
+  id: string;
+  title: string;
+  meta: string;
+  time: string;
+  colorClass: string;
+}
+
+// ==========================================
+// 12. UPCOMING DEADLINES
+// ==========================================
+export interface UpcomingDeadline {
+  id: string;
+  title: string;
+  meta: string;
+  time: string;
+  colorClass: string;
+}
+
+// ==========================================
+// 13. ALERTS
+// ==========================================
+export interface DashboardAlert {
+  id: string;
+  title: string;
+  meta: string;
+  type: 'critical' | 'warning';
+}
+
+// ==========================================
+// 14. PROJECT STATUS DISTRIBUTION
+// ==========================================
+export interface ProjectStatusItem {
+  name: string;
+  value: number;
+  color: string;
+}
+
+// ==========================================
+// 15. BUDGET CONSUMPTION
+// ==========================================
+export interface BudgetConsumptionData {
+  total: number;
+  engaged: number;
+  disbursed: number;
+  remaining: number;
+  percentDisbursed: number;
+  percentEngaged: number;
+}
+
+// ==========================================
+// 16. TIMELINE
+// ==========================================
+export interface TimelineItem {
+  id: string;
+  date: string;
+  title: string;
+  project: string;
+  type: 'milestone' | 'deadline' | 'event';
+}

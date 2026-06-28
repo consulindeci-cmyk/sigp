@@ -1,5 +1,4 @@
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+﻿import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import { Search, Bell, HelpCircle, Menu } from 'lucide-react';
 import { Input } from '@/components/ui/forms/Input';

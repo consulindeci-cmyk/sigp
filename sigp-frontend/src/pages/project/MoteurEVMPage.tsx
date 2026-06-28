@@ -6,7 +6,6 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { useEvm, useEvmTasks, useEvmTrend } from '@/hooks/useEvm'
-import { useProject } from '@/hooks/useProjects'
 import { formatNumber } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,7 +88,6 @@ export default function MoteurEVMPage() {
   const { id: projectId = '' } = useParams()
   const [dateControle, setDateControle] = useState('')
 
-  const { data: project } = useProject(projectId)
   const { data: evm, isLoading: evmLoading, refetch } = useEvm(projectId, dateControle || undefined)
   const { data: evmTasks, isLoading: tasksLoading } = useEvmTasks(projectId, dateControle || undefined)
   const { data: trendData, isLoading: trendLoading } = useEvmTrend(projectId)
@@ -141,8 +139,8 @@ export default function MoteurEVMPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#F5F6F8', overflowY: 'auto' }}>
 
       {/* ── TOPBAR INTERNE ── */}
-      <div style={{
-        padding: '18px 28px 0',
+      <div className="px-4 sm:px-7" style={{
+        paddingTop: '18px',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16,
         flexWrap: 'wrap',
       }}>
@@ -187,7 +185,7 @@ export default function MoteurEVMPage() {
       </div>
 
       {/* ── CONTENU ── */}
-      <div style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="px-4 sm:px-7" style={{ paddingTop: '20px', paddingBottom: '20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* 7 cartes KPI — grille responsive */}
         <div style={{
@@ -201,7 +199,7 @@ export default function MoteurEVMPage() {
         </div>
 
         {/* Deux cartes du bas */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* ── Courbe en S ── */}
           <div style={{

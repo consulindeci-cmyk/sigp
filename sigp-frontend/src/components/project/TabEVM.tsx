@@ -37,7 +37,7 @@ export default function TabEVM() {
 
       <div className="panel">
         <div className="panel-head"><span className="panel-title">Indicateurs EVM<span className="muted">À date (Juin 2026)</span></span></div>
-        <div className="panel-body tight">
+        <div className="panel-body tight overflow-x-auto">
           <table className="data-table">
             <thead><tr><th>Indicateur</th><th>Définition</th><th>Valeur</th><th>Statut</th></tr></thead>
             <tbody>

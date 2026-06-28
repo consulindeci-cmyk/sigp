@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+﻿import { memo } from 'react';
 import type { PPMLigne } from '@/types/ppm';
 import { formatCurrency } from '@/lib/utils';
 

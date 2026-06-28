@@ -1,10 +1,10 @@
-export type ContractStatus = 
-  | 'BROUILLON' 
-  | 'SIGNE' 
-  | 'EN_EXECUTION' 
-  | 'SUSPENDU' 
-  | 'RESILIE' 
-  | 'TERMINE' 
+export type ContractStatus =
+  | 'BROUILLON'
+  | 'SIGNE'
+  | 'EN_EXECUTION'
+  | 'SUSPENDU'
+  | 'RESILIE'
+  | 'TERMINE'
   | 'CLOTURE';
 
 export interface ContractDeliverable {
@@ -38,17 +38,17 @@ export interface Contract {
   ppm_ligne_id: string;
   bailleur_id: string;
   fournisseur_id: string;
-  
+
   reference: string;
   intitule: string;
   statut: ContractStatus;
-  
+
   // Multi-devises
   devise_code: string;
   taux_change_contractuel: number;
   montant_initial_devise: number;
   montant_initial_base: number;
-  
+
   // Dates contractuelles
   date_signature?: string;
   date_ordre_service?: string;
@@ -58,13 +58,13 @@ export interface Contract {
   fin_reelle?: string;
   reception_provisoire?: string;
   reception_definitive?: string;
-  
+
   // Garanties
   garantie_bonne_execution_taux?: number;
   garantie_avance_taux?: number;
   retenue_garantie_taux?: number;
   date_expiration_garantie?: string;
-  
+
   // Optimistic Locking
   version_hash: string;
 }
@@ -79,14 +79,16 @@ export interface ContractVersion {
   donnees: Partial<Contract>;
 }
 
+export type JsonValue = string | number | boolean | null | Record<string, unknown> | JsonValue[];
+
 export interface ContractRevisionLog {
   id: string;
   contract_id: string;
   date_modification: string;
   auteur: string;
   champ_modifie: string;
-  ancienne_valeur: any;
-  nouvelle_valeur: any;
+  ancienne_valeur: JsonValue;
+  nouvelle_valeur: JsonValue;
 }
 
 export interface ContractWorkflowLog {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,6 +8,14 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
+
+// Extend TanStack Table meta type to support sticky columns
+declare module '@tanstack/react-table' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData, TValue> {
+    isSticky?: boolean;
+  }
+}
 import { cn } from '@/lib/utils';
 import { Button } from '../forms/Button';
 
@@ -19,6 +27,10 @@ export interface DataTableProps<TData, TValue> {
   className?: string;
 }
 
+/**
+ * @deprecated Use the new DataTable component from `@/components/ui/data-table/DataTable` instead.
+ * This component will be removed once all modules are migrated.
+ */
 export function DataTable<TData, TValue>({
   columns,
   data,
@@ -47,7 +59,7 @@ export function DataTable<TData, TValue>({
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
-                    const isSticky = (header.column.columnDef.meta as any)?.isSticky;
+                    const isSticky = header.column.columnDef.meta?.isSticky;
                     return (
                       <th
                         key={header.id}
@@ -70,7 +82,7 @@ export function DataTable<TData, TValue>({
                 table.getRowModel().rows.map((row) => (
                   <tr key={row.id} className="hover:bg-muted/50 transition-colors">
                     {row.getVisibleCells().map((cell) => {
-                      const isSticky = (cell.column.columnDef.meta as any)?.isSticky;
+                      const isSticky = cell.column.columnDef.meta?.isSticky;
                       return (
                         <td
                           key={cell.id}

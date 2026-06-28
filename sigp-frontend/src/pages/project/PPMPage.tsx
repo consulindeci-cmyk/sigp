@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import { usePPM } from '@/hooks/usePPM';
@@ -7,7 +7,7 @@ import { formatMoney } from '@/utils/format';
 import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
 import { PPMFormSlideOver } from '@/components/project/ppm/forms/PPMFormSlideOver';
-import { LayoutGrid, GitCommit, FileText, Send, CheckCircle2, TrendingUp } from 'lucide-react';
+import { LayoutGrid, GitCommit, TrendingUp } from 'lucide-react';
 import { PPMLigne } from '@/types';
 
 export default function PPMPage() {
@@ -54,7 +54,7 @@ export default function PPMPage() {
     setIsFormOpen(true);
   };
 
-  const handleSaveForm = async (data: any) => {
+  const handleSaveForm = async (data: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => {
     if (selectedLigneId) {
       await updateLigne(selectedLigneId, data);
     } else {

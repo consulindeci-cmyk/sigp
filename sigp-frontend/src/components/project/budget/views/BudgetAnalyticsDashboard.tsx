@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { BudgetVersion } from '@/types/budget';
 import { useBudgetAnalytics } from '@/hooks/useBudgetAnalytics';
 import { DashboardToolbar } from '@/components/common/analytics/DashboardToolbar';
-import { AnalyticsFilters, FilterGroup } from '@/components/common/analytics/AnalyticsFilters';
+import { AnalyticsFilters, type FilterGroup } from '@/components/common/analytics/AnalyticsFilters';
 import { DashboardSection } from '@/components/common/analytics/DashboardSection';
 import { ChartCard } from '@/components/common/analytics/ChartCard';
 import { SCurveChart } from '@/components/common/analytics/charts/SCurveChart';
 import { BurnRateChart } from '@/components/common/analytics/charts/BurnRateChart';
 import { HeatmapChart } from '@/components/common/analytics/charts/HeatmapChart';
 import { SunburstChart } from '@/components/common/analytics/charts/SunburstChart';
+import { AlertCircle } from 'lucide-react';
 import { TrendingUp, PieChart, LayoutGrid } from 'lucide-react';
 
 interface BudgetAnalyticsDashboardProps {
@@ -16,13 +17,11 @@ interface BudgetAnalyticsDashboardProps {
 }
 
 export function BudgetAnalyticsDashboard({ budgetVersion }: BudgetAnalyticsDashboardProps) {
-  // Hook d'analyse métier
   const { data, isLoading, error, isEmpty } = useBudgetAnalytics(budgetVersion.id);
 
-  // État local des filtres
   const [filters, setFilters] = useState<Record<string, string>>({
     bailleur: '',
-    composante: ''
+    composante: '',
   });
 
   const filterGroups: FilterGroup[] = [
@@ -32,8 +31,8 @@ export function BudgetAnalyticsDashboard({ budgetVersion }: BudgetAnalyticsDashb
       value: filters.bailleur,
       options: [
         { id: 'BM', label: 'Banque Mondiale' },
-        { id: 'AFD', label: 'AFD' }
-      ]
+        { id: 'AFD', label: 'AFD' },
+      ],
     },
     {
       id: 'composante',
@@ -41,9 +40,9 @@ export function BudgetAnalyticsDashboard({ budgetVersion }: BudgetAnalyticsDashb
       value: filters.composante,
       options: [
         { id: 'C1', label: 'Composante 1' },
-        { id: 'C2', label: 'Composante 2' }
-      ]
-    }
+        { id: 'C2', label: 'Composante 2' },
+      ],
+    },
   ];
 
   const handleFilterChange = (groupId: string, value: string) => {
@@ -52,41 +51,37 @@ export function BudgetAnalyticsDashboard({ budgetVersion }: BudgetAnalyticsDashb
 
   const handleRefresh = () => {
     // Sera implémenté via un invalidateQueries dans React Query
-    console.log('Rafraîchissement...');
   };
 
   if (error) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--red)' }}>
-        Une erreur est survenue lors du chargement des analytiques.
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-destructive">
+        <AlertCircle className="h-8 w-8" />
+        <p className="text-sm font-medium">Erreur de chargement des analytiques</p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--canvas)' }}>
-      
-      {/* Barre d'outils */}
-      <DashboardToolbar 
-        title="Dashboard Analytique BI" 
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+
+      <DashboardToolbar
+        title="Dashboard Analytique BI"
         onRefresh={handleRefresh}
-        onExport={() => console.log('Exportation...')}
+        onExport={() => undefined}
       />
 
-      {/* Filtres */}
-      <AnalyticsFilters 
+      <AnalyticsFilters
         groups={filterGroups}
         onChange={handleFilterChange}
       />
 
-      {/* Contenu Scrollable */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '24px' }} className="custom-scrollbar">
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          
-          {/* Section 1 : Performances Générales */}
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-[1400px] mx-auto flex flex-col gap-8">
+
           <DashboardSection title="Performances et Décaissements">
-            <ChartCard 
-              title="Courbe en S (Décaissements vs Prévisions)" 
+            <ChartCard
+              title="Courbe en S (Décaissements vs Prévisions)"
               icon={<TrendingUp size={16} />}
               isLoading={isLoading}
               isEmpty={isEmpty || !data?.scurve}
@@ -96,8 +91,8 @@ export function BudgetAnalyticsDashboard({ budgetVersion }: BudgetAnalyticsDashb
               <SCurveChart data={data?.scurve || []} />
             </ChartCard>
 
-            <ChartCard 
-              title="Burn Rate Mensuel" 
+            <ChartCard
+              title="Burn Rate Mensuel"
               icon={<LayoutGrid size={16} />}
               isLoading={isLoading}
               isEmpty={isEmpty || !data?.burnRate}
@@ -108,10 +103,9 @@ export function BudgetAnalyticsDashboard({ budgetVersion }: BudgetAnalyticsDashb
             </ChartCard>
           </DashboardSection>
 
-          {/* Section 2 : Répartition Analytique */}
           <DashboardSection title="Répartition Analytique">
-            <ChartCard 
-              title="Heatmap par Composante / Catégorie" 
+            <ChartCard
+              title="Heatmap par Composante / Catégorie"
               icon={<LayoutGrid size={16} />}
               isLoading={isLoading}
               isEmpty={isEmpty || !data?.heatmap}
@@ -121,8 +115,8 @@ export function BudgetAnalyticsDashboard({ budgetVersion }: BudgetAnalyticsDashb
               <HeatmapChart data={data?.heatmap || []} />
             </ChartCard>
 
-            <ChartCard 
-              title="Répartition par Bailleur (Sunburst)" 
+            <ChartCard
+              title="Répartition par Bailleur (Sunburst)"
               icon={<PieChart size={16} />}
               isLoading={isLoading}
               isEmpty={isEmpty || !data?.sunburst}

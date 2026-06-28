@@ -154,7 +154,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
     <>
       <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
       
-      <div className="fixed inset-y-0 right-0 w-[600px] bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300">
+      <div className="fixed inset-y-0 right-0 w-full sm:w-[600px] bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h2 className="text-lg font-bold text-slate-800">
             {ligne ? 'Modifier la ligne de marché' : 'Nouvelle ligne de marché'}

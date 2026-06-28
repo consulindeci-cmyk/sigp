@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { FileText, Calendar, ListTree, Activity, Clock, CheckCircle2, AlertCircle, LayoutGrid, BarChart2, GitCommit, ChevronDown, Flame, TrendingUp } from 'lucide-react';
+import { FileText, Calendar, ListTree, CheckCircle2, AlertCircle, LayoutGrid, GitCommit, Flame, TrendingUp } from 'lucide-react';
 import { usePTBA, useWorkflowPTBA } from '@/hooks/usePTBA';
 import { useUIStore } from '@/stores/uiStore';
 import { formatMoney } from '@/utils/format';
@@ -65,8 +65,8 @@ export default function PTBAPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--surface)' }}>
       
       {/* HEADER COCKPIT (ERP Bandeau) */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--line-strong)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--line-strong)', flexShrink: 0, flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--navy-900)' }}>PTBA {annee}</h1>
             {ptba && renderStatusBadge(ptba.statut)}
@@ -180,7 +180,7 @@ export default function PTBAPage() {
         </div>
 
         {/* TABS (Navigation ERP) */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--line-strong)', background: 'var(--surface)', padding: '0 16px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--line-strong)', background: 'var(--surface)', padding: '0 16px', flexShrink: 0, overflowX: 'auto' }}>
           <button style={{ padding: '12px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'MATRIX' ? '2px solid var(--navy-600)' : '2px solid transparent', color: activeTab === 'MATRIX' ? 'var(--navy-900)' : 'var(--slate)', fontWeight: activeTab === 'MATRIX' ? 600 : 500, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setActiveTab('MATRIX')}>
             <LayoutGrid size={14} /> Matrice Financière
           </button>

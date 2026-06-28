@@ -1,9 +1,7 @@
-import React from 'react';
-import { Button } from '@/components/ui/forms/Button';
+﻿import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Card, CardContent } from '@/components/ui/data-display/Card';
 import { AlertTriangle, Download, Edit2, CheckCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface ProjectHeaderProps {
   isEditing: boolean;
@@ -47,7 +45,7 @@ export default function ProjectHeader({ isEditing, setIsEditing }: ProjectHeader
         </div>
 
         {/* Middle Row: Meta info */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-border">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 pb-6 border-b border-border">
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Bailleur Principal</span>
             <span className="text-sm font-semibold text-foreground">Agence Française de Développement (AFD)</span>

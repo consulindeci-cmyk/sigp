@@ -1,5 +1,4 @@
-import React from 'react';
-import WidgetWrapper from '../../common/WidgetWrapper';
+﻿import WidgetWrapper from '../../common/WidgetWrapper';
 import { Milestone, WidgetState } from '../../../types/dashboard';
 
 interface Props {

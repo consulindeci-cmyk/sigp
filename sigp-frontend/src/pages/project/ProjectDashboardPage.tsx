@@ -1,6 +1,5 @@
-import React from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { AlertTriangle, Wallet, Activity, Target, ShieldAlert, FileText, Loader2, Landmark, Coins } from 'lucide-react'
+import { AlertTriangle, Wallet, Activity, Target, ShieldAlert, Loader2, Landmark, Coins } from 'lucide-react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { KPICard } from '@/components/shared/KPICard'
 import { StatusBadge } from '@/components/shared/Badges'
@@ -53,7 +52,6 @@ export default function ProjectDashboardPage() {
 
   // -- Risques
   const risques = risksData?.data ?? []
-  const risquesTotal = risques.length
   // Gestion de la casse ou des termes potentiels de la BDD
   const risquesCritiques = risques.filter(r => (r.criticite as any) === 'ELEVEE' || (r.criticite as any) === 'CRITIQUE').length
 

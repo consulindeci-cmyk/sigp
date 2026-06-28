@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight, ChevronDown, Activity, AlertCircle } from 'lucide-react';
+import { useState, useEffect, memo, Fragment, type KeyboardEvent } from 'react';
+import { ChevronRight, ChevronDown, Activity } from 'lucide-react';
 import type { PTBA, PTBALigne } from '@/types';
 import { formatMoney } from '@/utils/format';
 
@@ -10,10 +10,9 @@ interface PTBAMatrixRowProps {
   initialLigne: PTBALigne;
   expandedQuarters: Record<string, boolean>;
   onLigneChange: (updatedLigne: PTBALigne) => void;
-  // TODO: Add virtualization style prop here in the future
 }
 
-const PTBAMatrixRow = React.memo(({ initialLigne, expandedQuarters, onLigneChange }: PTBAMatrixRowProps) => {
+const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: PTBAMatrixRowProps) => {
   const [ligne, setLigne] = useState<PTBALigne>(initialLigne);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
@@ -34,7 +33,7 @@ const PTBAMatrixRow = React.memo(({ initialLigne, expandedQuarters, onLigneChang
     commitChange(monthKey);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent, monthKey: keyof PTBALigne) => {
+  const handleKeyDown = (e: KeyboardEvent, monthKey: keyof PTBALigne) => {
     if (e.key === 'Enter') {
       commitChange(monthKey);
     }
@@ -97,12 +96,12 @@ const PTBAMatrixRow = React.memo(({ initialLigne, expandedQuarters, onLigneChang
   const renderQuarterGroup = (q: string, qKey: keyof PTBALigne, mKeys: (keyof PTBALigne)[]) => {
     const isExpanded = expandedQuarters[q];
     return (
-      <React.Fragment key={q}>
+      <Fragment key={q}>
         <td style={{ padding: '6px 12px', fontWeight: 600, background: isExpanded ? 'var(--navy-50)' : 'inherit', borderLeft: '1px solid var(--line)', textAlign: 'right', color: 'var(--navy-800)', fontFamily: 'monospace', fontSize: '12px' }}>
           {formatMoney(ligne[qKey] as number)}
         </td>
         {isExpanded && mKeys.map(mKey => renderEditableMonth(mKey))}
-      </React.Fragment>
+      </Fragment>
     );
   };
 
@@ -175,7 +174,7 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
   const renderQuarterHeader = (q: string, months: string[]) => {
     const isExpanded = expandedQuarters[q];
     return (
-      <React.Fragment key={q}>
+      <Fragment key={q}>
         <th 
           role="button"
           tabIndex={0}
@@ -195,7 +194,7 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
             {m}
           </th>
         ))}
-      </React.Fragment>
+      </Fragment>
     );
   };
 

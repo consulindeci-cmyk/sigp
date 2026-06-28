@@ -1,5 +1,4 @@
-import React from 'react';
-import type { PPMLigne } from '@/types/ppm';
+﻿import type { PPMLigne } from '@/types/ppm';
 import { PPMMatrixRow } from './PPMMatrixRow';
 import { Filter } from 'lucide-react';
 

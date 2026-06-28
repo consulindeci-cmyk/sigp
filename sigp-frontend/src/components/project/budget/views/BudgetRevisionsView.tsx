@@ -1,14 +1,14 @@
-import React from 'react';
 import type { BudgetVersion } from '@/types/budget';
-import { WorkflowTimeline, TimelineStep } from '@/components/common/workflow/WorkflowTimeline';
-import { WorkflowLogTable, WorkflowLogEntry } from '@/components/common/workflow/WorkflowLogTable';
+import { WorkflowTimeline, type TimelineStep } from '@/components/common/workflow/WorkflowTimeline';
+import { WorkflowLogTable, type WorkflowLogEntry } from '@/components/common/workflow/WorkflowLogTable';
 import { formatMoney } from '@/utils/format';
+import { Badge } from '@/components/ui/data-display/Badge';
+import { Card, CardContent } from '@/components/ui/data-display/Card';
 
 interface BudgetRevisionsViewProps {
   budgetVersion: BudgetVersion;
 }
 
-// Mocks internes temporaires pour l'Étape 3
 const mockWorkflowSteps: TimelineStep[] = [
   { id: 's1', label: 'Création du Budget Initial', status: 'COMPLETED', date: '2025-01-10T09:00:00Z', user: 'Jean Dupond', role: 'Responsable Financier' },
   { id: 's2', label: 'Soumission pour Validation', status: 'COMPLETED', date: '2025-01-12T14:30:00Z', user: 'Jean Dupond', role: 'Responsable Financier', comment: 'Budget prêt pour examen N1.' },
@@ -23,42 +23,52 @@ const mockAuditLogs: WorkflowLogEntry[] = [
   { id: 'log1', date: '2025-01-10T09:00:00Z', utilisateur: 'Jean Dupond', role: 'Resp. Financier', action: 'Création', statut_nouveau: 'BROUILLON' },
 ];
 
+function statutToBadge(statut: string) {
+  switch (statut) {
+    case 'APPROUVE':    return <Badge variant="success">{statut}</Badge>;
+    case 'SOUMIS':      return <Badge variant="warning">{statut}</Badge>;
+    case 'EN_REVISION': return <Badge variant="destructive">{statut}</Badge>;
+    case 'BROUILLON':   return <Badge variant="secondary">{statut}</Badge>;
+    default:            return <Badge variant="outline">{statut}</Badge>;
+  }
+}
+
 export function BudgetRevisionsView({ budgetVersion }: BudgetRevisionsViewProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', background: 'var(--canvas)', padding: '24px' }} className="custom-scrollbar">
-      
-      <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        
-        {/* En-tête de la version */}
-        <div className="panel" style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              Version {budgetVersion.numero_version}
-              <span className="chip chip-success" style={{ fontSize: '11px' }}>{budgetVersion.statut}</span>
-            </h2>
-            <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: 'var(--slate)' }}>
-              Approuvé le {new Date(budgetVersion.approuve_le || '').toLocaleDateString('fr-FR')} par {budgetVersion.approuve_par}
-            </p>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '12px', color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Budget Total Révisé (BAC)</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--navy-900)', fontFamily: 'monospace' }}>
-              {formatMoney(budgetVersion.montant_total_revise)}
-            </div>
-          </div>
-        </div>
+    <div className="h-full overflow-auto bg-background">
+      <div className="max-w-[1000px] mx-auto w-full flex flex-col gap-6 p-6">
 
-        {/* Layout Colonnes : Timeline & Logs (Responsive) */}
-        <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          
-          <div style={{ flex: '1 1 300px', maxWidth: '100%' }}>
+        {/* Version header */}
+        <Card>
+          <CardContent className="flex flex-wrap justify-between items-center gap-4 pt-6">
+            <div>
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-3 flex-wrap">
+                Version {budgetVersion.numero_version}
+                {statutToBadge(budgetVersion.statut)}
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Approuvé le {new Date(budgetVersion.approuve_le || '').toLocaleDateString('fr-FR')} par {budgetVersion.approuve_par}
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] text-muted-foreground uppercase tracking-wide mb-1 font-medium">
+                Budget Total Révisé (BAC)
+              </div>
+              <div className="text-2xl font-bold text-foreground font-mono">
+                {formatMoney(budgetVersion.montant_total_revise)}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Timeline + Audit log */}
+        <div className="flex gap-6 items-start flex-wrap">
+          <div className="flex-1 basis-[300px] max-w-full">
             <WorkflowTimeline steps={mockWorkflowSteps} />
           </div>
-          
-          <div style={{ flex: '2 1 500px', minWidth: 0 }}>
+          <div className="flex-[2] basis-[500px] min-w-0">
             <WorkflowLogTable logs={mockAuditLogs} />
           </div>
-
         </div>
 
       </div>

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { User } from '@/types'
 import api from '@/lib/axios'
 
@@ -40,8 +40,8 @@ export const useAuthStore = create<AuthState>()(
       logout: async () => {
         try {
           await api.post('/auth/logout')
-        } catch (e) {
-          console.error('Logout error', e)
+        } catch {
+          // Ignore logout errors — clear session regardless
         }
         set({ user: null, token: null, refreshToken: null, isAuthenticated: false, isAuthChecked: true })
       },
@@ -57,6 +57,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'sigp-auth',
+      storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         user: state.user,
         token: state.token,

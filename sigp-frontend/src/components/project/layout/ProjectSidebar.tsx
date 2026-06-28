@@ -1,5 +1,4 @@
-import React from 'react';
-import { cn } from '@/lib/utils';
+﻿import { cn } from '@/lib/utils';
 
 interface ProjectSidebarProps {
   activeTab: string;
@@ -93,19 +92,19 @@ export default function ProjectSidebar({ activeTab, setActiveTab }: ProjectSideb
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
                       className={cn(
-                        "flex items-center justify-between px-3 py-2.5 rounded-md lg:rounded-none lg:border-r-4 transition-colors text-left shrink-0",
-                        isActive 
-                          ? "bg-accent/10 border-accent text-foreground font-semibold" 
+                        "flex items-center justify-between px-3 py-2.5 rounded-md lg:rounded-none lg:border-r-4 transition-colors text-left shrink-0 w-full overflow-hidden",
+                        isActive
+                          ? "bg-accent/10 border-accent text-foreground font-semibold"
                           : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground font-medium"
                       )}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div className={cn("h-2 w-2 rounded-full shrink-0", getStatusColor(item.status))} />
-                        <span className="text-sm whitespace-nowrap">
+                        <span className="text-sm truncate">
                           {item.label}
                         </span>
                       </div>
-                      <span className="text-[11px] text-muted-foreground hidden lg:inline ml-4">
+                      <span className="text-[11px] text-muted-foreground hidden lg:inline ml-2 shrink-0">
                         {item.meta}
                       </span>
                     </button>

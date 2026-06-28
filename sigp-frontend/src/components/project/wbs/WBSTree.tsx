@@ -1,24 +1,10 @@
 import React, { useMemo } from 'react';
-import { 
-  DndContext, 
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { Edit2, Trash2, Plus, GripVertical, ChevronDown, ChevronRight } from 'lucide-react';
+import { ColumnDef } from '@tanstack/react-table';
+import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import type { WBS } from '@/types';
 import { flattenWBSTree } from '@/utils/tree';
+import { DataTable } from '@/components/ui/data-table/DataTable';
+import { Badge } from '@/components/ui/data-display/Badge';
 
 interface WBSTreeProps {
   data: WBS[];
@@ -28,139 +14,27 @@ interface WBSTreeProps {
   onAddChild: (parentId: string) => void;
 }
 
-const statusBadge = (statut: string) => {
+const getStatusBadgeVariant = (statut: string) => {
   switch (statut) {
-    case 'NON_COMMENCE': return <span className="chip planned">Non commencé</span>;
-    case 'EN_COURS': return <span className="chip on-track">En cours</span>;
-    case 'TERMINE': return <span className="chip closed">Terminé</span>;
-    case 'EN_RETARD': return <span className="chip delayed">En retard</span>;
-    case 'ANNULE': return <span className="chip closed">Annulé</span>;
-    default: return <span className="chip planned">Non commencé</span>;
+    case 'NON_COMMENCE': return 'default';
+    case 'EN_COURS': return 'primary';
+    case 'TERMINE': return 'success';
+    case 'EN_RETARD': return 'destructive';
+    case 'ANNULE': return 'secondary';
+    default: return 'default';
   }
 };
 
-function SortableNode({ 
-  node, 
-  childrenNodes,
-  onEdit, 
-  onDelete, 
-  onAddChild,
-  expanded,
-  toggleExpand
-}: { 
-  node: WBS; 
-  childrenNodes: WBS[];
-  onEdit: (n: WBS) => void;
-  onDelete: (id: string) => void;
-  onAddChild: (id: string) => void;
-  expanded: boolean;
-  toggleExpand: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-    position: 'relative' as const,
-    zIndex: isDragging ? 10 : 1,
-  };
-
-  const hasChildren = childrenNodes.length > 0;
-  
-  const formatMoney = (amount: number = 0) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(amount);
-  };
-
-  const indentLevel = node.niveau - 1;
-
-  return (
-    <div ref={setNodeRef} className="wbs-row" role="row" style={Object.assign({}, style, {
-      display: 'flex',
-      alignItems: 'center',
-      padding: '11px 14px',
-      borderBottom: '1px solid var(--line-soft)',
-      background: 'var(--surface)',
-      position: 'relative'
-    })}>
-      
-      {/* Drag Handle */}
-      <div {...attributes} {...listeners} role="button" tabIndex={0} style={{ padding: '0 4px', color: 'var(--slate-light)', cursor: 'grab', marginRight: '6px', flexShrink: 0 }}>
-        <GripVertical size={15} />
-      </div>
-
-      {/* Indentation with connectors */}
-      <div role="cell" style={{ display: 'flex', width: `${indentLevel * 24}px`, flexShrink: 0, position: 'relative', height: '100%' }}>
-        {indentLevel > 0 && (
-          <div style={{
-            position: 'absolute',
-            left: `${(indentLevel - 1) * 24 + 11}px`,
-            top: '-23px', // remonte pour lier avec l'élément au-dessus
-            height: '46px',
-            borderLeft: '1px solid var(--line)',
-            borderBottom: '1px solid var(--line)',
-            width: '12px'
-          }} />
-        )}
-      </div>
-      
-      {/* Expander */}
-      <div role="cell" style={{ width: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginRight: '8px' }}>
-        {hasChildren ? (
-          <button 
-            onClick={toggleExpand} 
-            aria-expanded={expanded}
-            style={{ background: 'transparent', border: 'none', color: 'var(--slate)', display: 'flex' }}
-          >
-            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
-        ) : (
-          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--line)', marginLeft: '4px' }} />
-        )}
-      </div>
-
-      {/* Code + Titre */}
-      <div role="cell" style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <span className="cell-mono">{node.code_wbs}</span>
-        <span className={node.niveau === 1 ? 'cell-strong' : ''} style={{ color: 'var(--ink)' }}>{node.titre}</span>
-      </div>
-
-      {/* Columns */}
-      <div role="cell" style={{ width: '140px', color: 'var(--slate)', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {node.responsable || '-'}
-      </div>
-
-      <div role="cell" style={{ width: '120px', textAlign: 'right', fontWeight: 600, color: 'var(--ink)', fontSize: '13px' }}>
-        {formatMoney(node.budget_alloue)}
-      </div>
-
-      <div role="cell" style={{ width: '140px', padding: '0 16px' }}>
-        <div className="progress-wrap">
-          <div className="progress-track">
-            <div className={`progress-fill ${node.progression_physique === 100 ? 'green' : ''}`} style={{ width: `${node.progression_physique || 0}%` }} />
-          </div>
-          <span className="pct">{Math.round(node.progression_physique || 0)}%</span>
-        </div>
-      </div>
-
-      <div role="cell" style={{ width: '120px' }}>
-        {statusBadge(node.statut || 'NON_COMMENCE')}
-      </div>
-
-      <div role="cell" style={{ width: '90px', display: 'flex', gap: '6px', justifyContent: 'flex-end', flexShrink: 0 }}>
-        <button className="icon-btn" onClick={() => onAddChild(node.id)} title="Ajouter sous-élément">
-          <Plus size={14} />
-        </button>
-        <button className="icon-btn" onClick={() => onEdit(node)} title="Modifier">
-          <Edit2 size={14} />
-        </button>
-        <button className="icon-btn" onClick={() => onDelete(node.id)} style={{ color: 'var(--red)' }} title="Supprimer">
-          <Trash2 size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
+const getStatusLabel = (statut: string) => {
+  switch (statut) {
+    case 'NON_COMMENCE': return 'Non commencé';
+    case 'EN_COURS': return 'En cours';
+    case 'TERMINE': return 'Terminé';
+    case 'EN_RETARD': return 'En retard';
+    case 'ANNULE': return 'Annulé';
+    default: return 'Non commencé';
+  }
+};
 
 export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild }: WBSTreeProps) {
   const rootNodes = useMemo(() => data.filter(n => !n.parent_id).sort((a, b) => a.ordre - b.ordre), [data]);
@@ -169,7 +43,7 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild }: WBSTr
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   
   React.useEffect(() => {
-    const initialExp = data.reduce((acc, curr) => ({...acc, [curr.id]: true}), {});
+    const initialExp = data.reduce((acc, curr) => ({...acc, [curr.id]: true}), {} as Record<string, boolean>);
     setExpanded(initialExp);
   }, [data]);
 
@@ -177,17 +51,42 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild }: WBSTr
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  const handleMoveUp = (node: WBS) => {
+    const parentId = node.parent_id;
+    const siblings = flatItems.filter(item => item.parent_id === parentId);
+    const currentIndex = siblings.findIndex(item => item.id === node.id);
+    
+    if (currentIndex > 0) {
+      const prevSibling = siblings[currentIndex - 1];
+      const flatIndexCurrent = flatItems.findIndex(i => i.id === node.id);
+      const flatIndexPrev = flatItems.findIndex(i => i.id === prevSibling.id);
+      
+      const newItems = [...flatItems];
+      // Swap their positions in the flat array
+      const temp = newItems[flatIndexCurrent];
+      newItems[flatIndexCurrent] = newItems[flatIndexPrev];
+      newItems[flatIndexPrev] = temp;
+      
+      onReorder(newItems);
+    }
+  };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = flatItems.findIndex(i => i.id === active.id);
-      const newIndex = flatItems.findIndex(i => i.id === over.id);
-      onReorder(arrayMove(flatItems, oldIndex, newIndex));
+  const handleMoveDown = (node: WBS) => {
+    const parentId = node.parent_id;
+    const siblings = flatItems.filter(item => item.parent_id === parentId);
+    const currentIndex = siblings.findIndex(item => item.id === node.id);
+    
+    if (currentIndex < siblings.length - 1) {
+      const nextSibling = siblings[currentIndex + 1];
+      const flatIndexCurrent = flatItems.findIndex(i => i.id === node.id);
+      const flatIndexNext = flatItems.findIndex(i => i.id === nextSibling.id);
+      
+      const newItems = [...flatItems];
+      const temp = newItems[flatIndexCurrent];
+      newItems[flatIndexCurrent] = newItems[flatIndexNext];
+      newItems[flatIndexNext] = temp;
+      
+      onReorder(newItems);
     }
   };
 
@@ -203,63 +102,165 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild }: WBSTr
     });
   }, [flatItems, expanded, data]);
 
-  // CSS global pour le hover state
-  const wbsStyle = `
-    .wbs-row:hover { background: #FAFBFC !important; }
-    .wbs-row:last-child { border-bottom: none !important; }
-  `;
+  const formatMoney = (amount: number = 0) => {
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(amount);
+  };
 
-  return (
-    <div style={{ width: '100%', overflowX: 'auto' }}>
-      <style>{wbsStyle}</style>
-      <div style={{ minWidth: '900px' }} role="table" aria-label="WBS Tree">
-        {/* Header imitant .data-table thead th */}
-        <div role="row" style={{ 
-          display: 'flex', 
-          background: 'var(--canvas)', 
-          borderBottom: '1px solid var(--line)', 
-          padding: '10px 14px',
-          fontSize: '11px',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.3px',
-          color: 'var(--slate)'
-        }}>
-          <div role="columnheader" style={{ width: '28px', flexShrink: 0 }} /> {/* drag handle space */}
-          <div role="columnheader" style={{ flex: 1, minWidth: '200px' }}>Structure & Activités</div>
-          <div role="columnheader" style={{ width: '140px' }}>Responsable</div>
-          <div role="columnheader" style={{ width: '120px', textAlign: 'right' }}>Budget (XOF)</div>
-          <div role="columnheader" style={{ width: '140px', textAlign: 'center' }}>Progression</div>
-          <div role="columnheader" style={{ width: '120px' }}>Statut</div>
-          <div role="columnheader" style={{ width: '90px', textAlign: 'right' }}>Actions</div>
-        </div>
+  const columns = useMemo<ColumnDef<WBS>[]>(() => [
+    {
+      id: 'structure',
+      header: 'STRUCTURE & ACTIVITÉS',
+      size: 300,
+      cell: ({ row }) => {
+        const node = row.original;
+        const indentLevel = node.niveau - 1;
+        const childrenNodes = data.filter(n => n.parent_id === node.id);
+        const hasChildren = childrenNodes.length > 0;
+        const isExpanded = !!expanded[node.id];
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={visibleItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
-            <div role="rowgroup">
-              {visibleItems.length === 0 ? (
-                <div className="empty-state" style={{ padding: '40px 0' }}>
-                  <div className="es-title">WBS Vide</div>
-                  <div className="es-sub">Ajoutez une première composante pour commencer.</div>
-                </div>
+        return (
+          <div className="flex items-center gap-2" style={{ paddingLeft: `${indentLevel * 24}px` }}>
+            <div className="w-5 flex items-center justify-center shrink-0">
+              {hasChildren ? (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }}
+                  className="text-muted-foreground hover:text-foreground p-0.5 rounded-sm hover:bg-muted/50 transition-colors"
+                >
+                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
               ) : (
-                visibleItems.map(node => (
-                  <SortableNode 
-                    key={node.id} 
-                    node={node} 
-                    childrenNodes={data.filter(n => n.parent_id === node.id)}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onAddChild={onAddChild}
-                    expanded={!!expanded[node.id]}
-                    toggleExpand={() => toggleExpand(node.id)}
-                  />
-                ))
+                <div className="w-1.5 h-1.5 rounded-full bg-border" />
               )}
             </div>
-          </SortableContext>
-        </DndContext>
-      </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono text-xs font-medium text-muted-foreground shrink-0">{node.code_wbs}</span>
+              <span className={`truncate ${node.niveau === 1 ? 'font-semibold text-foreground' : 'font-medium text-foreground/90'}`}>
+                {node.titre}
+              </span>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'responsable',
+      header: 'RESPONSABLE',
+      size: 150,
+      cell: ({ row }) => {
+        const resp = row.original.responsable;
+        return <span className="text-muted-foreground truncate">{resp || '—'}</span>;
+      }
+    },
+    {
+      accessorKey: 'budget_alloue',
+      header: 'BUDGET (XOF)',
+      size: 120,
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        return <span className="font-semibold text-foreground">{formatMoney(row.original.budget_alloue)}</span>;
+      }
+    },
+    {
+      accessorKey: 'progression_physique',
+      header: 'PROGRESSION',
+      size: 140,
+      meta: { align: 'center' },
+      cell: ({ row }) => {
+        const prog = Math.round(row.original.progression_physique || 0);
+        return (
+          <div className="flex items-center gap-2 w-full max-w-[120px] mx-auto">
+            <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden">
+              <div 
+                className={`h-full rounded-full ${prog === 100 ? 'bg-success' : 'bg-primary'}`} 
+                style={{ width: `${prog}%` }} 
+              />
+            </div>
+            <span className="text-xs font-medium text-muted-foreground w-8 text-right">{prog}%</span>
+          </div>
+        );
+      }
+    },
+    {
+      accessorKey: 'statut',
+      header: 'STATUT',
+      size: 120,
+      cell: ({ row }) => {
+        const statut = row.original.statut || 'NON_COMMENCE';
+        return (
+          <Badge variant={getStatusBadgeVariant(statut) as any}>
+            {getStatusLabel(statut)}
+          </Badge>
+        );
+      }
+    },
+    {
+      id: 'actions',
+      header: 'ACTIONS',
+      size: 120,
+      meta: { align: 'right', isStickyRight: true },
+      cell: ({ row }) => {
+        const node = row.original;
+        const parentId = node.parent_id;
+        const siblings = flatItems.filter(item => item.parent_id === parentId);
+        const currentIndex = siblings.findIndex(item => item.id === node.id);
+        
+        const canMoveUp = currentIndex > 0;
+        const canMoveDown = currentIndex < siblings.length - 1;
+
+        return (
+          <div className="flex items-center justify-end gap-1">
+            <div className="flex flex-col gap-0.5 mr-2">
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleMoveUp(node); }}
+                disabled={!canMoveUp}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors p-0.5"
+                title="Monter"
+              >
+                <ArrowUp size={12} strokeWidth={3} />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleMoveDown(node); }}
+                disabled={!canMoveDown}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors p-0.5"
+                title="Descendre"
+              >
+                <ArrowDown size={12} strokeWidth={3} />
+              </button>
+            </div>
+
+            <button 
+              onClick={(e) => { e.stopPropagation(); onAddChild(node.id); }}
+              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+              title="Ajouter sous-élément"
+            >
+              <Plus size={16} />
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); onEdit(node); }}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+              title="Modifier"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
+              className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+              title="Supprimer"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        );
+      }
+    }
+  ], [data, expanded, flatItems]);
+
+  return (
+    <div className="w-full flex flex-col min-h-[400px]">
+      <DataTable 
+        columns={columns}
+        data={visibleItems}
+      />
     </div>
   );
 }

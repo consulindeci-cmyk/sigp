@@ -1,42 +1,127 @@
+import { useMemo } from 'react';
+import { DataTable } from '@/components/ui/data-table/DataTable';
+import { ColumnDef } from '@tanstack/react-table';
+import { Badge } from '@/components/ui/data-display/Badge';
+import { Button } from '@/components/ui/forms/Button';
+import { Download, Plus } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Types & Mock Data
+// ---------------------------------------------------------------------------
+type LogframeLevel = 'Impact' | 'Effet' | 'Produit' | 'Activité';
+type RiskLevel = 'Faible' | 'Modéré' | 'Élevé' | 'Critique';
+
+interface LogframeItem {
+  id: string;
+  level: LogframeLevel;
+  indicator: string;
+  baseline: string;
+  target: string;
+  verificationSource: string;
+  assumptions: string;
+  risk: RiskLevel;
+}
+
+const MOCK_LOGFRAME: LogframeItem[] = [
+  {
+    id: 'LF-01',
+    level: 'Impact',
+    indicator: 'Taux d\'accès à l\'électricité en milieu rural',
+    baseline: '12% (2022)',
+    target: '25% (2026)',
+    verificationSource: 'Rapports nationaux d\'énergie',
+    assumptions: 'Stabilité macro-économique',
+    risk: 'Faible',
+  },
+  {
+    id: 'LF-02',
+    level: 'Effet',
+    indicator: 'Nombre de foyers raccordés',
+    baseline: '0',
+    target: '50,000',
+    verificationSource: 'Rapports d\'opérateurs',
+    assumptions: 'Abonnements abordables',
+    risk: 'Modéré',
+  },
+];
+
 export default function TabLogframe() {
+  const columns = useMemo<ColumnDef<LogframeItem>[]>(() => [
+    {
+      accessorKey: 'level',
+      header: 'NIVEAU',
+      cell: ({ row }) => {
+        const level = row.getValue('level') as LogframeLevel;
+        let variant: 'default' | 'success' | 'warning' | 'info' = 'default';
+        if (level === 'Impact') variant = 'default';
+        if (level === 'Effet') variant = 'info';
+        if (level === 'Produit') variant = 'success';
+        if (level === 'Activité') variant = 'warning';
+        
+        return <Badge variant={variant}>{level}</Badge>;
+      },
+    },
+    {
+      accessorKey: 'indicator',
+      header: 'INDICATEUR',
+      cell: ({ row }) => <span className="font-medium">{row.getValue('indicator')}</span>,
+    },
+    {
+      accessorKey: 'baseline',
+      header: 'RÉFÉRENCE (BASELINE)',
+    },
+    {
+      accessorKey: 'target',
+      header: 'CIBLE',
+    },
+    {
+      accessorKey: 'verificationSource',
+      header: 'SOURCE DE VÉRIFICATION',
+    },
+    {
+      accessorKey: 'assumptions',
+      header: 'HYPOTHÈSES',
+    },
+    {
+      accessorKey: 'risk',
+      header: 'RISQUES',
+      cell: ({ row }) => {
+        const risk = row.getValue('risk') as RiskLevel;
+        let variant: 'default' | 'success' | 'warning' | 'destructive' = 'default';
+        if (risk === 'Faible') variant = 'success';
+        if (risk === 'Modéré') variant = 'warning';
+        if (risk === 'Élevé') variant = 'destructive';
+        if (risk === 'Critique') variant = 'destructive';
+        
+        return <Badge variant={variant}>{risk}</Badge>;
+      },
+    },
+  ], []);
+
   return (
-    <div className="tab-panel active" id="tab-logframe">
-      <div className="page-head" style={{ marginBottom: '14px' }}>
-        <div><div className="section-label" style={{ margin: 0 }}>Matrice du Cadre Logique</div></div>
-        <div className="page-actions">
-          <button className="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v13m0 0 4-4m-4 4-4-4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Exporter</button>
-          <button className="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>Ajouter un Indicateur</button>
+    <div className="flex flex-col gap-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-foreground">Matrice du Cadre Logique</h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2">
+            <Download className="h-4 w-4" />
+            Exporter
+          </Button>
+          <Button variant="default" className="gap-2">
+            <Plus className="h-4 w-4" />
+            Ajouter un Indicateur
+          </Button>
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-body tight">
-          <table className="data-table">
-            <thead><tr>
-              <th style={{ minWidth: '110px' }}>Niveau</th><th style={{ minWidth: '200px' }}>Indicateur</th><th>Référence (Baseline)</th><th>Cible</th>
-              <th style={{ minWidth: '180px' }}>Source de Vérification</th><th style={{ minWidth: '180px' }}>Hypothèses</th><th style={{ minWidth: '160px' }}>Risques</th>
-            </tr></thead>
-            <tbody>
-              <tr>
-                <td><span className="level-tag impact">Impact</span></td>
-                <td className="cell-strong">Taux d'accès à l'électricité en milieu rural</td>
-                <td>12% (2022)</td>
-                <td>25% (2026)</td>
-                <td>Rapports nationaux d'énergie</td>
-                <td>Stabilité macro-économique</td>
-                <td><span className="chip closed">Faible</span></td>
-              </tr>
-              <tr>
-                <td><span className="level-tag outcome">Effet</span></td>
-                <td className="cell-strong">Nombre de foyers raccordés</td>
-                <td>0</td>
-                <td>50,000</td>
-                <td>Rapports d'opérateurs</td>
-                <td>Abonnements abordables</td>
-                <td><span className="chip at-risk">Modéré</span></td>
-              </tr>
-            </tbody>
-          </table>
+      {/* Table */}
+      <div className="bg-background rounded-lg border border-border shadow-sm flex flex-col">
+        <div className="p-5">
+          <DataTable 
+            columns={columns} 
+            data={MOCK_LOGFRAME} 
+          />
         </div>
       </div>
     </div>

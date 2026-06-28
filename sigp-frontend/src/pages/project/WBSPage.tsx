@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { LayoutList, TrendingUp, DollarSign } from 'lucide-react';
+import { LayoutList, TrendingUp, DollarSign, Plus, Loader2, AlertCircle } from 'lucide-react';
 import { useWBS, useUpdateWBSOrder } from '@/hooks/useWBS';
 import { useProject } from '@/hooks/useProjects';
 import { useUIStore } from '@/stores/uiStore';
 import { WBSTree } from '@/components/project/wbs/WBSTree';
 import { WBSNodeForm } from '@/components/project/wbs/WBSNodeForm';
 import type { WBS } from '@/types';
+import { ContentLayout } from '@/components/layout/ContentLayout';
+import { PageHeader } from '@/components/layout/AppShell';
+import { Button } from '@/components/ui/forms/Button';
 
 export default function WBSPage() {
   const { id: urlProjectId } = useParams();
@@ -32,10 +35,10 @@ export default function WBSPage() {
 
   if (!resolvedProjectId) {
     return (
-      <div className="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        <div className="es-title">Aucun projet sélectionné</div>
-        <div className="es-sub">Veuillez sélectionner un projet pour afficher sa structure WBS.</div>
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-background rounded-lg border border-border">
+        <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-bold text-foreground mb-2">Aucun projet sélectionné</h2>
+        <p className="text-muted-foreground">Veuillez sélectionner un projet pour afficher sa structure WBS.</p>
       </div>
     );
   }
@@ -112,79 +115,62 @@ export default function WBSPage() {
   };
 
   return (
-    <div style={{ padding: '0 0 40px' }}>
-      
-      <div className="page-head" style={{ marginBottom: '24px' }}>
-        <div>
-          <h1 className="page-title">Work Breakdown Structure (WBS)</h1>
-          <p className="page-sub">Structure hiérarchique des travaux pour le projet {project?.code_projet}</p>
-        </div>
-        <div className="page-actions">
-          <button className="btn btn-primary" onClick={handleAddRoot}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-            Ajouter Composante
-          </button>
-        </div>
+    <ContentLayout>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <PageHeader 
+          title="Work Breakdown Structure (WBS)"
+          subtitle={`Structure hiérarchique des travaux pour le projet ${project?.code_projet || ''}`}
+        />
+        <Button variant="default" leftIcon={<Plus className="w-4 h-4" />} onClick={handleAddRoot}>
+          Ajouter Composante
+        </Button>
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi-card">
-          <div className="kpi-top">
-            <span className="kpi-label">Éléments WBS</span>
-            <div className="kpi-icon navy">
-              <LayoutList size={16} />
-            </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Éléments WBS</span>
+            <LayoutList className="w-4 h-4 text-primary" />
           </div>
-          <div className="kpi-value">{wbsItems.length}</div>
-          <div className="kpi-foot">
-            <span>Structure arborescente globale</span>
-          </div>
+          <div className="text-3xl font-semibold text-foreground mb-1">{wbsItems.length}</div>
+          <div className="text-xs text-muted-foreground">Structure arborescente globale</div>
         </div>
         
-        <div className="kpi-card">
-          <div className="kpi-top">
-            <span className="kpi-label">Progression Physique</span>
-            <div className="kpi-icon green">
-              <TrendingUp size={16} />
-            </div>
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Progression Physique</span>
+            <TrendingUp className="w-4 h-4 text-success" />
           </div>
-          <div className="kpi-value">{Math.round(globalProgress)}%</div>
-          <div className="kpi-foot">
-            <div className="progress-track" style={{ flex: 1, marginTop: '2px' }}>
-              <div className="progress-fill green" style={{ width: `${globalProgress}%` }} />
-            </div>
+          <div className="text-3xl font-semibold text-foreground mb-2">{Math.round(globalProgress)}%</div>
+          <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="h-full bg-success rounded-full" style={{ width: `${globalProgress}%` }} />
           </div>
         </div>
 
-        <div className="kpi-card" style={{ gridColumn: 'span 2' }}>
-          <div className="kpi-top">
-            <span className="kpi-label">Budget Alloué (WBS)</span>
-            <div className="kpi-icon amber">
-              <DollarSign size={16} />
-            </div>
+        <div className="bg-background rounded-lg border border-border p-5 shadow-sm sm:col-span-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Budget Alloué (WBS)</span>
+            <DollarSign className="w-4 h-4 text-warning" />
           </div>
-          <div className="kpi-value">{formatMoney(totalBudget)}</div>
-          <div className="kpi-foot">
-            <span>Agrégé depuis les sous-activités</span>
-          </div>
+          <div className="text-3xl font-semibold text-foreground mb-1">{formatMoney(totalBudget)}</div>
+          <div className="text-xs text-muted-foreground">Agrégé depuis les sous-activités</div>
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Arborescence du Projet</div>
+      <div className="bg-background rounded-lg shadow-sm border border-border flex flex-col h-full overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-muted/10">
+          <h3 className="text-base font-semibold text-foreground">Arborescence du Projet</h3>
         </div>
-        <div className="panel-body tight">
+        <div className="p-0 flex-1">
           {isLoading ? (
-            <div className="empty-state" style={{ padding: '60px 0' }}>
-              <div className="spinner" style={{ width: '32px', height: '32px', border: '3px solid var(--line-soft)', borderTopColor: 'var(--navy-900)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            <div className="flex h-64 items-center justify-center bg-background">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           ) : error ? (
-            <div className="empty-state">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-              <div className="es-title" style={{ color: 'var(--red)' }}>Erreur de chargement</div>
-              <div className="es-sub">Impossible de charger la structure WBS.</div>
+            <div className="flex flex-col items-center justify-center h-64 text-center bg-background p-8">
+              <AlertCircle className="w-10 h-10 text-destructive mb-3" />
+              <div className="text-lg font-semibold text-destructive mb-1">Erreur de chargement</div>
+              <div className="text-sm text-muted-foreground">Impossible de charger la structure WBS.</div>
             </div>
           ) : (
             <WBSTree 
@@ -206,6 +192,6 @@ export default function WBSPage() {
           onCancel={() => setIsFormOpen(false)}
         />
       )}
-    </div>
+    </ContentLayout>
   );
 }
