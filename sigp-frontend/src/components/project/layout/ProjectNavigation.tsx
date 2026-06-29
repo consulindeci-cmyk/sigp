@@ -82,7 +82,7 @@ function getStatusColor(status: string) {
 
 export default function ProjectNavigation({ activeTab, setActiveTab }: ProjectNavigationProps) {
   return (
-    <div className="w-full bg-background border border-border rounded-lg shadow-sm overflow-hidden mb-6">
+    <div className="w-full bg-background border border-border rounded-lg shadow-sm overflow-hidden">
       <div className="overflow-x-auto scrollbar-thin">
         <div className="flex divide-x divide-border min-w-max">
 

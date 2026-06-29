@@ -1,36 +1,82 @@
+import { Clock, Plus, DollarSign, Calendar, ShoppingBag, BarChart3 } from 'lucide-react'
+import { Button } from '@/components/ui/forms/Button'
+
+const REPORT_CARDS = [
+  {
+    icon: DollarSign,
+    iconVariant: 'primary',
+    title: 'Rapports Financiers',
+    desc: 'Exécution budgétaire, décaissements, contributions bailleurs',
+  },
+  {
+    icon: Calendar,
+    iconVariant: 'success',
+    title: 'Rapports PTBA',
+    desc: 'Avancement du plan de travail annuel par composante',
+  },
+  {
+    icon: ShoppingBag,
+    iconVariant: 'primary',
+    title: 'Rapports de Passation des Marchés',
+    desc: 'Statut des contrats, respect des délais',
+  },
+  {
+    icon: BarChart3,
+    iconVariant: 'warning',
+    title: 'Rapports M&E',
+    desc: 'Suivi du cadre logique, mise à jour des indicateurs',
+  },
+] as const
+
+const iconVariantMap: Record<string, string> = {
+  primary: 'bg-primary/10 text-primary',
+  success: 'bg-success/10 text-success',
+  warning: 'bg-warning/10 text-warning',
+  destructive: 'bg-destructive/10 text-destructive',
+}
+
 export default function TabReports() {
   return (
-    <div className="tab-panel active" id="tab-reports">
-      <div className="page-head" style={{ marginBottom: '14px' }}>
-        <div><div className="section-label" style={{ margin: 0 }}>Centre de Rapports</div></div>
-        <div className="page-actions">
-          <button className="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Rapports Planifiés</button>
-          <button className="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>Générer un Rapport</button>
+    <div className="flex flex-col gap-4 bg-background">
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Centre de Rapports</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Générez et planifiez les rapports du projet</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" leftIcon={<Clock className="h-3.5 w-3.5" />} className="h-8 text-xs">
+            Rapports Planifiés
+          </Button>
+          <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs">
+            Générer un Rapport
+          </Button>
         </div>
       </div>
 
-      <div className="report-grid">
-        <div className="report-card">
-          <span className="rc-ico navy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2v20M17 6.5c0-1.7-2-3-5-3s-5 1.3-5 3 2 2.7 5 3 5 1.5 5 3.2-2 3-5 3-5-1.3-5-3"/></svg></span>
-          <div className="rc-title">Rapports Financiers</div>
-          <div className="rc-sub">Exécution budgétaire, décaissements, contributions bailleurs</div>
-        </div>
-        <div className="report-card">
-          <span className="rc-ico green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span>
-          <div className="rc-title">Rapports PTBA</div>
-          <div className="rc-sub">Avancement du plan de travail annuel par composante</div>
-        </div>
-        <div className="report-card">
-          <span className="rc-ico navy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3h10l1 4H6l1-4Z"/><path d="M6 7h12l-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7Z"/></svg></span>
-          <div className="rc-title">Rapports de Passation des Marchés</div>
-          <div className="rc-sub">Statut des contrats, respect des délais</div>
-        </div>
-        <div className="report-card">
-          <span className="rc-ico amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 17h18M6 17V10m6 7V3h-6v14m-6 0V6H3v11"/></svg></span>
-          <div className="rc-title">Rapports M&E</div>
-          <div className="rc-sub">Suivi du cadre logique, mise à jour des indicateurs</div>
-        </div>
+      {/* ── GRILLE DE RAPPORTS ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {REPORT_CARDS.map(card => {
+          const Icon = card.icon
+          return (
+            <button
+              key={card.title}
+              className="bg-card border border-border rounded-lg p-5 flex items-start gap-4 text-left hover:border-primary/40 hover:bg-muted/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={card.title}
+            >
+              <div className={`p-2.5 rounded-lg shrink-0 ${iconVariantMap[card.iconVariant]}`}>
+                <Icon className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm text-foreground">{card.title}</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{card.desc}</p>
+              </div>
+            </button>
+          )
+        })}
       </div>
+
     </div>
-  );
+  )
 }

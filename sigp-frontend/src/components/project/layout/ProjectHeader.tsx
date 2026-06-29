@@ -1,7 +1,8 @@
-﻿import { Button } from '@/components/ui/forms/Button';
+import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Card, CardContent } from '@/components/ui/data-display/Card';
-import { AlertTriangle, Download, Edit2, CheckCircle } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Edit2, CheckCircle, Download, AlertTriangle } from 'lucide-react';
 
 interface ProjectHeaderProps {
   isEditing: boolean;
@@ -9,40 +10,39 @@ interface ProjectHeaderProps {
 }
 
 export default function ProjectHeader({ isEditing, setIsEditing }: ProjectHeaderProps) {
-  // Mock data for the header
   const completeness = 35;
   const physicalProgress = 76;
   const financialProgress = 68.7;
-  
+
   return (
-    <Card className="mb-6 border-t-4 border-t-primary rounded-t-lg">
+    <Card className="mb-6 border-t-4 border-t-primary rounded-lg shadow-sm bg-card border-border">
       <CardContent className="p-6">
         
-        {/* Top Row: Title & Actions */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <div>
-            <div className="flex flex-wrap items-center gap-3 mb-2">
+        <PageHeader
+          title="Électrification Rurale Phase II"
+          badges={
+            <>
               <span className="font-mono text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded">PROJ-014</span>
               <Badge variant="warning">En retard</Badge>
               <Badge variant="destructive">Priorité: Critique</Badge>
-            </div>
-            <h1 className="text-2xl font-bold text-foreground m-0 tracking-tight">Électrification Rurale Phase II</h1>
-          </div>
-          
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <Button 
-              variant={isEditing ? "default" : "outline"} 
-              onClick={() => setIsEditing(!isEditing)}
-              className="flex-1 md:flex-none"
-              leftIcon={isEditing ? <CheckCircle className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
-            >
-              {isEditing ? 'Terminer l\'édition' : 'Éditer la coquille'}
-            </Button>
-            <Button variant="secondary" className="flex-1 md:flex-none" leftIcon={<Download className="w-4 h-4" />}>
-              Exporter
-            </Button>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <>
+              <Button 
+                variant={isEditing ? "default" : "outline"} 
+                onClick={() => setIsEditing(!isEditing)}
+                className="flex-1 md:flex-none"
+                leftIcon={isEditing ? <CheckCircle className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+              >
+                {isEditing ? 'Terminer l\'édition' : 'Éditer la coquille'}
+              </Button>
+              <Button variant="secondary" className="flex-1 md:flex-none" leftIcon={<Download className="w-4 h-4" />}>
+                Exporter
+              </Button>
+            </>
+          }
+        />
 
         {/* Middle Row: Meta info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 pb-6 border-b border-border">

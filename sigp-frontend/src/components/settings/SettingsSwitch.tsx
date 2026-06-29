@@ -27,7 +27,7 @@ export function SettingsSwitch({ id, checked, onChange, disabled = false }: Sett
       <span
         aria-hidden="true"
         className={cn(
-          'pointer-events-none inline-block h-4 w-4 rounded-full bg-background shadow-lg ring-0',
+          'pointer-events-none inline-block h-4 w-4 rounded-full bg-background shadow-sm ring-0',
           'transition-transform duration-200 ease-in-out',
           checked ? 'translate-x-4' : 'translate-x-0'
         )}

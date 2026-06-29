@@ -1,81 +1,135 @@
-import { useState } from 'react';
+import { useState } from 'react'
+import { Plus, Calendar } from 'lucide-react'
+import { Button } from '@/components/ui/forms/Button'
+import { StatCard } from '@/components/ui/data-display/StatCard'
+import { Badge } from '@/components/ui/data-display/Badge'
+
+const VIEWS = [
+  { key: 'table', label: 'Tableau' },
+  { key: 'gantt', label: 'Diagramme de Gantt' },
+  { key: 'calendar', label: 'Vue Calendrier' },
+] as const
+
+type View = typeof VIEWS[number]['key']
 
 export default function TabPTBA() {
-  const [view, setView] = useState('table');
+  const [view, setView] = useState<View>('table')
 
   return (
-    <div className="tab-panel active" id="tab-ptba">
-      <div className="page-head" style={{ marginBottom: '14px' }}>
+    <div className="flex flex-col gap-4 p-4 bg-background min-h-full">
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="section-label" style={{ margin: 0 }}>Plan de Travail et Budget Annuel — 2026</div>
+          <h2 className="text-sm font-bold text-foreground">Plan de Travail et Budget Annuel — 2026</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Suivi des activités et de l'exécution budgétaire annuelle</p>
         </div>
-        <div className="page-actions">
-          <div className="view-toggle">
-            <button className={`vt-btn ${view === 'table' ? 'active' : ''}`} onClick={() => setView('table')}>Tableau</button>
-            <button className={`vt-btn ${view === 'gantt' ? 'active' : ''}`} onClick={() => setView('gantt')}>Diagramme de Gantt</button>
-            <button className={`vt-btn ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')}>Vue Calendrier</button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-md border border-border bg-muted/10 p-0.5 gap-0.5">
+            {VIEWS.map(v => (
+              <button
+                key={v.key}
+                onClick={() => setView(v.key)}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  view === v.key
+                    ? 'bg-card text-foreground shadow-sm border border-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
           </div>
-          <button className="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>Ajouter Activité</button>
+          <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs">
+            Ajouter Activité
+          </Button>
         </div>
       </div>
 
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '18px' }}>
-        <div className="kpi-card"><div className="kpi-top"><span className="kpi-label">Activités Terminées</span></div><div className="kpi-value" style={{ color: 'var(--green)' }}>58 <span style={{ fontSize: '14px', color: 'var(--slate-light)' }}>/ 76</span></div></div>
-        <div className="kpi-card"><div className="kpi-top"><span className="kpi-label">Budget Annuel Prévu</span></div><div className="kpi-value">$8.9M</div></div>
-        <div className="kpi-card"><div className="kpi-top"><span className="kpi-label">Budget Annuel Exécuté</span></div><div className="kpi-value">$5.7M <span style={{ fontSize: '13px', color: 'var(--slate-light)' }}>64%</span></div></div>
+      {/* ── KPI STRIP ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatCard
+          title="Activités Terminées"
+          value="58 / 76"
+          iconVariant="success"
+          description="Taux d'achèvement PTBA"
+        />
+        <StatCard
+          title="Budget Annuel Prévu"
+          value="$8.9M"
+          iconVariant="primary"
+          description="Plan de travail 2026"
+        />
+        <StatCard
+          title="Budget Annuel Exécuté"
+          value="$5.7M"
+          iconVariant="warning"
+          description="64% du budget annuel"
+        />
       </div>
 
+      {/* ── VUE TABLEAU ─────────────────────────────────────────────────────── */}
       {view === 'table' && (
-        <div id="ptba-view-table">
-          <div className="panel">
-            <div className="panel-body tight">
-              <table className="data-table">
-                <thead><tr>
-                  <th>Code Activité</th><th style={{ minWidth: '220px' }}>Activité</th><th>Composante</th><th>Responsable</th>
-                  <th>T1</th><th>T2</th><th>T3</th><th>T4</th><th>Budget</th>
-                </tr></thead>
-                <tbody>
-                  <tr>
-                    <td className="cell-mono">ACT-1.1.1</td>
-                    <td className="cell-strong">Étude d'impact environnemental</td>
-                    <td>1. Infrastructure</td>
-                    <td>Dr. M. Sarr</td>
-                    <td><div className="qcell done">✔</div></td>
-                    <td><div className="qcell pending"></div></td>
-                    <td><div className="qcell pending"></div></td>
-                    <td><div className="qcell pending"></div></td>
-                    <td className="cell-mono">$150K</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-muted/30 border-b border-border">
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Code Activité</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground min-w-[220px]">Activité</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Composante</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Responsable</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">T1</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">T2</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">T3</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">T4</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Budget</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-border hover:bg-muted/10 transition-colors">
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">ACT-1.1.1</td>
+                  <td className="px-4 py-3 font-semibold text-foreground">Étude d'impact environnemental</td>
+                  <td className="px-4 py-3 text-muted-foreground">1. Infrastructure</td>
+                  <td className="px-4 py-3 text-muted-foreground">Dr. M. Sarr</td>
+                  <td className="px-4 py-3 text-center">
+                    <Badge variant="success" className="text-[10px] px-1.5">✔</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-block w-4 h-4 rounded border border-border bg-muted/30" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-block w-4 h-4 rounded border border-border bg-muted/30" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-block w-4 h-4 rounded border border-border bg-muted/30" />
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-foreground">$150K</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
+      {/* ── VUE GANTT ───────────────────────────────────────────────────────── */}
       {view === 'gantt' && (
-        <div id="ptba-view-gantt">
-          <div className="panel">
-            <div className="panel-body">
-              <div className="h-48 flex items-center justify-center text-slate">Diagramme de Gantt (Placeholder)</div>
-            </div>
-          </div>
+        <div className="bg-card border border-border rounded-lg p-8 flex items-center justify-center text-muted-foreground text-sm min-h-[200px]">
+          Diagramme de Gantt (Placeholder)
         </div>
       )}
 
+      {/* ── VUE CALENDRIER ─────────────────────────────────────────────────── */}
       {view === 'calendar' && (
-        <div id="ptba-view-calendar">
-          <div className="panel">
-            <div className="panel-body">
-              <div className="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
-                <div className="es-title">Vue calendrier</div>
-                <div className="es-sub">Basculez vers Tableau ou Gantt pour voir les activités programmées.</div>
-              </div>
-            </div>
-          </div>
+        <div className="bg-card border border-border rounded-lg p-10 flex flex-col items-center justify-center gap-3 text-center">
+          <Calendar className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+          <p className="font-semibold text-foreground">Vue calendrier</p>
+          <p className="text-sm text-muted-foreground">
+            Basculez vers Tableau ou Gantt pour voir les activités programmées.
+          </p>
         </div>
       )}
+
     </div>
-  );
+  )
 }

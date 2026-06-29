@@ -460,6 +460,21 @@ export default function ProjectDeliverablesTab() {
   return (
     <section aria-label="Registre des Livrables" className="flex flex-col gap-6">
 
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Registre des Livrables</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Suivi de la production, validation et livraison des livrables projet</p>
+        </div>
+        <Button
+          variant="default" size="sm" className="h-8 text-xs"
+          onClick={() => { setSelectedDeliverable(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+          Nouveau livrable
+        </Button>
+      </div>
+
       {/* KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

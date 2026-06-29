@@ -2,9 +2,10 @@ import { useState, useEffect, memo, Fragment, type KeyboardEvent } from 'react';
 import { ChevronRight, ChevronDown, Activity } from 'lucide-react';
 import type { PTBA, PTBALigne } from '@/types';
 import { formatMoney } from '@/utils/format';
+import { Badge } from '@/components/ui/data-display/Badge';
 
 // ============================================================================
-// SOUS-COMPOSANT : Ligne de Matrice (Préparation Virtualisation)
+// SOUS-COMPOSANT : Ligne de Matrice
 // ============================================================================
 interface PTBAMatrixRowProps {
   initialLigne: PTBALigne;
@@ -16,9 +17,8 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
   const [ligne, setLigne] = useState<PTBALigne>(initialLigne);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [cellError, setCellError] = useState<string | null>(null);
 
-  // Synchronisation si la ligne initiale change (via le parent)
   useEffect(() => {
     setLigne(initialLigne);
   }, [initialLigne]);
@@ -26,7 +26,7 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
   const handleCellClick = (monthKey: keyof PTBALigne) => {
     setEditingCell(monthKey);
     setTempValue(String(ligne[monthKey] || 0));
-    setError(null);
+    setCellError(null);
   };
 
   const handleBlur = (monthKey: keyof PTBALigne) => {
@@ -34,25 +34,22 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
   };
 
   const handleKeyDown = (e: KeyboardEvent, monthKey: keyof PTBALigne) => {
-    if (e.key === 'Enter') {
-      commitChange(monthKey);
-    }
+    if (e.key === 'Enter') commitChange(monthKey);
     if (e.key === 'Escape') {
       setEditingCell(null);
-      setError(null);
+      setCellError(null);
     }
   };
 
   const commitChange = (monthKey: keyof PTBALigne) => {
     const val = parseFloat(tempValue);
     if (isNaN(val) || val < 0) {
-      setError('Montant invalide');
+      setCellError('Montant invalide');
       return;
     }
 
     const updated = { ...ligne, [monthKey]: val };
 
-    // Calculs temps réel (Mois -> Trimestre -> Total Annuel)
     updated.q1_montant = updated.m1_montant + updated.m2_montant + updated.m3_montant;
     updated.q2_montant = updated.m4_montant + updated.m5_montant + updated.m6_montant;
     updated.q3_montant = updated.m7_montant + updated.m8_montant + updated.m9_montant;
@@ -61,32 +58,39 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
 
     setLigne(updated);
     setEditingCell(null);
-    setError(null);
-    
-    // Remonter le changement pour impacter les KPI globaux
+    setCellError(null);
     onLigneChange(updated);
   };
 
   const renderEditableMonth = (mKey: keyof PTBALigne) => {
     const isEditing = editingCell === mKey;
     return (
-      <td key={mKey} style={{ padding: '0', background: 'var(--canvas)', color: 'var(--slate)', textAlign: 'right', position: 'relative', fontFamily: 'monospace', fontSize: '12px' }} onClick={() => !isEditing && handleCellClick(mKey)}>
+      <td
+        key={mKey}
+        className="p-0 bg-background text-right relative font-mono text-xs"
+        onClick={() => !isEditing && handleCellClick(mKey)}
+      >
         {isEditing ? (
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, background: 'var(--surface)', display: 'flex', alignItems: 'center', padding: '0 8px', border: '2px solid var(--navy-500)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-            <input 
+          <div className="absolute inset-0 z-50 bg-card flex items-center px-2 border-2 border-primary shadow-sm">
+            <input
               autoFocus
-              type="number" 
-              value={tempValue} 
+              type="number"
+              value={tempValue}
               onChange={e => setTempValue(e.target.value)}
               onBlur={() => handleBlur(mKey)}
-              onKeyDown={(e) => handleKeyDown(e, mKey)}
-              style={{ width: '100%', border: 'none', outline: 'none', textAlign: 'right', background: 'transparent', fontSize: '13px', fontWeight: 600, color: 'var(--ink)', fontFamily: 'monospace' }}
+              onKeyDown={e => handleKeyDown(e, mKey)}
+              className="w-full border-none outline-none text-right bg-transparent text-sm font-semibold text-foreground font-mono"
+              aria-label="Montant mensuel"
             />
-            {error && <div style={{ position: 'absolute', top: '-22px', right: 0, background: 'var(--red)', color: 'white', fontSize: '10px', padding: '2px 4px', borderRadius: '2px', whiteSpace: 'nowrap' }}>{error}</div>}
+            {cellError && (
+              <div className="absolute -top-5 right-0 bg-destructive text-destructive-foreground text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10">
+                {cellError}
+              </div>
+            )}
           </div>
         ) : (
-          <div style={{ cursor: 'text', padding: '6px 12px', minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-             {formatMoney(ligne[mKey] as number)}
+          <div className="cursor-text px-3 py-1.5 flex items-center justify-end text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-colors min-h-[32px]">
+            {formatMoney(ligne[mKey] as number)}
           </div>
         )}
       </td>
@@ -97,7 +101,7 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
     const isExpanded = expandedQuarters[q];
     return (
       <Fragment key={q}>
-        <td style={{ padding: '6px 12px', fontWeight: 600, background: isExpanded ? 'var(--navy-50)' : 'inherit', borderLeft: '1px solid var(--line)', textAlign: 'right', color: 'var(--navy-800)', fontFamily: 'monospace', fontSize: '12px' }}>
+        <td className={`px-3 py-1.5 font-semibold border-l border-border text-right font-mono text-xs ${isExpanded ? 'bg-primary/10 text-primary' : 'text-foreground'}`}>
           {formatMoney(ligne[qKey] as number)}
         </td>
         {isExpanded && mKeys.map(mKey => renderEditableMonth(mKey))}
@@ -106,33 +110,42 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
   };
 
   return (
-    <tr role="row" style={{ borderBottom: '1px solid var(--line-soft)', transition: 'background 0.1s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--slate-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-      {/* Colonne fixe */}
-      <td style={{ position: 'sticky', left: 0, background: 'inherit', zIndex: 1, borderRight: '1px solid var(--line-strong)', padding: '6px 12px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--navy-900)' }}>
-            <Activity size={14} color="var(--slate)" />
-            {ligne.activite_nom}
+    <tr role="row" className="border-b border-border hover:bg-muted/20 transition-colors">
+
+      {/* Sticky first column */}
+      <td className="sticky left-0 z-[1] bg-card border-r border-border px-3 py-1.5">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm">
+            <Activity className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{ligne.activite_nom}</span>
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--slate)', paddingLeft: '20px' }}>
+          <div className="text-[11px] text-muted-foreground pl-5">
             WBS: {ligne.wbs_id} | Ref: {ligne.logframe_ref_id || 'N/A'}
           </div>
           {ligne.is_procurement && (
-            <div style={{ fontSize: '11px', paddingLeft: '20px' }}>
-               <span className="chip chip-warning" style={{ fontSize: '10px', padding: '2px 4px' }}>Achat: {ligne.type_marche}</span>
+            <div className="pl-5">
+              <Badge variant="warning" className="text-[10px] px-1 py-0">
+                Achat: {ligne.type_marche}
+              </Badge>
             </div>
           )}
         </div>
       </td>
-      
-      {/* Infos Base */}
-      <td style={{ padding: '6px 12px', fontSize: '12px', color: 'var(--slate)' }}>{ligne.responsable_id || 'Non assigné'}</td>
-      <td style={{ padding: '6px 12px', fontSize: '12px', color: 'var(--slate)' }}>{ligne.bailleur_id || '-'}</td>
-      <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--navy-900)', fontFamily: 'monospace', fontSize: '13px', background: 'var(--slate-50)' }} title="Calculé automatiquement">
+
+      {/* Info columns */}
+      <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+        {ligne.responsable_id || 'Non assigné'}
+      </td>
+      <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+        {ligne.bailleur_id || '-'}
+      </td>
+
+      {/* Total (calculated) */}
+      <td className="px-3 py-1.5 text-right font-bold text-foreground font-mono text-sm bg-muted/10" title="Calculé automatiquement">
         {formatMoney(ligne.montant_total)}
       </td>
-      
-      {/* Quarters & Months */}
+
+      {/* Quarter groups */}
       {renderQuarterGroup('Q1', 'q1_montant', ['m1_montant', 'm2_montant', 'm3_montant'])}
       {renderQuarterGroup('Q2', 'q2_montant', ['m4_montant', 'm5_montant', 'm6_montant'])}
       {renderQuarterGroup('Q3', 'q3_montant', ['m7_montant', 'm8_montant', 'm9_montant'])}
@@ -140,6 +153,8 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
     </tr>
   );
 });
+
+PTBAMatrixRow.displayName = 'PTBAMatrixRow';
 
 // ============================================================================
 // COMPOSANT PRINCIPAL : Matrice PTBA
@@ -159,38 +174,34 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
   };
 
   const handleLigneChange = (updatedLigne: PTBALigne) => {
-    // Dans une vraie application, on ferait une mutation API ici (ou debounce)
-    // Pour l'interface, on remonte l'info pour mettre à jour les KPI globaux
     if (!ptba.lignes) return;
-    
     const newLignes = ptba.lignes.map(l => l.id === updatedLigne.id ? updatedLigne : l);
     const newTotal = newLignes.reduce((acc, curr) => acc + curr.montant_total, 0);
-    
-    if (onUpdatePTBA) {
-      onUpdatePTBA({ ...ptba, lignes: newLignes, budget_total: newTotal });
-    }
+    onUpdatePTBA?.({ ...ptba, lignes: newLignes, budget_total: newTotal });
   };
 
   const renderQuarterHeader = (q: string, months: string[]) => {
     const isExpanded = expandedQuarters[q];
     return (
       <Fragment key={q}>
-        <th 
+        <th
           role="button"
           tabIndex={0}
           aria-expanded={isExpanded}
-          style={{ minWidth: '100px', cursor: 'pointer', background: isExpanded ? 'var(--navy-50)' : 'var(--surface)', borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 12px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--navy-800)', borderBottom: '2px solid var(--line-strong)' }}
+          className={`min-w-[100px] cursor-pointer border-l border-border text-right px-3 py-1.5 text-[11px] uppercase font-semibold border-b-2 border-b-border select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors ${
+            isExpanded ? 'bg-primary/10 text-primary' : 'bg-card text-foreground hover:bg-muted/30'
+          }`}
           onClick={() => toggleQuarter(q)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuarter(q); } }}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuarter(q); } }}
           title="Cliquez pour détailler par mois"
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <div className="flex items-center justify-end gap-1">
+            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             {q}
           </div>
         </th>
         {isExpanded && months.map(m => (
-          <th key={m} style={{ minWidth: '80px', background: 'var(--canvas)', color: 'var(--slate)', fontWeight: 600, textAlign: 'right', padding: '6px 12px', fontSize: '11px', textTransform: 'uppercase', borderBottom: '2px solid var(--line-strong)' }}>
+          <th key={m} className="min-w-[80px] bg-background text-muted-foreground font-semibold text-right px-3 py-1.5 text-[11px] uppercase border-b-2 border-b-border border-l border-border">
             {m}
           </th>
         ))}
@@ -200,35 +211,43 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
 
   if (!ptba.lignes || ptba.lignes.length === 0) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--slate)' }}>
+      <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
         Aucune ligne PTBA n'est disponible.
       </div>
     );
   }
 
   return (
-    <div style={{ overflowX: 'auto', overflowY: 'auto', height: '100%', background: 'var(--surface)' }}>
-      <table className="wbs-table" role="table" style={{ borderCollapse: 'collapse', width: '100%', fontSize: '12px' }}>
-        <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+    <div className="overflow-x-auto scrollbar-thin h-full bg-background">
+      <table className="border-collapse w-full text-xs" role="table">
+        <thead className="sticky top-0 z-10 bg-card shadow-sm">
           <tr>
-            <th style={{ position: 'sticky', left: 0, zIndex: 11, background: 'var(--surface)', minWidth: '250px', borderRight: '1px solid var(--line-strong)', padding: '6px 12px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--slate)', borderBottom: '2px solid var(--line-strong)', textAlign: 'left' }}>Activité & Description</th>
-            <th style={{ minWidth: '100px', padding: '6px 12px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--slate)', borderBottom: '2px solid var(--line-strong)', textAlign: 'left' }}>Responsable</th>
-            <th style={{ minWidth: '100px', padding: '6px 12px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--slate)', borderBottom: '2px solid var(--line-strong)', textAlign: 'left' }}>Bailleur</th>
-            <th style={{ minWidth: '120px', textAlign: 'right', padding: '6px 12px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--navy-800)', borderBottom: '2px solid var(--line-strong)', background: 'var(--slate-50)' }}>Budget Total (Calc)</th>
-            
+            <th className="sticky left-0 z-[11] bg-card min-w-[250px] border-r border-border px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
+              Activité &amp; Description
+            </th>
+            <th className="min-w-[100px] px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
+              Responsable
+            </th>
+            <th className="min-w-[100px] px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
+              Bailleur
+            </th>
+            <th className="min-w-[130px] text-right px-3 py-1.5 text-[11px] uppercase text-foreground font-semibold border-b-2 border-b-border bg-muted/10">
+              Budget Total (Calc)
+            </th>
+
             {renderQuarterHeader('Q1', ['Jan', 'Fév', 'Mar'])}
             {renderQuarterHeader('Q2', ['Avr', 'Mai', 'Juin'])}
             {renderQuarterHeader('Q3', ['Juil', 'Août', 'Sept'])}
             {renderQuarterHeader('Q4', ['Oct', 'Nov', 'Déc'])}
           </tr>
         </thead>
-        <tbody style={{ background: 'var(--surface)' }}>
+        <tbody>
           {ptba.lignes.map(ligne => (
-            <PTBAMatrixRow 
-              key={ligne.id} 
-              initialLigne={ligne} 
-              expandedQuarters={expandedQuarters} 
-              onLigneChange={handleLigneChange} 
+            <PTBAMatrixRow
+              key={ligne.id}
+              initialLigne={ligne}
+              expandedQuarters={expandedQuarters}
+              onLigneChange={handleLigneChange}
             />
           ))}
         </tbody>

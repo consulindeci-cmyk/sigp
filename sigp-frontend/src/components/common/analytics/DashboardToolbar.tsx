@@ -1,5 +1,6 @@
 import React from 'react';
 import { Download, RefreshCw, Maximize2 } from 'lucide-react';
+import { Button } from '@/components/ui/forms/Button';
 
 interface DashboardToolbarProps {
   title: string;
@@ -10,50 +11,42 @@ interface DashboardToolbarProps {
 
 export const DashboardToolbar = React.memo(({ title, onRefresh, onExport, onFullscreen }: DashboardToolbarProps) => {
   return (
-    <div style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      padding: '16px 24px', 
-      background: 'var(--surface)', 
-      borderBottom: '1px solid var(--line-strong)',
-      flexWrap: 'wrap',
-      gap: '16px'
-    }}>
-      <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--navy-900)' }}>
-        {title}
-      </h2>
-      
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+    <div className="flex items-center justify-between flex-wrap gap-4 px-6 py-4 bg-card border-b border-border">
+      <h2 className="text-lg font-bold text-foreground">{title}</h2>
+
+      <div className="flex gap-2 flex-wrap">
         {onRefresh && (
-          <button 
-            className="btn" 
-            style={{ padding: '6px 12px', fontSize: '12px' }} 
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<RefreshCw size={14} />}
             onClick={onRefresh}
             aria-label="Rafraîchir les données"
           >
-            <RefreshCw size={14} /> Rafraîchir
-          </button>
+            Rafraîchir
+          </Button>
         )}
         {onExport && (
-          <button 
-            className="btn" 
-            style={{ padding: '6px 12px', fontSize: '12px' }} 
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Download size={14} />}
             onClick={onExport}
             aria-label="Exporter les données"
           >
-            <Download size={14} /> Exporter
-          </button>
+            Exporter
+          </Button>
         )}
         {onFullscreen && (
-          <button 
-            className="btn" 
-            style={{ padding: '6px 12px', fontSize: '12px' }} 
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Maximize2 size={14} />}
             onClick={onFullscreen}
             aria-label="Plein écran"
           >
-            <Maximize2 size={14} /> Plein écran
-          </button>
+            Plein écran
+          </Button>
         )}
       </div>
     </div>

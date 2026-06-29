@@ -46,7 +46,7 @@ export function ProfileSection({ profile, onSave }: ProfileSectionProps) {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
             <div
               className={cn(
-                'h-20 w-20 rounded-full flex items-center justify-center text-2xl font-bold shrink-0 select-none',
+                'h-20 w-20 rounded-full flex items-center justify-center text-xl font-bold shrink-0 select-none',
                 avatarStyle
               )}
               aria-label={`Avatar de ${profile.prenom} ${profile.nom}`}

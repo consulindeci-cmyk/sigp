@@ -355,6 +355,21 @@ export default function ProjectActivitiesTab() {
   return (
     <section aria-label="Activités du projet" className="flex flex-col gap-6">
 
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Activités du Projet</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Suivi de l'avancement physique et des jalons opérationnels</p>
+        </div>
+        <Button
+          variant="default" size="sm" className="h-8 text-xs"
+          onClick={() => { setSelected(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+          Nouvelle activité
+        </Button>
+      </div>
+
       {/* KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

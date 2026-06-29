@@ -1,6 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/data-display/Card';
 
 export interface WorkflowLogEntry {
   id: string;
@@ -20,71 +21,73 @@ interface WorkflowLogTableProps {
 
 export const WorkflowLogTable = React.memo(({ logs, isLoading = false }: WorkflowLogTableProps) => {
   return (
-    <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--line-strong)', background: 'var(--surface)' }}>
-        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--navy-900)' }}>Journal d'Audit</h3>
-        <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--slate)' }}>Historique des actions de validation et commentaires.</p>
-      </div>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg">Journal d'Audit</CardTitle>
+        <CardDescription>Historique des actions de validation et commentaires.</CardDescription>
+      </CardHeader>
       
-      <div style={{ overflowX: 'auto' }}>
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr style={{ background: 'var(--canvas)', color: 'var(--slate)', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.5px' }}>
-              <th style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)' }}>Date & Heure</th>
-              <th style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)' }}>Utilisateur</th>
-              <th style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)' }}>Rôle</th>
-              <th style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)' }}>Action</th>
-              <th style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)' }}>Statut</th>
-              <th style={{ padding: '12px 20px', borderBottom: '1px solid var(--line)' }}>Commentaire</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {isLoading ? (
+      <CardContent className="flex-1 p-0 overflow-hidden">
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="w-full text-sm text-left border-collapse">
+            <thead className="bg-muted text-muted-foreground uppercase text-[11px] font-semibold tracking-wide">
               <tr>
-                <td colSpan={6} style={{ padding: '30px', textAlign: 'center', color: 'var(--slate)' }}>
-                  Chargement de l'historique...
-                </td>
+                <th className="px-4 py-3 border-b border-border">Date & Heure</th>
+                <th className="px-4 py-3 border-b border-border">Utilisateur</th>
+                <th className="px-4 py-3 border-b border-border">Rôle</th>
+                <th className="px-4 py-3 border-b border-border">Action</th>
+                <th className="px-4 py-3 border-b border-border">Statut</th>
+                <th className="px-4 py-3 border-b border-border">Commentaire</th>
               </tr>
-            ) : logs.length === 0 ? (
-              <tr>
-                <td colSpan={6} style={{ padding: '30px', textAlign: 'center', color: 'var(--slate)' }}>
-                  Aucun log disponible.
-                </td>
-              </tr>
-            ) : (
-              logs.map((log) => {
-                const dateObj = new Date(log.date);
-                return (
-                  <tr key={log.id} style={{ transition: 'background 0.2s' }} className="hover:bg-gray-50">
-                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'var(--navy-900)', fontFamily: 'monospace' }}>
-                      {format(dateObj, 'dd MMM yyyy, HH:mm', { locale: fr })}
-                    </td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', fontWeight: 500, color: 'var(--navy-900)' }}>
-                      {log.utilisateur}
-                    </td>
-                    <td style={{ padding: '14px 20px', fontSize: '12px', color: 'var(--slate)' }}>
-                      {log.role}
-                    </td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', fontWeight: 600, color: 'var(--navy-900)' }}>
-                      {log.action}
-                    </td>
-                    <td style={{ padding: '14px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--slate)' }}>
-                        {log.statut_precedent && <span>{log.statut_precedent} &rarr;</span>}
-                        <span style={{ fontWeight: 600, color: 'var(--navy-900)' }}>{log.statut_nouveau}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'var(--slate)', maxWidth: '300px' }}>
-                      {log.commentaire || '-'}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+            </thead>
+            <tbody className="divide-y divide-border text-sm">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    Chargement de l'historique...
+                  </td>
+                </tr>
+              ) : logs.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    Aucun log disponible.
+                  </td>
+                </tr>
+              ) : (
+                logs.map((log) => {
+                  const dateObj = new Date(log.date);
+                  return (
+                    <tr key={log.id} className="hover:bg-muted/50 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-foreground">
+                        {format(dateObj, 'dd MMM yyyy, HH:mm', { locale: fr })}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-foreground">
+                        {log.utilisateur}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {log.role}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-foreground">
+                        {log.action}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {log.statut_precedent && <span>{log.statut_precedent} &rarr;</span>}
+                          <span className="font-semibold text-foreground">{log.statut_nouveau}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-[300px] truncate">
+                        {log.commentaire || '-'}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 });
 

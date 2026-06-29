@@ -31,15 +31,15 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CHART_COLORS = {
-  prevu:  'var(--muted-foreground, #94a3b8)',
-  recu:   'var(--primary, #2563eb)',
+  prevu:  'hsl(var(--muted-foreground))',
+  recu:   'hsl(var(--primary))',
 };
 
 const tooltipStyle = {
-  backgroundColor: 'var(--card)',
-  border: '1px solid var(--border)',
+  backgroundColor: 'hsl(var(--card))',
+  border: '1px solid hsl(var(--border))',
   borderRadius: '8px',
-  color: 'var(--foreground)',
+  color: 'hsl(var(--foreground))',
   fontSize: '12px',
 };
 

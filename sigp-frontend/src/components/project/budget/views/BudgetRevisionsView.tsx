@@ -54,7 +54,7 @@ export function BudgetRevisionsView({ budgetVersion }: BudgetRevisionsViewProps)
               <div className="text-[11px] text-muted-foreground uppercase tracking-wide mb-1 font-medium">
                 Budget Total Révisé (BAC)
               </div>
-              <div className="text-2xl font-bold text-foreground font-mono">
+              <div className="text-xl font-bold text-foreground font-mono">
                 {formatMoney(budgetVersion.montant_total_revise)}
               </div>
             </div>

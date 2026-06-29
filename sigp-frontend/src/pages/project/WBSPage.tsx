@@ -1,56 +1,92 @@
-import React, { useState } from 'react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { LayoutList, TrendingUp, DollarSign, Plus, Loader2, AlertCircle } from 'lucide-react';
+import {
+  LayoutList, TrendingUp, DollarSign, Plus, Loader2,
+  AlertCircle, Network, Layers, Trash2,
+} from 'lucide-react';
 import { useWBS, useUpdateWBSOrder } from '@/hooks/useWBS';
-import { useProject } from '@/hooks/useProjects';
 import { useUIStore } from '@/stores/uiStore';
 import { WBSTree } from '@/components/project/wbs/WBSTree';
 import { WBSNodeForm } from '@/components/project/wbs/WBSNodeForm';
 import type { WBS } from '@/types';
-import { ContentLayout } from '@/components/layout/ContentLayout';
-import { PageHeader } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/forms/Button';
+import { StatCard } from '@/components/ui/data-display/StatCard';
+import {
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalTitle,
+  ModalDescription,
+  ModalFooter,
+} from '@/components/ui/overlays/Modal';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const formatMoney = (n: number) =>
+  new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'XOF',
+    maximumFractionDigits: 0,
+  }).format(n);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Loading / Error views
+// ─────────────────────────────────────────────────────────────────────────────
+
+function LoadingView() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function ErrorView() {
+  return (
+    <div className="flex flex-col h-full items-center justify-center gap-2">
+      <AlertCircle className="h-8 w-8 text-destructive" />
+      <p className="text-sm font-medium text-destructive">Erreur de chargement</p>
+      <p className="text-xs text-muted-foreground">Impossible de charger la structure WBS.</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WBSPage
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function WBSPage() {
   const { id: urlProjectId } = useParams();
   const { activeProjectId } = useUIStore();
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  const { data: project } = useProject(resolvedProjectId);
   const { data: wbsData, isLoading, error } = useWBS(resolvedProjectId);
   const reorderMutation = useUpdateWBSOrder(resolvedProjectId);
 
   const [wbsItems, setWbsItems] = useState<WBS[]>([]);
-  
-  React.useEffect(() => {
-    if (wbsData?.data) {
-      setWbsItems(wbsData.data);
-    }
-  }, [wbsData]);
 
-  // Modals state
+  useEffect(() => {
+    if (wbsData?.data) setWbsItems(wbsData.data);
+  }, [wbsData?.data]);
+
+  // Form SlideOver state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<WBS | null>(null);
   const [parentIdForNew, setParentIdForNew] = useState<string | null>(null);
 
-  if (!resolvedProjectId) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-background rounded-lg border border-border">
-        <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-bold text-foreground mb-2">Aucun projet sélectionné</h2>
-        <p className="text-muted-foreground">Veuillez sélectionner un projet pour afficher sa structure WBS.</p>
-      </div>
-    );
-  }
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<WBS | null>(null);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleReorder = (newItems: WBS[]) => {
     setWbsItems(newItems);
-    const itemsToUpdate = newItems.map((item, index) => ({
-      id: item.id,
-      parent_id: item.parent_id,
-      ordre: index + 1
-    }));
-    reorderMutation.mutate(itemsToUpdate);
+    reorderMutation.mutate(
+      newItems.map((item, index) => ({ id: item.id, parent_id: item.parent_id, ordre: index + 1 }))
+    );
   };
 
   const handleEdit = (node: WBS) => {
@@ -59,11 +95,17 @@ export default function WBSPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer cet élément et tous ses sous-éléments ?')) {
-      setWbsItems(prev => prev.filter(item => item.id !== id && item.parent_id !== id));
-      // delete mutation
-    }
+  const handleDeleteRequest = (id: string) => {
+    const node = wbsItems.find(i => i.id === id) || null;
+    setDeleteTarget(node);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+    setWbsItems(prev =>
+      prev.filter(item => item.id !== deleteTarget.id && item.parent_id !== deleteTarget.id)
+    );
+    setDeleteTarget(null);
   };
 
   const handleAddChild = (parentId: string) => {
@@ -78,13 +120,19 @@ export default function WBSPage() {
     setIsFormOpen(true);
   };
 
-  const handleSubmit = (data: Partial<WBS>) => {
+  const handleFormSubmit = (data: Partial<WBS>) => {
     const newNode: WBS = {
       id: editingNode?.id || `wbs-new-${Date.now()}`,
       projet_id: resolvedProjectId,
-      code_wbs: editingNode?.code_wbs || (data.parent_id ? '?.?' : `${wbsItems.filter(i => !i.parent_id).length + 1}`),
+      code_wbs:
+        editingNode?.code_wbs ||
+        (data.parent_id
+          ? '?.?'
+          : `${wbsItems.filter(i => !i.parent_id).length + 1}`),
       titre: data.titre || '',
-      niveau: data.parent_id ? (wbsItems.find(i => i.id === data.parent_id)?.niveau || 0) + 1 : 1,
+      niveau: data.parent_id
+        ? (wbsItems.find(i => i.id === data.parent_id)?.niveau || 0) + 1
+        : 1,
       ordre: editingNode?.ordre || wbsItems.length + 1,
       parent_id: data.parent_id || null,
       statut: data.statut || 'NON_COMMENCE',
@@ -97,101 +145,182 @@ export default function WBSPage() {
     };
 
     if (editingNode) {
-      setWbsItems(prev => prev.map(item => item.id === editingNode.id ? newNode : item));
+      setWbsItems(prev => prev.map(item => (item.id === editingNode.id ? newNode : item)));
     } else {
       setWbsItems(prev => [...prev, newNode]);
     }
-    
-    setIsFormOpen(false);
   };
 
-  const totalBudget = wbsItems.filter(i => !i.parent_id).reduce((sum, item) => sum + (item.budget_alloue || 0), 0);
-  const globalProgress = wbsItems.filter(i => !i.parent_id).length > 0 
-    ? wbsItems.filter(i => !i.parent_id).reduce((sum, item) => sum + (item.progression_physique || 0), 0) / wbsItems.filter(i => !i.parent_id).length
-    : 0;
-  
-  const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(amount);
-  };
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+
+  const kpis = useMemo(() => {
+    const composantes = wbsItems.filter(i => !i.parent_id).length;
+    const sousElements = wbsItems.filter(i => !!i.parent_id).length;
+    const activites = wbsItems.filter(i => !wbsItems.some(j => j.parent_id === i.id)).length;
+    const niveauMax = wbsItems.length > 0 ? Math.max(...wbsItems.map(i => i.niveau || 1)) : 0;
+    const budgetTotal = wbsItems
+      .filter(i => !i.parent_id)
+      .reduce((sum, i) => sum + (i.budget_alloue || 0), 0);
+    const progressionMoyenne =
+      wbsItems.length > 0
+        ? Math.round(
+            wbsItems.reduce((sum, i) => sum + (i.progression_physique || 0), 0) / wbsItems.length
+          )
+        : 0;
+
+    return { composantes, sousElements, activites, niveauMax, budgetTotal, progressionMoyenne };
+  }, [wbsItems]);
+
+  // ── No project guard ──────────────────────────────────────────────────────
+
+  if (!resolvedProjectId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+        <AlertCircle className="h-12 w-12 text-muted-foreground opacity-40 mb-4" />
+        <h2 className="text-xl font-bold text-foreground mb-2">Aucun projet sélectionné</h2>
+        <p className="text-sm text-muted-foreground">
+          Veuillez sélectionner un projet pour afficher sa structure WBS.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <ContentLayout>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <PageHeader 
-          title="Work Breakdown Structure (WBS)"
-          subtitle={`Structure hiérarchique des travaux pour le projet ${project?.code_projet || ''}`}
-        />
-        <Button variant="default" leftIcon={<Plus className="w-4 h-4" />} onClick={handleAddRoot}>
-          Ajouter Composante
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+
+      {/* ── HEADER ──────────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
+        <div>
+          <PageHeader title="Work Breakdown Structure" description="
+            Structure hiérarchique des travaux et des composantes du projet
+          " />
+        </div>
+        <Button
+          variant="default"
+          size="sm"
+          leftIcon={<Plus className="h-3.5 w-3.5" />}
+          onClick={handleAddRoot}
+          className="h-8 text-xs"
+        >
+          Ajouter composante
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Éléments WBS</span>
-            <LayoutList className="w-4 h-4 text-primary" />
-          </div>
-          <div className="text-3xl font-semibold text-foreground mb-1">{wbsItems.length}</div>
-          <div className="text-xs text-muted-foreground">Structure arborescente globale</div>
-        </div>
-        
-        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Progression Physique</span>
-            <TrendingUp className="w-4 h-4 text-success" />
-          </div>
-          <div className="text-3xl font-semibold text-foreground mb-2">{Math.round(globalProgress)}%</div>
-          <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-success rounded-full" style={{ width: `${globalProgress}%` }} />
-          </div>
-        </div>
-
-        <div className="bg-background rounded-lg border border-border p-5 shadow-sm sm:col-span-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Budget Alloué (WBS)</span>
-            <DollarSign className="w-4 h-4 text-warning" />
-          </div>
-          <div className="text-3xl font-semibold text-foreground mb-1">{formatMoney(totalBudget)}</div>
-          <div className="text-xs text-muted-foreground">Agrégé depuis les sous-activités</div>
-        </div>
+      {/* ── KPI STRIP ───────────────────────────────────────────────────────── */}
+      <div className="shrink-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 px-4 py-3 border-b border-border bg-muted/10">
+        <StatCard
+          title="Composantes"
+          value={kpis.composantes}
+          icon={<Network className="h-4 w-4 text-primary" />}
+          iconVariant="primary"
+          description="Niveau 1 (racine)"
+        />
+        <StatCard
+          title="Sous-éléments"
+          value={kpis.sousElements}
+          icon={<Layers className="h-4 w-4 text-info" />}
+          iconVariant="info"
+          description="Niveaux 2+"
+        />
+        <StatCard
+          title="Activités"
+          value={kpis.activites}
+          icon={<LayoutList className="h-4 w-4 text-warning" />}
+          iconVariant="warning"
+          description="Éléments terminaux"
+        />
+        <StatCard
+          title="Niveau max"
+          value={kpis.niveauMax}
+          icon={<Layers className="h-4 w-4 text-secondary-foreground" />}
+          iconVariant="default"
+          description="Profondeur arbre"
+        />
+        <StatCard
+          title="Progression"
+          value={`${kpis.progressionMoyenne}%`}
+          icon={<TrendingUp className="h-4 w-4 text-success" />}
+          iconVariant="success"
+          description="Moyenne globale"
+        />
+        <StatCard
+          title="Budget alloué"
+          value={formatMoney(kpis.budgetTotal)}
+          icon={<DollarSign className="h-4 w-4 text-warning" />}
+          iconVariant="warning"
+          description="Agrégé depuis racines"
+        />
       </div>
 
-      <div className="bg-background rounded-lg shadow-sm border border-border flex flex-col h-full overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-muted/10">
-          <h3 className="text-base font-semibold text-foreground">Arborescence du Projet</h3>
+      {/* ── TREE ────────────────────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="shrink-0 px-4 py-2.5 border-b border-border bg-muted/5 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-foreground">Arborescence du Projet</h2>
+          <span className="text-xs text-muted-foreground">{wbsItems.length} élément{wbsItems.length !== 1 ? 's' : ''}</span>
         </div>
-        <div className="p-0 flex-1">
+        <div className="flex-1 min-h-0 overflow-auto">
           {isLoading ? (
-            <div className="flex h-64 items-center justify-center bg-background">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
+            <LoadingView />
           ) : error ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center bg-background p-8">
-              <AlertCircle className="w-10 h-10 text-destructive mb-3" />
-              <div className="text-lg font-semibold text-destructive mb-1">Erreur de chargement</div>
-              <div className="text-sm text-muted-foreground">Impossible de charger la structure WBS.</div>
-            </div>
+            <ErrorView />
           ) : (
-            <WBSTree 
+            <WBSTree
               data={wbsItems}
               onReorder={handleReorder}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={handleDeleteRequest}
               onAddChild={handleAddChild}
             />
           )}
         </div>
       </div>
 
-      {isFormOpen && (
-        <WBSNodeForm 
-          initialData={editingNode || undefined}
-          parentId={parentIdForNew}
-          onSubmit={handleSubmit}
-          onCancel={() => setIsFormOpen(false)}
-        />
-      )}
-    </ContentLayout>
+      {/* ── SLIDEOVER (Formulaire) ───────────────────────────────────────────── */}
+      <WBSNodeForm
+        open={isFormOpen}
+        onOpenChange={open => {
+          setIsFormOpen(open);
+          if (!open) setEditingNode(null);
+        }}
+        initialData={editingNode || undefined}
+        parentId={parentIdForNew}
+        onSubmit={handleFormSubmit}
+      />
+
+      {/* ── MODAL DE CONFIRMATION DE SUPPRESSION ──────────────────────────── */}
+      <Modal open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <ModalContent>
+          <ModalHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 shrink-0">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <ModalTitle>Confirmer la suppression</ModalTitle>
+                <ModalDescription className="mt-0.5">
+                  Cette action est irréversible.
+                </ModalDescription>
+              </div>
+            </div>
+          </ModalHeader>
+          <p className="text-sm text-muted-foreground px-6 pb-2">
+            Voulez-vous supprimer{' '}
+            <span className="font-semibold text-foreground">
+              &ldquo;{deleteTarget?.titre}&rdquo;
+            </span>{' '}
+            et tous ses sous-éléments ?
+          </p>
+          <ModalFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Annuler
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Supprimer
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+    </div>
   );
 }

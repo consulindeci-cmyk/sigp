@@ -1,3 +1,4 @@
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
@@ -128,12 +129,11 @@ export default function BudgetPage() {
       <div className="shrink-0 flex flex-wrap items-start justify-between gap-4 px-6 py-4 border-b border-border bg-card">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              Budget &amp; Suivi Financier
-            </h1>
+            <PageHeader title="
+              Budget &amp; Suivi Financier" />
             {renderStatusBadge(budgetVersion?.statut)}
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Suivi de l'exécution financière · version {budgetVersion?.numero_version || '—'}
           </p>
         </div>

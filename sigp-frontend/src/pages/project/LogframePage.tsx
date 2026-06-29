@@ -1,22 +1,60 @@
-import React, { useState } from 'react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { FileText, Download, ListTree, Target, TrendingUp } from 'lucide-react';
+import {
+  FileText, Download, Plus, Loader2, AlertCircle, Trash2,
+  Target, TrendingUp, ListTree, Zap, Activity, LayoutList,
+} from 'lucide-react';
 import { useLogframe, useCreateLogframe, useUpdateLogframe, useDeleteLogframe } from '@/hooks/useLogframe';
-import { useProject } from '@/hooks/useProjects';
 import { useUIStore } from '@/stores/uiStore';
 import { LogframeMatrix } from '@/components/project/logframe/LogframeMatrix';
 import { LogframeForm } from '@/components/project/logframe/LogframeForm';
 import type { CadreLogique } from '@/types';
+import { Button } from '@/components/ui/forms/Button';
+import { StatCard } from '@/components/ui/data-display/StatCard';
+import {
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalTitle,
+  ModalDescription,
+  ModalFooter,
+} from '@/components/ui/overlays/Modal';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-views
+// ─────────────────────────────────────────────────────────────────────────────
+
+function LoadingView() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function ErrorView() {
+  return (
+    <div className="flex flex-col h-full items-center justify-center gap-2">
+      <AlertCircle className="h-8 w-8 text-destructive" />
+      <p className="text-sm font-medium text-destructive">Erreur de chargement</p>
+      <p className="text-xs text-muted-foreground">Impossible de charger le Cadre Logique.</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LogframePage
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function LogframePage() {
   const { id: urlProjectId } = useParams();
   const { activeProjectId, activeProjectName } = useUIStore();
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  const { data: project } = useProject(resolvedProjectId);
   const { data: logframeData, isLoading, error } = useLogframe(resolvedProjectId);
   const createMutation = useCreateLogframe(resolvedProjectId);
   const updateMutation = useUpdateLogframe(resolvedProjectId);
@@ -25,27 +63,45 @@ export default function LogframePage() {
   const elements = logframeData?.data ?? [];
   const [localData, setLocalData] = useState<CadreLogique[]>([]);
 
-  React.useEffect(() => {
-    if (elements.length > 0) {
-      setLocalData(elements);
-    }
+  useEffect(() => {
+    if (elements.length > 0) setLocalData(elements);
   }, [elements]);
 
-  // Modal states
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<CadreLogique | null>(null);
-  const [parentIdForNew, setParentIdForNew] = useState<string | null>(null);
-  const [parentLevelForNew, setParentLevelForNew] = useState<string | undefined>(undefined);
+  // Form SlideOver state
+  const [isFormOpen,        setIsFormOpen]        = useState(false);
+  const [editingItem,       setEditingItem]        = useState<CadreLogique | null>(null);
+  const [parentIdForNew,    setParentIdForNew]     = useState<string | null>(null);
+  const [parentLevelForNew, setParentLevelForNew]  = useState<string | undefined>(undefined);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<CadreLogique | null>(null);
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+
+  const kpis = useMemo(() => ({
+    impacts:   localData.filter(i => i.niveau_intervention === 'IMPACT').length,
+    objectifs: localData.filter(i => i.niveau_intervention === 'OBJECTIF').length,
+    resultats: localData.filter(i => i.niveau_intervention === 'RESULTAT').length,
+    produits:  localData.filter(i => i.niveau_intervention === 'PRODUIT').length,
+    activites: localData.filter(i => i.niveau_intervention === 'ACTIVITE').length,
+    total:     localData.length,
+  }), [localData]);
+
+  // ── Guards ────────────────────────────────────────────────────────────────
 
   if (!resolvedProjectId) {
     return (
-      <div className="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        <div className="es-title">Aucun projet sélectionné</div>
-        <div className="es-sub">Veuillez sélectionner un projet pour afficher son Cadre Logique.</div>
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+        <AlertCircle className="h-12 w-12 text-muted-foreground opacity-40 mb-4" />
+        <h2 className="text-xl font-bold text-foreground mb-2">Aucun projet sélectionné</h2>
+        <p className="text-sm text-muted-foreground">
+          Veuillez sélectionner un projet pour afficher son Cadre Logique.
+        </p>
       </div>
     );
   }
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleEdit = (item: CadreLogique) => {
     setEditingItem(item);
@@ -53,11 +109,18 @@ export default function LogframePage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer cet élément et tous ses enfants ?')) {
-      setLocalData(prev => prev.filter(i => i.id !== id && i.parent_id !== id));
-      deleteMutation.mutate(id);
-    }
+  const handleDeleteRequest = (id: string) => {
+    const item = localData.find(i => i.id === id) || null;
+    setDeleteTarget(item);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+    setLocalData(prev =>
+      prev.filter(i => i.id !== deleteTarget.id && i.parent_id !== deleteTarget.id)
+    );
+    deleteMutation.mutate(deleteTarget.id);
+    setDeleteTarget(null);
   };
 
   const handleAddChild = (parentId: string, parentLevel: string) => {
@@ -77,14 +140,14 @@ export default function LogframePage() {
   const handleSubmit = (data: Partial<CadreLogique>) => {
     if (editingItem) {
       const updated = { ...editingItem, ...data };
-      setLocalData(prev => prev.map(i => i.id === editingItem.id ? updated : i));
+      setLocalData(prev => prev.map(i => (i.id === editingItem.id ? updated : i)));
       updateMutation.mutate({ id: editingItem.id, ...data });
     } else {
       const newItem: CadreLogique = {
         id: `lf-new-${Date.now()}`,
         projet_id: resolvedProjectId,
         parent_id: data.parent_id || null,
-        niveau_intervention: data.niveau_intervention as any,
+        niveau_intervention: data.niveau_intervention as CadreLogique['niveau_intervention'],
         indicateur: data.indicateur || '',
         valeur_reference: data.valeur_reference,
         cible: data.cible,
@@ -94,177 +157,216 @@ export default function LogframePage() {
       setLocalData(prev => [...prev, newItem]);
       createMutation.mutate(newItem);
     }
-    setIsFormOpen(false);
   };
 
-  // Exports
+  // ── Exports ───────────────────────────────────────────────────────────────
+
+  const getExportName = () => {
+    const raw = activeProjectName || '';
+    return raw.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'export';
+  };
+
   const exportPDF = () => {
-    const projectName = activeProjectName || project?.nom_projet || project?.code_projet || '';
-    const safeFilename = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'export';
+    const projectName = activeProjectName || '';
     const doc = new jsPDF();
     doc.text(`Cadre Logique - ${projectName}`, 14, 15);
-    
-    const tableData = localData.map(row => [
-      row.niveau_intervention,
-      row.indicateur,
-      row.valeur_reference || '',
-      row.cible || '',
-      row.source_verification || '',
-      row.hypotheses || ''
-    ]);
-
     (doc as any).autoTable({
       startY: 20,
       head: [['Niveau', 'Description / Indicateur', 'Baseline', 'Cible', 'Vérification', 'Hypothèses']],
-      body: tableData,
+      body: localData.map(row => [
+        row.niveau_intervention,
+        row.indicateur,
+        row.valeur_reference || '',
+        row.cible || '',
+        row.source_verification || '',
+        row.hypotheses || '',
+      ]),
       theme: 'grid',
       headStyles: { fillColor: [10, 22, 40] },
-      styles: { fontSize: 8 }
+      styles: { fontSize: 8 },
     });
-    
-    doc.save(`Cadre_Logique_${safeFilename}.pdf`);
+    doc.save(`Cadre_Logique_${getExportName()}.pdf`);
   };
 
   const exportExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(localData.map(row => ({
-      Niveau: row.niveau_intervention,
-      Description: row.indicateur,
-      Baseline: row.valeur_reference || '',
-      Cible: row.cible || '',
-      Vérification: row.source_verification || '',
-      'Hypothèses/Risques': row.hypotheses || ''
-    })));
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Cadre Logique");
-    const projectName = activeProjectName || project?.nom_projet || project?.code_projet || '';
-    const safeFilename = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'export';
-    XLSX.writeFile(workbook, `Cadre_Logique_${safeFilename}.xlsx`);
+    const ws = XLSX.utils.json_to_sheet(
+      localData.map(row => ({
+        Niveau: row.niveau_intervention,
+        Description: row.indicateur,
+        Baseline: row.valeur_reference || '',
+        Cible: row.cible || '',
+        Vérification: row.source_verification || '',
+        'Hypothèses/Risques': row.hypotheses || '',
+      }))
+    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cadre Logique');
+    XLSX.writeFile(wb, `Cadre_Logique_${getExportName()}.xlsx`);
   };
 
-  const impacts = localData.filter(i => i.niveau_intervention === 'IMPACT');
-  const countO = localData.filter(i => i.niveau_intervention === 'OBJECTIF').length;
-  const countR = localData.filter(i => i.niveau_intervention === 'RESULTAT').length;
-  const countP = localData.filter(i => i.niveau_intervention === 'PRODUIT').length;
-  
+  const hasImpact = localData.some(i => i.niveau_intervention === 'IMPACT');
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <div style={{ padding: '0 0 40px' }}>
-      
-      <div className="page-head" style={{ marginBottom: '24px' }}>
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
         <div>
-          <h1 className="page-title">Cadre Logique</h1>
-          <p className="page-sub">Matrice de planification et de suivi des indicateurs</p>
+          <PageHeader title="Cadre Logique" description="
+            Matrice de planification et de suivi des indicateurs objectivement vérifiables
+          " />
         </div>
-        <div className="page-actions">
-          <button className="btn" onClick={exportPDF}>
-            <FileText size={15} /> PDF
-          </button>
-          <button className="btn" onClick={exportExcel}>
-            <Download size={15} /> Excel
-          </button>
-          {impacts.length === 0 && (
-            <button className="btn btn-primary" onClick={handleAddImpact}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<FileText className="h-3.5 w-3.5" />}
+            onClick={exportPDF}
+            className="h-8 text-xs"
+          >
+            PDF
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Download className="h-3.5 w-3.5" />}
+            onClick={exportExcel}
+            className="h-8 text-xs"
+          >
+            Excel
+          </Button>
+          {!hasImpact && (
+            <Button
+              variant="default"
+              size="sm"
+              leftIcon={<Plus className="h-3.5 w-3.5" />}
+              onClick={handleAddImpact}
+              className="h-8 text-xs"
+            >
               Définir l'Impact
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi-card">
-          <div className="kpi-top">
-            <span className="kpi-label">Objectifs & Effets</span>
-            <div className="kpi-icon navy">
-              <Target size={16} />
-            </div>
-          </div>
-          <div className="kpi-value">{countO}</div>
-          <div className="kpi-foot">
-            <span>Orientations stratégiques</span>
-          </div>
-        </div>
-        
-        <div className="kpi-card">
-          <div className="kpi-top">
-            <span className="kpi-label">Résultats Attendus</span>
-            <div className="kpi-icon amber">
-              <TrendingUp size={16} />
-            </div>
-          </div>
-          <div className="kpi-value">{countR}</div>
-          <div className="kpi-foot">
-            <span>Réalisations de moyen terme</span>
-          </div>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-top">
-            <span className="kpi-label">Produits Livrables</span>
-            <div className="kpi-icon green">
-              <ListTree size={16} />
-            </div>
-          </div>
-          <div className="kpi-value">{countP}</div>
-          <div className="kpi-foot">
-            <span>Outputs tangibles</span>
-          </div>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-top">
-            <span className="kpi-label">Cohérence</span>
-            <div className="kpi-icon" style={{ background: 'var(--canvas)', color: 'var(--slate)' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            </div>
-          </div>
-          <div className="kpi-value">Stable</div>
-          <div className="kpi-foot">
-            <span>Matrice interconnectée</span>
-          </div>
-        </div>
+      {/* ── KPI STRIP ──────────────────────────────────────────────────────── */}
+      <div className="shrink-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 px-4 py-3 border-b border-border bg-muted/10">
+        <StatCard
+          title="Impact"
+          value={kpis.impacts}
+          icon={<Zap className="h-4 w-4" />}
+          iconVariant="info"
+          description="Niveau stratégique"
+        />
+        <StatCard
+          title="Objectifs"
+          value={kpis.objectifs}
+          icon={<Target className="h-4 w-4" />}
+          iconVariant="primary"
+          description="Effets attendus"
+        />
+        <StatCard
+          title="Résultats"
+          value={kpis.resultats}
+          icon={<TrendingUp className="h-4 w-4" />}
+          iconVariant="warning"
+          description="Réalisations intermédiaires"
+        />
+        <StatCard
+          title="Produits"
+          value={kpis.produits}
+          icon={<ListTree className="h-4 w-4" />}
+          iconVariant="success"
+          description="Livrables tangibles"
+        />
+        <StatCard
+          title="Activités"
+          value={kpis.activites}
+          icon={<Activity className="h-4 w-4" />}
+          iconVariant="default"
+          description="Actions opérationnelles"
+        />
+        <StatCard
+          title="Total éléments"
+          value={kpis.total}
+          icon={<LayoutList className="h-4 w-4" />}
+          iconVariant="default"
+          description="Matrice complète"
+        />
       </div>
 
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Matrice de Suivi</div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <div className="global-search" style={{ maxWidth: '240px' }}>
-               <svg className="gs-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-               <input type="text" placeholder="Rechercher un indicateur..." />
-            </div>
-          </div>
+      {/* ── MATRICE ────────────────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="shrink-0 px-4 py-2.5 border-b border-border bg-muted/5 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-foreground">Matrice de Suivi</h2>
+          <span className="text-xs text-muted-foreground">
+            {kpis.total} élément{kpis.total !== 1 ? 's' : ''}
+          </span>
         </div>
-        <div className="panel-body tight">
+        <div className="flex-1 min-h-0 overflow-auto">
           {isLoading ? (
-            <div className="empty-state" style={{ padding: '60px 0' }}>
-              <div className="spinner" style={{ width: '32px', height: '32px', border: '3px solid var(--line-soft)', borderTopColor: 'var(--navy-900)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-            </div>
+            <LoadingView />
           ) : error ? (
-             <div className="empty-state">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-               <div className="es-title" style={{ color: 'var(--red)' }}>Erreur de chargement</div>
-               <div className="es-sub">Impossible de charger le Cadre Logique.</div>
-             </div>
+            <ErrorView />
           ) : (
-            <LogframeMatrix 
+            <LogframeMatrix
               data={localData}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={handleDeleteRequest}
               onAddChild={handleAddChild}
             />
           )}
         </div>
       </div>
 
-      {isFormOpen && (
-        <LogframeForm 
-          initialData={editingItem || undefined}
-          parentId={parentIdForNew}
-          parentLevel={parentLevelForNew}
-          onSubmit={handleSubmit}
-          onCancel={() => setIsFormOpen(false)}
-        />
-      )}
+      {/* ── SLIDEOVER (Formulaire) ──────────────────────────────────────────── */}
+      <LogframeForm
+        open={isFormOpen}
+        onOpenChange={open => {
+          setIsFormOpen(open);
+          if (!open) setEditingItem(null);
+        }}
+        initialData={editingItem || undefined}
+        parentId={parentIdForNew}
+        parentLevel={parentLevelForNew}
+        onSubmit={handleSubmit}
+      />
+
+      {/* ── MODAL DE CONFIRMATION DE SUPPRESSION ───────────────────────────── */}
+      <Modal open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <ModalContent>
+          <ModalHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 shrink-0">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <ModalTitle>Confirmer la suppression</ModalTitle>
+                <ModalDescription className="mt-0.5">
+                  Cette action est irréversible.
+                </ModalDescription>
+              </div>
+            </div>
+          </ModalHeader>
+          <p className="text-sm text-muted-foreground px-6 pb-2">
+            Voulez-vous supprimer{' '}
+            <span className="font-semibold text-foreground">
+              &ldquo;{deleteTarget?.indicateur}&rdquo;
+            </span>{' '}
+            et tous ses éléments subordonnés ?
+          </p>
+          <ModalFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Annuler
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Supprimer
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
     </div>
   );

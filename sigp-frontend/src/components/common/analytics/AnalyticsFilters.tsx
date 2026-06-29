@@ -20,35 +20,18 @@ interface AnalyticsFiltersProps {
 
 export const AnalyticsFilters = React.memo(({ groups, onChange }: AnalyticsFiltersProps) => {
   return (
-    <div style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      padding: '12px 24px', 
-      background: 'var(--canvas)', 
-      borderBottom: '1px solid var(--line-strong)',
-      gap: '16px',
-      flexWrap: 'wrap'
-    }}>
-      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--navy-600)', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-        <Filter size={14} aria-hidden="true" /> Filtres Analytiques :
+    <div className="flex items-center flex-wrap gap-4 px-6 py-3 bg-muted/5 border-b border-border">
+      <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
+        <Filter size={13} aria-hidden="true" /> Filtres Analytiques :
       </div>
-      
+
       {groups.map(group => (
-        <select 
+        <select
           key={group.id}
           value={group.value}
           onChange={(e) => onChange(group.id, e.target.value)}
           aria-label={`Filtrer par ${group.label}`}
-          style={{ 
-            padding: '6px 12px', 
-            fontSize: '12px', 
-            height: 'auto', 
-            width: 'auto', 
-            background: 'var(--surface)', 
-            border: '1px solid var(--line-soft)',
-            borderRadius: '4px',
-            color: 'var(--ink)'
-          }}
+          className="h-8 px-3 text-xs border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="">{group.label} (Tous)</option>
           {group.options.map(opt => (

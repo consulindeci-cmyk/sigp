@@ -601,6 +601,21 @@ export default function ProjectGovernanceTab() {
   return (
     <section aria-label="Gouvernance & Acteurs" className="flex flex-col gap-6">
 
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Gouvernance &amp; Acteurs</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Équipe projet, comités, bailleurs et parties prenantes</p>
+        </div>
+        <Button
+          variant="default" size="sm" className="h-8 text-xs"
+          onClick={() => { setSelectedMember(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+          Ajouter un membre
+        </Button>
+      </div>
+
       {/* Acteurs clés */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <KeyActorCard member={mockResponsableProjet} label="Responsable Projet" icon={User} />

@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Badge } from '@/components/ui/data-display/Badge';
+import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Button } from '@/components/ui/forms/Button';
-import { Plus } from 'lucide-react';
+import { Plus, ShieldAlert, ShieldCheck, AlertTriangle, Activity } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Types & Mock Data
@@ -35,7 +36,6 @@ const MOCK_RISKS: Risk[] = [
     mitigation: 'Sourcer des fournisseurs alternatifs régionaux',
     status: 'Surveillance accrue',
   },
-  // Add more mock data if necessary or keep it as the single row
 ];
 
 export default function TabRisks() {
@@ -43,19 +43,22 @@ export default function TabRisks() {
     {
       accessorKey: 'name',
       header: 'RISQUE',
-      cell: ({ row }) => <span className="font-medium">{row.getValue('name')}</span>,
+      cell: ({ row }) => <span className="font-medium text-foreground">{row.getValue('name')}</span>,
     },
     {
       accessorKey: 'category',
       header: 'CATÉGORIE',
+      cell: ({ getValue }) => <span className="text-muted-foreground">{getValue() as string}</span>,
     },
     {
       accessorKey: 'probability',
       header: 'PROBABILITÉ',
+      cell: ({ getValue }) => <span className="text-sm text-foreground">{getValue() as string}</span>,
     },
     {
       accessorKey: 'impact',
       header: 'IMPACT',
+      cell: ({ getValue }) => <span className="text-sm text-foreground">{getValue() as string}</span>,
     },
     {
       accessorKey: 'criticality',
@@ -64,19 +67,20 @@ export default function TabRisks() {
         const crit = row.getValue('criticality') as RiskCriticality;
         let variant: 'default' | 'success' | 'warning' | 'destructive' = 'default';
         if (crit === 'Critique') variant = 'destructive';
-        if (crit === 'Modéré') variant = 'warning';
-        if (crit === 'Faible') variant = 'success';
-        
+        if (crit === 'Modéré')   variant = 'warning';
+        if (crit === 'Faible')   variant = 'success';
         return <Badge variant={variant}>{crit}</Badge>;
       },
     },
     {
       accessorKey: 'owner',
       header: 'PROPRIÉTAIRE',
+      cell: ({ getValue }) => <span className="text-sm text-muted-foreground">{getValue() as string}</span>,
     },
     {
       accessorKey: 'mitigation',
-      header: 'PLAN D\'ATTÉNUATION',
+      header: "PLAN D'ATTÉNUATION",
+      cell: ({ getValue }) => <span className="text-xs text-foreground">{getValue() as string}</span>,
     },
     {
       accessorKey: 'status',
@@ -86,76 +90,86 @@ export default function TabRisks() {
         let variant: 'default' | 'outline' | 'secondary' = 'outline';
         if (status === 'Surveillance accrue') variant = 'default';
         if (status === 'Clos') variant = 'secondary';
-
         return <Badge variant={variant}>{status}</Badge>;
       },
     },
   ], []);
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-foreground">Registre des Risques</h2>
-        <Button variant="default" className="gap-2">
-          <Plus className="h-4 w-4" />
+    <div className="flex flex-col gap-4 bg-background">
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Registre des Risques</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Suivi de la probabilité, de l'impact et des plans d'atténuation</p>
+        </div>
+        <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs">
           Nouveau Risque
         </Button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
-          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Total des Risques</div>
-          <div className="text-3xl font-semibold text-foreground">11</div>
-        </div>
-        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
-          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Critiques</div>
-          <div className="text-3xl font-semibold text-destructive">3</div>
-        </div>
-        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
-          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Modérés</div>
-          <div className="text-3xl font-semibold text-warning">5</div>
-        </div>
-        <div className="bg-background rounded-lg border border-border p-5 shadow-sm">
-          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Faibles</div>
-          <div className="text-3xl font-semibold text-success">3</div>
-        </div>
+      {/* ── KPI STRIP ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard
+          title="Total des Risques"
+          value={11}
+          icon={<Activity className="h-4 w-4" />}
+          iconVariant="info"
+          description="risques identifiés"
+        />
+        <StatCard
+          title="Critiques"
+          value={3}
+          icon={<ShieldAlert className="h-4 w-4" />}
+          iconVariant="destructive"
+          description="action immédiate"
+        />
+        <StatCard
+          title="Modérés"
+          value={5}
+          icon={<AlertTriangle className="h-4 w-4" />}
+          iconVariant="warning"
+          description="surveillance renforcée"
+        />
+        <StatCard
+          title="Faibles"
+          value={3}
+          icon={<ShieldCheck className="h-4 w-4" />}
+          iconVariant="success"
+          description="sous contrôle"
+        />
       </div>
 
-      {/* Matrices / Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-background rounded-lg border border-border flex flex-col shadow-sm">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="font-semibold text-foreground">Matrice des Risques</h3>
+      {/* ── MATRICES ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-card rounded-lg border border-border flex flex-col">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground">Matrice des Risques</h3>
             <p className="text-xs text-muted-foreground">Probabilité × Impact</p>
           </div>
-          <div className="p-5 flex-1 flex items-center justify-center bg-muted/30 rounded-b-lg min-h-[12rem]">
+          <div className="p-4 flex-1 flex items-center justify-center bg-muted/10 rounded-b-lg min-h-[10rem]">
             <span className="text-sm text-muted-foreground">Heatmap des Risques</span>
           </div>
         </div>
-        
-        <div className="bg-background rounded-lg border border-border flex flex-col shadow-sm">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="font-semibold text-foreground">Suivi</h3>
-            <p className="text-xs text-muted-foreground">Aperçu des statuts</p>
+        <div className="bg-card rounded-lg border border-border flex flex-col">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground">Suivi des Statuts</h3>
+            <p className="text-xs text-muted-foreground">Aperçu de l'évolution</p>
           </div>
-          <div className="p-5 flex-1 flex items-center justify-center bg-muted/30 rounded-b-lg min-h-[12rem]">
+          <div className="p-4 flex-1 flex items-center justify-center bg-muted/10 rounded-b-lg min-h-[10rem]">
             <span className="text-sm text-muted-foreground">Graphe de suivi</span>
           </div>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-background rounded-lg border border-border shadow-sm flex flex-col">
-        <div className="px-5 py-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">Registre des Risques</h3>
+      {/* ── TABLE ────────────────────────────────────────────────────────────── */}
+      <div className="bg-card rounded-lg border border-border flex flex-col">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="text-sm font-semibold text-foreground">Registre Détaillé</h3>
         </div>
-        <div className="p-5">
-          <DataTable 
-            columns={columns} 
-            data={MOCK_RISKS} 
-          />
+        <div className="p-4">
+          <DataTable columns={columns} data={MOCK_RISKS} />
         </div>
       </div>
     </div>

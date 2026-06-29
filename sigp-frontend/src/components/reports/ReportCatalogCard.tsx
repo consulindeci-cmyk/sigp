@@ -56,7 +56,7 @@ export function ReportCatalogCard({
   ];
 
   return (
-    <Card className="flex flex-col h-full hover:shadow-md transition-shadow duration-150">
+    <Card className="flex flex-col h-full hover:shadow-sm transition-shadow duration-150">
       <CardContent className="flex flex-col gap-3 pt-4 flex-1">
         {/* Top row */}
         <div className="flex items-start justify-between gap-2">

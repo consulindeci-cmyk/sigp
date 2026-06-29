@@ -495,7 +495,7 @@ export default function ReportsPage() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {recentTemplates.map((r) => (
-                <Card key={r.id} className="hover:shadow-md transition-shadow duration-150">
+                <Card key={r.id} className="hover:shadow-sm transition-shadow duration-150">
                   <CardContent className="pt-4 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <Badge variant="outline" className="font-mono text-[10px]">{r.code}</Badge>

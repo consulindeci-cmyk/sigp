@@ -1,3 +1,4 @@
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
@@ -7,8 +8,36 @@ import { formatMoney } from '@/utils/format';
 import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
 import { PPMFormSlideOver } from '@/components/project/ppm/forms/PPMFormSlideOver';
-import { LayoutGrid, GitCommit, TrendingUp } from 'lucide-react';
+import { LayoutGrid, GitCommit, TrendingUp, Download, Plus, Loader2, Package } from 'lucide-react';
 import { PPMLigne } from '@/types';
+import { Badge } from '@/components/ui/data-display/Badge';
+import { Button } from '@/components/ui/forms/Button';
+
+type BadgeVariant = 'success' | 'secondary' | 'warning' | 'default'
+
+function renderStatusBadge(statut?: string) {
+  const map: Record<string, { label: string; variant: BadgeVariant }> = {
+    APPROUVE:           { label: 'Approuvé',    variant: 'success' },
+    BROUILLON:          { label: 'Brouillon',   variant: 'secondary' },
+    SOUMIS:             { label: 'Soumis',      variant: 'warning' },
+    VALIDATION_BAILLEUR:{ label: 'Attente ANO', variant: 'warning' },
+    CLOTURE:            { label: 'Clôturé',     variant: 'secondary' },
+  }
+  const entry = statut ? map[statut] : undefined
+  return (
+    <Badge variant={entry?.variant ?? 'default'} className="text-[10px]">
+      {entry?.label ?? statut ?? 'N/A'}
+    </Badge>
+  )
+}
+
+const TABS = [
+  { key: 'MATRIX',   label: 'Matrice Globale',         icon: LayoutGrid },
+  { key: 'WORKFLOW', label: "Workflow d'Approbation",  icon: GitCommit },
+  { key: 'BI',       label: 'Analytics PPM',           icon: TrendingUp },
+] as const
+
+type Tab = typeof TABS[number]['key']
 
 export default function PPMPage() {
   const { id: urlProjectId } = useParams();
@@ -18,9 +47,7 @@ export default function PPMPage() {
   const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions();
   const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(activeVersionId);
 
-  const [activeTab, setActiveTab] = useState<'MATRIX' | 'WORKFLOW' | 'BI'>('MATRIX');
-  
-  // Form State
+  const [activeTab, setActiveTab] = useState<Tab>('MATRIX');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedLigneId, setSelectedLigneId] = useState<string | null>(null);
 
@@ -28,26 +55,17 @@ export default function PPMPage() {
 
   if (!resolvedProjectId) {
     return (
-      <div className="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        <div className="es-title">Aucun projet sélectionné</div>
-        <div className="es-sub">Veuillez sélectionner un projet pour afficher le Plan de Passation des Marchés.</div>
+      <div className="flex flex-col h-full items-center justify-center gap-3 text-center p-8">
+        <Package className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+        <p className="font-semibold text-foreground">Aucun projet sélectionné</p>
+        <p className="text-sm text-muted-foreground">
+          Veuillez sélectionner un projet pour afficher le Plan de Passation des Marchés.
+        </p>
       </div>
     );
   }
 
   const activeVersion = versions.find(v => v.id === activeVersionId);
-
-  const renderStatusBadge = (statut?: string) => {
-    switch (statut) {
-      case 'APPROUVE': return <span className="chip chip-success">Approuvé</span>;
-      case 'BROUILLON': return <span className="chip chip-slate">Brouillon</span>;
-      case 'SOUMIS': return <span className="chip chip-warning">Soumis</span>;
-      case 'VALIDATION_BAILLEUR': return <span className="chip chip-warning">Attente ANO</span>;
-      case 'CLOTURE': return <span className="chip chip-slate">Clôturé</span>;
-      default: return <span className="chip">{statut || 'N/A'}</span>;
-    }
-  };
 
   const handleOpenForm = (id?: string) => {
     setSelectedLigneId(id || null);
@@ -65,113 +83,102 @@ export default function PPMPage() {
   const selectedLigne = selectedLigneId ? lignes.find(l => l.id === selectedLigneId) : null;
 
   return (
-    <div className="page-container">
-      {/* Header compact façon ERP */}
-      <div className="page-header">
-        <div className="ph-top">
-          <div className="ph-title-group">
-            <h1 className="ph-title">Plan de Passation des Marchés (PPM)</h1>
-            {renderStatusBadge(activeVersion?.statut)}
-          </div>
-          
-          <div className="ph-actions">
-            <button className="btn btn-secondary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-              Exporter Excel
-            </button>
-            <button className="btn btn-primary" onClick={() => handleOpenForm()}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-              Nouveau Marché
-            </button>
-          </div>
-        </div>
+    <div className="flex flex-col h-full overflow-hidden bg-background">
 
-        {/* KPI Strip & Version Selector */}
-        <div className="ph-bottom">
-          <div className="kpi-strip">
-            <div className="kpi-item">
-              <div className="kpi-label">Montant Total Estimé (PPM)</div>
-              <div className="kpi-value text-slate-800">
-                {formatMoney(totalEstimeBase)}
-              </div>
-            </div>
-            <div className="kpi-item">
-              <div className="kpi-label">Lignes de Marché</div>
-              <div className="kpi-value">{lignes.length} {lignes.length > 1 ? 'Lignes' : 'Ligne'}</div>
-            </div>
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="min-w-0">
+            <PageHeader title="Plan de Passation des Marchés (PPM)" />
           </div>
-          
-          <div className="ph-tools">
-            <VersionSelector 
-              versions={versions.map(v => ({ 
-                id: v.id, 
-                label: v.numero_version, 
-                isActive: v.id === activeVersionId,
-                statut: v.statut 
-              }))}
-              selectedId={activeVersionId}
-              onChange={setActiveVersionId}
-            />
-          </div>
+          {renderStatusBadge(activeVersion?.statut)}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs">
+            Exporter Excel
+          </Button>
+          <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => handleOpenForm()}>
+            Nouveau Marché
+          </Button>
         </div>
       </div>
 
-      {/* Navigation Onglets */}
-      <div className="tabs-container">
-        <button 
-          className={`tab-button ${activeTab === 'MATRIX' ? 'active' : ''}`}
-          onClick={() => setActiveTab('MATRIX')}
-        >
-          <LayoutGrid size={16} />
-          Matrice Globale
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'WORKFLOW' ? 'active' : ''}`}
-          onClick={() => setActiveTab('WORKFLOW')}
-        >
-          <GitCommit size={16} />
-          Workflow d'Approbation
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'BI' ? 'active' : ''}`}
-          onClick={() => setActiveTab('BI')}
-        >
-          <TrendingUp size={16} />
-          Analytics PPM
-        </button>
+      {/* ── KPI STRIP ──────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-4 px-4 py-2.5 border-b border-border bg-muted/10">
+        <div className="flex items-center gap-6">
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Montant Total Estimé (PPM)</p>
+            <p className="text-sm font-bold text-foreground tabular-nums">{formatMoney(totalEstimeBase)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Lignes de Marché</p>
+            <p className="text-sm font-bold text-foreground">{lignes.length} {lignes.length > 1 ? 'Lignes' : 'Ligne'}</p>
+          </div>
+        </div>
+        <VersionSelector
+          versions={versions.map(v => ({
+            id: v.id,
+            label: v.numero_version,
+            isActive: v.id === activeVersionId,
+            statut: v.statut
+          }))}
+          selectedId={activeVersionId}
+          onChange={setActiveVersionId}
+        />
       </div>
 
-      {/* Contenu principal */}
-      <div className="page-content p-4">
+      {/* ── ONGLETS ─────────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex items-center gap-1 px-4 border-b border-border bg-card">
+        {TABS.map(tab => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -mb-px ${
+                activeTab === tab.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              <Icon size={14} />
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── CONTENU ────────────────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 overflow-auto p-4">
         {isLoading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="spinner"></div>
-            <span className="ml-3 text-slate-500 font-medium">Chargement du PPM...</span>
+          <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-sm font-medium">Chargement du PPM...</span>
           </div>
         ) : (
           <>
             {activeTab === 'MATRIX' && (
-              <div style={{ height: 'calc(100vh - 220px)', minHeight: '500px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--line-soft)', overflow: 'hidden' }}>
+              <div className="h-full min-h-[500px] bg-card border border-border rounded-lg overflow-hidden">
                 <PPMMatrix lignes={lignes} onRowClick={handleOpenForm} />
               </div>
             )}
-            
+
             {activeTab === 'WORKFLOW' && (
-              <div style={{ padding: '2rem', textAlign: 'center', background: 'var(--surface)', borderRadius: '8px', border: '1px dashed var(--line-strong)' }}>
-                <span style={{ fontSize: '14px', color: 'var(--slate)' }}>[Étape 4 : Workflow d'Approbation à venir]</span>
+              <div className="bg-card border border-dashed border-border rounded-lg p-8 text-center">
+                <p className="text-sm text-muted-foreground">[Étape 4 : Workflow d'Approbation à venir]</p>
               </div>
             )}
 
             {activeTab === 'BI' && (
-              <div style={{ padding: '2rem', textAlign: 'center', background: 'var(--surface)', borderRadius: '8px', border: '1px dashed var(--line-strong)' }}>
-                <span style={{ fontSize: '14px', color: 'var(--slate)' }}>[Étape 5 : Analytics PPM à venir]</span>
+              <div className="bg-card border border-dashed border-border rounded-lg p-8 text-center">
+                <p className="text-sm text-muted-foreground">[Étape 5 : Analytics PPM à venir]</p>
               </div>
             )}
           </>
         )}
       </div>
 
-      <PPMFormSlideOver 
+      <PPMFormSlideOver
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         ligne={selectedLigne}

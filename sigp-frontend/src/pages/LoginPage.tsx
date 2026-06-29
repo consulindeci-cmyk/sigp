@@ -1,3 +1,4 @@
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -18,9 +19,9 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 function getStrength(pwd: string) {
-  if (pwd.length === 0) return { label: '', bars: ['bg-slate-200', 'bg-slate-200', 'bg-slate-200'] }
-  if (pwd.length < 5)   return { label: 'Faible',  bars: ['bg-red-400',    'bg-slate-200',  'bg-slate-200'] }
-  if (pwd.length < 8)   return { label: 'Moyen',   bars: ['bg-orange-400', 'bg-orange-400', 'bg-slate-200'] }
+  if (pwd.length === 0) return { label: '', bars: ['bg-muted-200', 'bg-muted-200', 'bg-muted-200'] }
+  if (pwd.length < 5)   return { label: 'Faible',  bars: ['bg-red-400',    'bg-muted-200',  'bg-muted-200'] }
+  if (pwd.length < 8)   return { label: 'Moyen',   bars: ['bg-orange-400', 'bg-orange-400', 'bg-muted-200'] }
   return                       { label: 'Fort',    bars: ['bg-[#1d9e75]',  'bg-[#1d9e75]',  'bg-[#1d9e75]'] }
 }
 
@@ -101,12 +102,11 @@ export default function LoginPage() {
 
           {/* ── HEADER LOGO ── */}
           <div className="flex items-center gap-3 shrink-0">
-            <div className="w-11 h-11 xl:w-12 xl:h-12 bg-gradient-to-br from-[#1d9e75] to-[#138f67] rounded-xl flex items-center justify-center shadow-lg shadow-[#1d9e75]/25">
+            <div className="w-11 h-11 xl:w-12 xl:h-12 bg-gradient-to-br from-[#1d9e75] to-[#138f67] rounded-lg flex items-center justify-center shadow-sm shadow-[#1d9e75]/25">
               <span className="text-white font-black text-lg xl:text-xl tracking-tighter">GP</span>
             </div>
             <div>
-              <h1 className="text-lg xl:text-xl font-bold text-white tracking-tight leading-tight">DevProject</h1>
-              <p className="text-[10px] xl:text-xs text-slate-400 font-medium">Plateforme de pilotage des projets</p>
+              <PageHeader title="DevProject" description="Plateforme de pilotage des projets" />
             </div>
           </div>
 
@@ -136,8 +136,8 @@ export default function LoginPage() {
                 { value: '3+',    label: 'Alertes',          accent: 'text-orange-400' },
               ].map(({ value, label, accent }) => (
                 <div key={label}
-                  className="glass-panel rounded-xl px-3 py-3 xl:px-4 xl:py-3.5 transition-all duration-300 hover:-translate-y-0.5">
-                  <p className={`text-xl xl:text-2xl font-black leading-none ${accent}`}>{value}</p>
+                  className="glass-panel rounded-lg px-3 py-3 xl:px-4 xl:py-3.5 transition-all duration-300 hover:-translate-y-0.5">
+                  <p className={`text-xl xl:text-xl font-black leading-none ${accent}`}>{value}</p>
                   <p className="text-[10px] xl:text-xs font-semibold text-slate-500 mt-1.5 uppercase tracking-wider">{label}</p>
                 </div>
               ))}
@@ -185,7 +185,7 @@ export default function LoginPage() {
 
         {/* Carte login — taille maximale adaptée à la hauteur dispo */}
         <div className={`
-          relative z-10 w-full max-w-[400px] bg-white rounded-2xl
+          relative z-10 w-full max-w-[400px] bg-white rounded-lg
           border border-slate-100/80 shadow-[0_8px_40px_rgba(0,0,0,0.06)]
           px-6 py-6 sm:px-8 sm:py-7
           ${isShaking ? 'animate-shake' : ''}
@@ -193,14 +193,14 @@ export default function LoginPage() {
 
           {/* Logo mobile (< lg) */}
           <div className="lg:hidden flex justify-center mb-5">
-            <div className="w-11 h-11 bg-gradient-to-br from-[#1d9e75] to-[#138f67] rounded-xl flex items-center justify-center shadow-lg shadow-[#1d9e75]/30">
+            <div className="w-11 h-11 bg-gradient-to-br from-[#1d9e75] to-[#138f67] rounded-lg flex items-center justify-center shadow-sm shadow-[#1d9e75]/30">
               <span className="text-white font-black text-lg">GP</span>
             </div>
           </div>
 
           {/* Titre */}
           <div className="mb-5">
-            <h2 className="text-2xl font-extrabold text-[#0a1628] tracking-tight mb-1">Connexion</h2>
+            <h2 className="text-xl font-extrabold text-[#0a1628] tracking-tight mb-1">Connexion</h2>
             <p className="text-xs text-slate-500 font-medium">
               Accédez à votre espace sécurisé de gestion de projet.
             </p>
@@ -212,7 +212,7 @@ export default function LoginPage() {
             {/* Email */}
             <div>
               <div className={`
-                relative flex items-center rounded-xl bg-[#f8fafc]
+                relative flex items-center rounded-lg bg-[#f8fafc]
                 border transition-all duration-200
                 focus-within:ring-2 focus-within:ring-[#1d9e75]/15 focus-within:border-[#1d9e75]
                 ${errors.email ? 'border-red-400' : 'border-slate-200 hover:border-slate-300'}
@@ -239,7 +239,7 @@ export default function LoginPage() {
             {/* Mot de passe */}
             <div>
               <div className={`
-                relative flex items-center rounded-xl bg-[#f8fafc]
+                relative flex items-center rounded-lg bg-[#f8fafc]
                 border transition-all duration-200
                 focus-within:ring-2 focus-within:ring-[#1d9e75]/15 focus-within:border-[#1d9e75]
                 ${errors.mot_de_passe ? 'border-red-400' : 'border-slate-200 hover:border-slate-300'}
@@ -279,7 +279,7 @@ export default function LoginPage() {
 
             {/* Rôle */}
             <div className={`
-              relative flex items-center rounded-xl bg-[#f8fafc]
+              relative flex items-center rounded-lg bg-[#f8fafc]
               border border-slate-200 hover:border-slate-300
               transition-all duration-200
               focus-within:ring-2 focus-within:ring-[#1d9e75]/15 focus-within:border-[#1d9e75]
@@ -317,7 +317,7 @@ export default function LoginPage() {
 
             {/* Erreur globale */}
             {errors.root && (
-              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
                 <AlertCircle size={15} className="text-red-500 shrink-0" />
                 <p className="text-red-700 text-xs font-semibold">{errors.root.message}</p>
               </div>
@@ -326,7 +326,7 @@ export default function LoginPage() {
             {/* Bouton principal */}
             <button type="submit" disabled={isSubmitting}
               className="group relative w-full overflow-hidden flex justify-center items-center gap-2
-                bg-[#0a1628] text-white font-bold rounded-xl text-sm px-5 py-3.5
+                bg-[#0a1628] text-white font-bold rounded-lg text-sm px-4 py-2.5
                 transition-all duration-200 hover:bg-[#0d1e36]
                 hover:shadow-[0_0_20px_rgba(29,158,117,0.3)]
                 active:scale-[0.98] shadow-[0_4px_15px_rgba(10,22,40,0.18)]
@@ -358,7 +358,7 @@ export default function LoginPage() {
                 onClick={() => fillCredentials(user.email, user.pwd)}
                 className="w-full group relative overflow-hidden
                   bg-[#f8fafc] border border-slate-200 hover:border-[#1d9e75]/50
-                  rounded-xl px-3 py-2 transition-all duration-300
+                  rounded-lg px-3 py-2 transition-all duration-300
                   flex flex-col text-left hover:bg-[#f0fdf8]
                   hover:shadow-[0_4px_10px_rgba(29,158,117,0.08)]"
               >

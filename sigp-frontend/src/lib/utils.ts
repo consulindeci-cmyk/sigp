@@ -51,31 +51,25 @@ export function formatPercent(value: number): string {
   return `${Math.round(value)}%`
 }
 
-export function getEvmColor(value: number): string {
-  if (value >= 1.0) return 'evm-green'
-  if (value >= 0.9) return 'evm-orange'
-  return 'evm-red'
-}
-
 export function getEvmBg(value: number): string {
-  if (value >= 1.0) return 'bg-sigp-green/10 text-sigp-green'
-  if (value >= 0.9) return 'bg-sigp-yellow/10 text-sigp-yellow'
-  return 'bg-sigp-red/10 text-sigp-red'
+  if (value >= 1.0) return 'bg-success/10 text-success'
+  if (value >= 0.9) return 'bg-warning/10 text-warning'
+  return 'bg-destructive/10 text-destructive'
 }
 
 export function getStatutColor(statut: string): string {
   const map: Record<string, string> = {
-    ACTIF: 'bg-sigp-green/10 text-sigp-green border-sigp-green/30',
-    PREPARATION: 'bg-sigp-yellow/10 text-sigp-yellow border-sigp-yellow/30',
-    SUSPENDU: 'bg-sigp-red/10 text-sigp-red border-sigp-red/30',
-    CLOTURE: 'bg-navy-500/50 text-sigp-muted border-navy-500',
-    ANNULE: 'bg-navy-500/50 text-sigp-muted border-navy-500',
-    A_FAIRE: 'bg-navy-500/50 text-sigp-muted border-navy-500',
-    EN_COURS: 'bg-sigp-blue/10 text-sigp-blue border-sigp-blue/30',
-    TERMINE: 'bg-sigp-green/10 text-sigp-green border-sigp-green/30',
-    EN_ATTENTE: 'bg-sigp-yellow/10 text-sigp-yellow border-sigp-yellow/30',
+    ACTIF: 'bg-success/10 text-success border-success/30',
+    PREPARATION: 'bg-warning/10 text-warning border-warning/30',
+    SUSPENDU: 'bg-destructive/10 text-destructive border-destructive/30',
+    CLOTURE: 'bg-muted/50 text-muted-foreground border-border',
+    ANNULE: 'bg-muted/50 text-muted-foreground border-border',
+    A_FAIRE: 'bg-muted/50 text-muted-foreground border-border',
+    EN_COURS: 'bg-primary/10 text-primary border-primary/30',
+    TERMINE: 'bg-success/10 text-success border-success/30',
+    EN_ATTENTE: 'bg-warning/10 text-warning border-warning/30',
   }
-  return map[statut] ?? 'bg-navy-500/50 text-sigp-muted border-navy-500'
+  return map[statut] ?? 'bg-muted/50 text-muted-foreground border-border'
 }
 
 export function formatDate(date: string | null | undefined): string {

@@ -16,11 +16,19 @@ interface SCurveChartProps {
   height?: number
 }
 
+const C = {
+  pv: 'hsl(var(--primary))',
+  ev: 'hsl(var(--success))',
+  ac: 'hsl(var(--warning))',
+  grid: 'hsl(var(--border))',
+  tick: 'hsl(var(--muted-foreground))',
+}
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-navy-800 border border-navy-500 rounded-lg p-3 text-xs shadow-xl">
-      <p className="text-sigp-muted mb-2 font-medium">{label}</p>
+    <div className="bg-card border border-border rounded-lg p-3 text-xs shadow-sm">
+      <p className="text-muted-foreground mb-2 font-medium">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }} className="flex justify-between gap-4">
           <span>{p.name}</span>
@@ -34,7 +42,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export function SCurveChart({ data, height = 280 }: SCurveChartProps) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex items-center justify-center text-sigp-muted text-sm" style={{ height }}>
+      <div className="flex items-center justify-center text-muted-foreground text-sm" style={{ height }}>
         Pas de données disponibles
       </div>
     )
@@ -43,28 +51,28 @@ export function SCurveChart({ data, height = 280 }: SCurveChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2D3A52" />
+        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
         <XAxis
           dataKey="mois"
-          tick={{ fill: '#94A3B8', fontSize: 11 }}
-          axisLine={{ stroke: '#2D3A52' }}
+          tick={{ fill: C.tick, fontSize: 11 }}
+          axisLine={{ stroke: C.grid }}
           tickLine={false}
         />
         <YAxis
-          tick={{ fill: '#94A3B8', fontSize: 11 }}
-          axisLine={{ stroke: '#2D3A52' }}
+          tick={{ fill: C.tick, fontSize: 11 }}
+          axisLine={{ stroke: C.grid }}
           tickLine={false}
           tickFormatter={(v) => formatNumber(v, 0)}
         />
         <Tooltip content={<CustomTooltip />} />
         <Legend
-          wrapperStyle={{ fontSize: 11, color: '#94A3B8', paddingTop: 12 }}
+          wrapperStyle={{ fontSize: 11, color: C.tick, paddingTop: 12 }}
         />
         <Line
           type="monotone"
           dataKey="pv"
           name="PV (Valeur Planifiée)"
-          stroke="#2563EB"
+          stroke={C.pv}
           strokeWidth={2}
           dot={false}
           strokeDasharray="5 3"
@@ -73,7 +81,7 @@ export function SCurveChart({ data, height = 280 }: SCurveChartProps) {
           type="monotone"
           dataKey="ev"
           name="EV (Valeur Acquise)"
-          stroke="#10B981"
+          stroke={C.ev}
           strokeWidth={2.5}
           dot={false}
         />
@@ -81,7 +89,7 @@ export function SCurveChart({ data, height = 280 }: SCurveChartProps) {
           type="monotone"
           dataKey="ac"
           name="AC (Coût Réel)"
-          stroke="#F59E0B"
+          stroke={C.ac}
           strokeWidth={2}
           dot={false}
         />

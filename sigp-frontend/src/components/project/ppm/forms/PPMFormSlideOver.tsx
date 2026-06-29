@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
 import { PPMLigne } from '@/types';
 import { budgetValidationService } from '@/services/budgetValidationService';
+import { Button } from '@/components/ui/forms/Button';
 
 interface PPMFormSlideOverProps {
   isOpen: boolean;
@@ -152,14 +153,14 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
 
   return (
     <>
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
+      <div className="fixed inset-0 bg-muted-900/40 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
       
-      <div className="fixed inset-y-0 right-0 w-full sm:w-[600px] bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300">
+      <div className="fixed inset-y-0 right-0 w-full sm:w-[600px] bg-white shadow-sm z-50 flex flex-col transform transition-transform duration-300">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h2 className="text-lg font-bold text-slate-800">
             {ligne ? 'Modifier la ligne de marché' : 'Nouvelle ligne de marché'}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
+          <button onClick={onClose} className="p-2 hover:bg-muted-100 rounded-full text-slate-500">
             <X size={20} />
           </button>
         </div>
@@ -261,7 +262,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
                   <label className="block text-sm font-medium text-slate-700 mb-1">Montant Estimé (Devise) *</label>
                   <input required type="number" min="0" className="input w-full" value={montantDevise} onChange={e => setMontantDevise(Number(e.target.value))} />
                 </div>
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <div className="bg-muted-50 p-3 rounded-lg border border-slate-200">
                   <label className="block text-xs font-medium text-slate-500 mb-1">Montant Base (XOF)</label>
                   <div className="font-mono text-lg font-bold text-slate-900">
                     {new Intl.NumberFormat('fr-FR').format(montantBase)}
@@ -306,21 +307,20 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
           </form>
         </div>
 
-        <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+        <div className="p-6 border-t border-border bg-muted/5 flex justify-between items-center">
           {ligne && onDelete ? (
-            <button type="button" onClick={handleDelete} disabled={isSubmitting} className="btn btn-outline text-red-600 border-red-200 hover:bg-red-50">
-              <Trash2 size={16} /> Supprimer
-            </button>
-          ) : <div></div>}
-          
+            <Button type="button" variant="destructive" size="sm" onClick={handleDelete} disabled={isSubmitting} leftIcon={<Trash2 size={16} />}>
+              Supprimer
+            </Button>
+          ) : <div />}
+
           <div className="flex gap-3">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="btn btn-secondary">
+            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isSubmitting}>
               Annuler
-            </button>
-            <button type="submit" form="ppm-form" disabled={isSubmitting} className="btn btn-primary">
-              <Save size={16} />
+            </Button>
+            <Button type="submit" form="ppm-form" variant="default" size="sm" disabled={isSubmitting} leftIcon={<Save size={16} />}>
               {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

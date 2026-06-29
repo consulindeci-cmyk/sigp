@@ -199,6 +199,14 @@ export default function ProjectHistoryTab() {
   return (
     <section aria-label="Historique des modifications" className="flex flex-col gap-6">
 
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Historique des Modifications</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Journal d'audit — traçabilité de toutes les modifications du projet</p>
+        </div>
+      </div>
+
       {/* KPI unique */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard

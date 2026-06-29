@@ -1,4 +1,4 @@
-﻿import type { PPMLigne } from '@/types/ppm';
+import type { PPMLigne } from '@/types/ppm';
 import { PPMMatrixRow } from './PPMMatrixRow';
 import { Filter } from 'lucide-react';
 
@@ -7,113 +7,100 @@ interface PPMMatrixProps {
   onRowClick?: (id: string) => void;
 }
 
+const SELECT_CLASS = 'h-8 px-3 text-xs border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring'
+
+const TH_GROUP = 'px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground border-r border-primary/30 text-center'
+const TH_GROUP_LAST = 'px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground text-center'
+const TH_GROUP_STICKY = `${TH_GROUP} sticky left-0 z-30 bg-primary`
+
+const TH_COL = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-r border-b border-border bg-muted/30 whitespace-nowrap'
+const TH_COL_STICKY = `${TH_COL} sticky left-0 z-30 w-[200px]`
+const TH_COL_RIGHT = `${TH_COL} text-right`
+const TH_COL_CENTER = `${TH_COL} text-center`
+const TH_COL_SECTION = `${TH_COL} border-r-2`
+const TH_COL_LAST = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-b border-border bg-muted/30 whitespace-nowrap'
+
 export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      
-      {/* Barre d'outils / Filtres Visuels */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        padding: '10px 16px', 
-        background: 'var(--surface)', 
-        borderBottom: '1px solid var(--line)',
-        gap: '16px'
-      }}>
-        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--navy-600)', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          <Filter size={14} /> Filtres :
+    <div className="flex flex-col h-full overflow-hidden">
+
+      {/* ── BARRE DE FILTRES ─────────────────────────────────────────────── */}
+      <div className="shrink-0 flex items-center gap-4 px-4 py-2.5 bg-card border-b border-border">
+        <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
+          <Filter size={13} aria-hidden="true" /> Filtres :
         </div>
-        <select className="input" style={{ padding: '6px 12px', fontSize: '12px', height: 'auto', width: 'auto', background: 'var(--canvas)', border: '1px solid var(--line-soft)' }}>
+        <select className={SELECT_CLASS}>
           <option value="">Tous les Bailleurs</option>
           <option value="IDA">IDA (Banque Mondiale)</option>
           <option value="AFD">AFD</option>
         </select>
-        <select className="input" style={{ padding: '6px 12px', fontSize: '12px', height: 'auto', width: 'auto', background: 'var(--canvas)', border: '1px solid var(--line-soft)' }}>
+        <select className={SELECT_CLASS}>
           <option value="">Toutes les Catégories</option>
           <option value="TRAVAUX">Travaux</option>
           <option value="BIENS">Biens</option>
           <option value="SERVICES">Services</option>
         </select>
-        <select className="input" style={{ padding: '6px 12px', fontSize: '12px', height: 'auto', width: 'auto', background: 'var(--canvas)', border: '1px solid var(--line-soft)' }}>
+        <select className={SELECT_CLASS}>
           <option value="">Tous les Statuts</option>
           <option value="PLANIFIE">Planifié</option>
           <option value="EN_COURS">En cours de passation</option>
           <option value="SIGNE">Contrat Signé</option>
         </select>
-        
-        <div style={{ flex: 1 }} />
-        
-        <div style={{ fontSize: '12px', color: 'var(--slate)', fontWeight: 500 }}>
+
+        <div className="flex-1" />
+
+        <div className="text-xs text-muted-foreground font-medium">
           {lignes.length} Ligne(s) de marché
         </div>
       </div>
 
-      {/* Conteneur Scrollable */}
-      <div style={{ flex: 1, overflow: 'auto', position: 'relative' }} className="custom-scrollbar">
-        <table className="w-full text-left border-collapse" style={{ minWidth: '1600px' }}>
-          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-            
+      {/* ── TABLE SCROLLABLE ─────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-x-auto scrollbar-thin bg-background">
+        <table className="w-full text-sm text-left border-collapse table-auto" style={{ minWidth: "1800px" }}>
+          <thead className="sticky top-0 z-20">
+
             {/* Header Groupes */}
-            <tr style={{ background: 'var(--navy-900)', color: 'white' }}>
-              <th colSpan={1} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '1px solid var(--navy-700)', position: 'sticky', left: 0, zIndex: 12, background: 'var(--navy-900)' }}>
-                Identifiant
-              </th>
-              <th colSpan={4} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
-                Configuration du Marché
-              </th>
-              <th colSpan={2} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
-                Données Financières
-              </th>
-              <th colSpan={7} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '2px solid var(--navy-700)', textAlign: 'center' }}>
-                Chronogramme Prévisionnel (Gantt)
-              </th>
-              <th colSpan={1} style={{ padding: '8px 16px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>
-                Suivi
-              </th>
+            <tr className="bg-primary text-primary-foreground">
+              <th className={TH_GROUP_STICKY}>Identifiant</th>
+              <th colSpan={4} className={TH_GROUP}>Configuration du Marché</th>
+              <th colSpan={2} className={TH_GROUP}>Données Financières</th>
+              <th colSpan={7} className={TH_GROUP}>Chronogramme Prévisionnel (Gantt)</th>
+              <th className={TH_GROUP_LAST}>Suivi</th>
             </tr>
-            
+
             {/* Header Colonnes */}
-            <tr style={{ background: 'var(--navy-800)', color: 'var(--slate-300)' }}>
-              {/* Identification */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', position: 'sticky', left: 0, zIndex: 12, background: 'var(--navy-800)', width: '200px' }}>
-                Référence & WBS
-              </th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Description</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Catégorie</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Méthode</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Revue</th>
-              
-              {/* Financier */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'right', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Montant (Devise)</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'right', borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', color: 'white' }}>Montant (Base)</th>
-              
-              {/* Chronogramme */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Prép. DAO</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Lanc. DAO</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Offres</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Évaluation</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>ANO</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '1px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)' }}>Attribution</th>
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, textAlign: 'center', borderRight: '2px solid var(--navy-700)', borderBottom: '1px solid var(--navy-900)', color: 'white' }}>Signature</th>
-              
-              {/* Suivi */}
-              <th style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, borderBottom: '1px solid var(--navy-900)' }}>Statut Actuel</th>
+            <tr>
+              <th className={TH_COL_STICKY}>Référence &amp; WBS</th>
+              <th className={TH_COL}>Description</th>
+              <th className={TH_COL}>Catégorie</th>
+              <th className={TH_COL}>Méthode</th>
+              <th className={TH_COL_SECTION}>Revue</th>
+              <th className={TH_COL_RIGHT}>Montant (Devise)</th>
+              <th className={`${TH_COL_RIGHT} border-r-2 text-foreground`}>Montant (Base)</th>
+              <th className={TH_COL_CENTER}>Prép. DAO</th>
+              <th className={TH_COL_CENTER}>Lanc. DAO</th>
+              <th className={TH_COL_CENTER}>Offres</th>
+              <th className={TH_COL_CENTER}>Évaluation</th>
+              <th className={TH_COL_CENTER}>ANO</th>
+              <th className={TH_COL_CENTER}>Attribution</th>
+              <th className={`${TH_COL_CENTER} border-r-2 text-foreground`}>Signature</th>
+              <th className={TH_COL_LAST}>Statut Actuel</th>
             </tr>
           </thead>
-          
-          <tbody className="divide-y divide-gray-100">
+
+          <tbody>
             {lignes.length === 0 ? (
               <tr>
-                <td colSpan={15} style={{ padding: '40px', textAlign: 'center', color: 'var(--slate)' }}>
+                <td colSpan={15} className="px-10 py-10 text-center text-muted-foreground text-sm">
                   Aucune ligne de marché pour cette version.
                 </td>
               </tr>
             ) : (
               lignes.map(ligne => (
-                <PPMMatrixRow 
-                  key={ligne.id} 
-                  ligne={ligne} 
-                  onClick={() => onRowClick && onRowClick(ligne.id)} 
+                <PPMMatrixRow
+                  key={ligne.id}
+                  ligne={ligne}
+                  onClick={() => onRowClick && onRowClick(ligne.id)}
                 />
               ))
             )}
@@ -121,5 +108,5 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
         </table>
       </div>
     </div>
-  );
+  )
 }

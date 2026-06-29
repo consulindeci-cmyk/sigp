@@ -154,6 +154,14 @@ export default function ProjectOperationsJournalTab() {
   return (
     <section aria-label="Journal des Opérations" className="flex flex-col gap-6">
 
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Journal des Opérations</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Traçabilité complète des actions et événements système</p>
+        </div>
+      </div>
+
       {/* Timeline récente */}
       <Card>
         <CardHeader className="pb-3">

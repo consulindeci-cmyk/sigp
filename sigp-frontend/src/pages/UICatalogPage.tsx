@@ -1,10 +1,11 @@
+import { PageHeader } from '@/components/layout/PageHeader';
 ﻿import { useState } from 'react';
 import { Button } from '../components/ui/forms/Button';
 import { Input } from '../components/ui/forms/Input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../components/ui/data-display/Card';
 import { Badge } from '../components/ui/data-display/Badge';
 import { Modal, ModalTrigger, ModalContent, ModalHeader, ModalTitle, ModalDescription, ModalFooter, ModalClose } from '../components/ui/overlays/Modal';
-import { DataTable } from '../components/ui/data-display/DataTable';
+import { DataTable } from '../components/ui/data-table/DataTable';
 import { Search } from 'lucide-react';
 
 export default function UICatalogPage() {
@@ -25,8 +26,7 @@ export default function UICatalogPage() {
   return (
     <div className="p-8 space-y-12 max-w-6xl mx-auto">
       <div>
-        <h1 className="text-3xl font-display font-semibold text-navy-900 mb-2">Catalogue UI Enterprise</h1>
-        <p className="text-slate">Composants de la Phase 2A & 2B - Agnostiques, Accessibles, et Typés.</p>
+        <PageHeader title="Catalogue UI Enterprise" description="Composants de la Phase 2A & 2B - Agnostiques, Accessibles, et Typés." />
       </div>
 
       <section>

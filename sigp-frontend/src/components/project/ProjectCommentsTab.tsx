@@ -305,6 +305,14 @@ export default function ProjectCommentsTab() {
   return (
     <section aria-label="Commentaires et Discussions" className="flex flex-col gap-6">
 
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Commentaires &amp; Discussions</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Notes collaboratives, retours et échanges sur le projet</p>
+        </div>
+      </div>
+
       {/* Formulaire nouveau commentaire */}
       <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
         <div className="flex items-center gap-2.5">

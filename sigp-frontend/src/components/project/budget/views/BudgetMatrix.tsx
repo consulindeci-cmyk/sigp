@@ -36,8 +36,8 @@ export function BudgetMatrix({ budgetVersion }: BudgetMatrixProps) {
       </div>
 
       {/* ── Scrollable table ────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-auto relative">
-        <table className="w-full text-left border-collapse min-w-[1200px]">
+      <div className="flex-1 overflow-x-auto scrollbar-thin relative">
+        <table className="w-full text-sm text-left border-collapse min-w-[1200px]">
 
           <thead className="sticky top-0 z-10">
 

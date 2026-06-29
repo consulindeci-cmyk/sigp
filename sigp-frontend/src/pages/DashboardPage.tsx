@@ -40,27 +40,27 @@ import {
 // ── Shared tooltip style (Design System tokens) ─────────────────────────────
 const tooltipStyle: React.CSSProperties = {
   borderRadius: '8px',
-  border: '1px solid var(--border)',
+  border: '1px solid hsl(var(--border))',
   boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
   fontSize: '12px',
-  background: 'var(--card)',
-  color: 'var(--foreground)',
+  background: 'hsl(var(--card))',
+  color: 'hsl(var(--foreground))',
 };
 
 // ── Pie chart color palettes ─────────────────────────────────────────────────
 const STATUS_COLORS = [
-  'var(--success, #22c55e)',
-  'var(--muted-foreground, #94a3b8)',
-  'var(--destructive, #ef4444)',
+  'hsl(var(--success))',
+  'hsl(var(--muted-foreground))',
+  'hsl(var(--destructive))',
 ];
 const BUDGET_DIST_COLORS = [
-  'var(--primary, #2563eb)',
-  'var(--success, #22c55e)',
-  'var(--warning, #f59e0b)',
+  'hsl(var(--primary))',
+  'hsl(var(--success))',
+  'hsl(var(--warning))',
 ];
 const FUNDING_COLORS = [
-  'var(--navy-700, #1e3a5f)',
-  'var(--slate, #64748b)',
+  'hsl(var(--primary))',
+  'hsl(var(--muted-foreground))',
 ];
 
 // ── Tiny reusable section header helper ─────────────────────────────────────
@@ -232,19 +232,19 @@ export default function DashboardPage() {
                   >
                     <defs>
                       <linearGradient id="disbGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--primary, #2563eb)" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="var(--primary, #2563eb)" stopOpacity={0} />
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis
                       dataKey="label"
-                      tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <YAxis
-                      tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
                       axisLine={false}
                       tickLine={false}
                       tickFormatter={(v: number) => `${v}M`}
@@ -258,7 +258,7 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="value"
                       name="Décaissé (M$)"
-                      stroke="var(--primary, #2563eb)"
+                      stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       fill="url(#disbGrad)"
                       dot={false}
@@ -340,15 +340,15 @@ export default function DashboardPage() {
                     data={mockEvmData}
                     margin={{ top: 5, right: 8, left: 0, bottom: 5 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <YAxis
-                      tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
                       axisLine={false}
                       tickLine={false}
                       tickFormatter={(v: number) => `${v}K`}
@@ -367,7 +367,7 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="pv"
                       name="PV — Planifié"
-                      stroke="var(--muted-foreground, #94a3b8)"
+                      stroke="hsl(var(--muted-foreground))"
                       strokeWidth={2}
                       strokeDasharray="5 5"
                       dot={false}
@@ -377,7 +377,7 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="ev"
                       name="EV — Réalisé"
-                      stroke="var(--success, #22c55e)"
+                      stroke="hsl(var(--success))"
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4, strokeWidth: 0 }}
@@ -386,7 +386,7 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="ac"
                       name="AC — Coût réel"
-                      stroke="var(--destructive, #ef4444)"
+                      stroke="hsl(var(--destructive))"
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4, strokeWidth: 0 }}

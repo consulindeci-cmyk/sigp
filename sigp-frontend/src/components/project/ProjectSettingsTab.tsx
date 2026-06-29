@@ -42,7 +42,7 @@ function Switch({
     >
       <span
         className={cn(
-          'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-md transition-transform duration-200',
+          'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
           checked ? 'translate-x-4' : 'translate-x-0',
         )}
       />
@@ -438,11 +438,11 @@ export default function ProjectSettingsTab() {
   return (
     <section aria-label="Paramètres du projet" className="flex flex-col gap-6">
 
-      {/* Header actions */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <Settings className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-[15px] font-semibold text-foreground">Paramètres du projet</h2>
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Paramètres du Projet</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Configuration, préférences, notifications et archivage</p>
         </div>
         <div className="flex items-center gap-2">
           {saved && (

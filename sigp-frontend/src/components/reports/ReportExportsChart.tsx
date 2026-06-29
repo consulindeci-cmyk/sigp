@@ -29,33 +29,33 @@ export function ReportExportsChart({ data }: ReportExportsChartProps) {
               data={data}
               margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis
                 dataKey="mois"
-                tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
+                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
+                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                 axisLine={false}
                 tickLine={false}
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'var(--popover)',
-                  border: '1px solid var(--border)',
+                  backgroundColor: 'hsl(var(--popover))',
+                  border: '1px solid hsl(var(--border))',
                   borderRadius: '6px',
                   fontSize: '12px',
-                  color: 'var(--foreground)',
+                  color: 'hsl(var(--foreground))',
                 }}
-                cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
+                cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
                 formatter={(value: any) => [String(value), 'Exports']}
               />
               <Bar
                 dataKey="exports"
-                fill="var(--primary, #2563eb)"
+                fill="hsl(var(--primary))"
                 radius={[3, 3, 0, 0]}
                 maxBarSize={32}
               />

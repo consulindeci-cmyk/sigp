@@ -33,26 +33,26 @@ const STATUT_LABELS: Record<string, string> = {
 }
 
 const STATUT_COLORS: Record<string, string> = {
-  ACTIF: 'bg-sigp-green/10 text-sigp-green border-sigp-green/30',
-  PREPARATION: 'bg-sigp-yellow/10 text-sigp-yellow border-sigp-yellow/30',
-  SUSPENDU: 'bg-sigp-red/10 text-sigp-red border-sigp-red/30',
-  CLOTURE: 'bg-navy-500/50 text-sigp-muted border-navy-500',
-  ANNULE: 'bg-navy-500/50 text-sigp-muted border-navy-500 line-through',
-  A_FAIRE: 'bg-navy-500/50 text-sigp-muted border-navy-500',
-  EN_COURS: 'bg-sigp-blue/10 text-sigp-blue border-sigp-blue/30',
-  TERMINE: 'bg-sigp-green/10 text-sigp-green border-sigp-green/30',
-  EN_ATTENTE: 'bg-sigp-yellow/10 text-sigp-yellow border-sigp-yellow/30',
-  FAIBLE: 'bg-sigp-green/10 text-sigp-green border-sigp-green/30',
-  MODERE: 'bg-sigp-yellow/10 text-sigp-yellow border-sigp-yellow/30',
+  ACTIF: 'bg-success/10 text-success border-success/30',
+  PREPARATION: 'bg-warning/10 text-warning border-warning/30',
+  SUSPENDU: 'bg-destructive/10 text-destructive border-destructive/30',
+  CLOTURE: 'bg-muted/50 text-muted-foreground border-border',
+  ANNULE: 'bg-muted/50 text-muted-foreground border-border line-through',
+  A_FAIRE: 'bg-muted/50 text-muted-foreground border-border',
+  EN_COURS: 'bg-primary/10 text-primary border-primary/30',
+  TERMINE: 'bg-success/10 text-success border-success/30',
+  EN_ATTENTE: 'bg-warning/10 text-warning border-warning/30',
+  FAIBLE: 'bg-success/10 text-success border-success/30',
+  MODERE: 'bg-warning/10 text-warning border-warning/30',
   ELEVE: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
-  CRITIQUE: 'bg-sigp-red/10 text-sigp-red border-sigp-red/30',
+  CRITIQUE: 'bg-destructive/10 text-destructive border-destructive/30',
 }
 
 export function StatusBadge({ statut, className }: StatusBadgeProps) {
   return (
     <span className={cn(
       'inline-flex items-center px-1.5 md:px-2 py-0.5 rounded border text-[10px] md:text-xs font-medium',
-      STATUT_COLORS[statut] ?? 'bg-navy-500/50 text-sigp-muted border-navy-500',
+      STATUT_COLORS[statut] ?? 'bg-muted/50 text-muted-foreground border-border',
       className
     )}>
       {STATUT_LABELS[statut] ?? statut}

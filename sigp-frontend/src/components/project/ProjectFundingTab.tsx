@@ -57,10 +57,10 @@ function statutVariant(statut: ConventionStatus): 'success' | 'warning' | 'secon
 }
 
 const tooltipStyle = {
-  backgroundColor: 'var(--card)',
-  border: '1px solid var(--border)',
+  backgroundColor: 'hsl(var(--card))',
+  border: '1px solid hsl(var(--border))',
   borderRadius: '8px',
-  color: 'var(--foreground)',
+  color: 'hsl(var(--foreground))',
   fontSize: '12px',
 };
 
@@ -179,7 +179,7 @@ function FundingTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const { name, value } = payload[0];
   return (
-    <div style={tooltipStyle} className="px-3 py-2 shadow-md">
+    <div style={tooltipStyle} className="px-3 py-2 shadow-sm">
       <p className="font-semibold text-foreground text-[13px]">{name}</p>
       <p className="text-muted-foreground text-[12px]">{value}% du financement</p>
     </div>
@@ -195,6 +195,14 @@ export default function ProjectFundingTab() {
 
   return (
     <section aria-label="Sources de Financement & Conventions" className="flex flex-col gap-6">
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
+        <div>
+          <h1 className="text-base font-bold text-foreground">Financement &amp; Conventions</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Sources de financement, conventions bailleurs et taux de décaissement</p>
+        </div>
+      </div>
 
       {/* KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -1,35 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
-import { useUIStore } from '@/stores/uiStore';
-import api from '@/lib/axios';
+import { mockBudgetAnalytics } from '@/mocks/budgetAnalyticsMock';
 
-interface BudgetAnalyticsData {
-  kpis: {
-    tauxDecaissement: number;
-    burnRateMensuel: number;
-    budgetRestant: number;
-  };
-  scurve: Array<{ mois: string; prevu: number; engage: number; decaisse: number }>;
-  burnRate: Array<{ mois: string; depense: number }>;
-  heatmap: Array<{ name: string; [key: string]: string | number }>;
-  sunburst: Array<{ name: string; value: number }>;
-}
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export function useBudgetAnalytics(versionId?: string) {
-  const { id: urlProjectId } = useParams<{ id: string }>();
-  const { activeProjectId } = useUIStore();
-  const resolvedProjectId = urlProjectId || activeProjectId || '';
-
   const query = useQuery({
-    queryKey: ['budget-analytics', resolvedProjectId, versionId],
-    queryFn: async (): Promise<BudgetAnalyticsData> => {
-      const { data } = await api.get<BudgetAnalyticsData>(
-        `/projects/${resolvedProjectId}/budget/analytics`,
-        { params: versionId ? { versionId } : undefined }
-      );
-      return data;
+    queryKey: ['budget-analytics', versionId],
+    queryFn: async () => {
+      await delay(700);
+      return mockBudgetAnalytics;
     },
-    enabled: !!resolvedProjectId && !!versionId,
+    enabled: !!versionId,
   });
 
   return {
