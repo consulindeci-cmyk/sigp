@@ -47,7 +47,7 @@ export function DataTable<TData, TValue>({
       />
 
       {/* Main scrollable area */}
-      <div className="flex-1 w-full overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]" role="region" aria-label="Tableau de données">
+      <div className="w-full overflow-x-auto overflow-y-hidden" role="region" aria-label="Tableau de données">
         {isLoading ? (
           <DataTableLoading />
         ) : data.length === 0 ? (

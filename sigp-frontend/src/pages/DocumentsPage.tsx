@@ -178,7 +178,7 @@ export default function DocumentsPage() {
   ], [])
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex flex-col min-h-full bg-background relative">
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
@@ -246,7 +246,7 @@ export default function DocumentsPage() {
       </div>
 
       {/* ── CONTENU ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 min-h-0 flex flex-col">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
             <Loader2 className="h-7 w-7 animate-spin text-primary" aria-label="Chargement en cours" />
@@ -269,9 +269,9 @@ export default function DocumentsPage() {
             </p>
           </div>
         ) : (
-          <div className="p-4">
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border bg-muted/5 flex items-center justify-between">
+          <div className="p-4 flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border rounded-lg overflow-hidden">
+              <div className="shrink-0 px-4 py-2.5 border-b border-border bg-muted/5 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-foreground">Tous les Documents</h2>
                 <span className="text-xs text-muted-foreground">
                   {documents?.length ?? 0} fichier{(documents?.length ?? 0) !== 1 ? 's' : ''}
