@@ -10,7 +10,15 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  LogOut,
 } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/overlays/DropdownMenu';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,6 +51,7 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
   const location = useLocation();
   const path = location.pathname;
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore();
+  const { logout } = useAuthStore();
 
   // Sur mobile, la sidebar est toujours visuellement « ouverte » dans son drawer
   const isExpanded = isMobile ? true : sidebarOpen;
@@ -142,21 +151,31 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
 
       {/* ── Utilisateur / Footer ───────────────────────────────────────── */}
       <div className="p-4 border-t border-sidebar-border shrink-0">
-        <div className={cn('flex items-center gap-3', !isExpanded && 'justify-center')}>
-          <div className="h-9 w-9 rounded-full bg-sidebar-accent flex items-center justify-center text-sm font-semibold shrink-0 border border-sidebar-border text-sidebar-foreground">
-            MN
-          </div>
-          {isExpanded && (
-            <div className="flex flex-col overflow-hidden animate-in fade-in duration-300">
-              <span className="text-sm font-medium truncate text-sidebar-foreground">
-                Mariam N'Diaye
-              </span>
-              <span className="text-xs text-sidebar-foreground/50 truncate">
-                Directrice de Programme
-              </span>
-            </div>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className={cn('w-full flex items-center gap-3 hover:bg-sidebar-accent/50 p-1.5 -m-1.5 rounded-md transition-colors', !isExpanded && 'justify-center')}>
+              <div className="h-9 w-9 rounded-full bg-sidebar-accent flex items-center justify-center text-sm font-semibold shrink-0 border border-sidebar-border text-sidebar-foreground">
+                MN
+              </div>
+              {isExpanded && (
+                <div className="flex flex-col overflow-hidden animate-in fade-in duration-300 text-left">
+                  <span className="text-sm font-medium truncate text-sidebar-foreground">
+                    Mariam N'Diaye
+                  </span>
+                  <span className="text-xs text-sidebar-foreground/50 truncate">
+                    Directrice de Programme
+                  </span>
+                </div>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="end" className="w-56" sideOffset={10}>
+            <DropdownMenuItem onClick={() => logout()} className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer">
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Déconnexion</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* ── Bouton Toggle (Desktop uniquement) ────────────────────────── */}

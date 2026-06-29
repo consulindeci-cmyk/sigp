@@ -104,16 +104,14 @@ export function DataTable<TData, TValue>({
             </thead>
 
             <tbody>
-              {table.getRowModel().rows.map((row, rowIndex) => {
-                const isEven = rowIndex % 2 === 0;
+              {table.getRowModel().rows.map((row) => {
                 return (
                   <tr
                     key={row.id}
                     onClick={() => onRowClick?.(row.original)}
                     className={cn(
                       'group transition-colors duration-100 border-b border-border',
-                      isEven ? 'bg-background' : 'bg-muted/10',
-                      'hover:bg-primary/5',
+                      'bg-background hover:bg-muted/50',
                       onRowClick && 'cursor-pointer'
                     )}
                   >
@@ -132,15 +130,13 @@ export function DataTable<TData, TValue>({
                             align === 'center' && 'text-center',
                             isStickyLeft && [
                               'sticky left-0 z-[5]',
-                              isEven ? 'bg-background' : 'bg-muted/10',
-                              'group-hover:bg-primary/5',
+                              'bg-background group-hover:bg-muted',
                               'border-r border-border',
                               'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
                             ],
                             isStickyRight && [
                               'sticky right-0 z-[5]',
-                              isEven ? 'bg-background' : 'bg-muted/10',
-                              'group-hover:bg-primary/5',
+                              'bg-background group-hover:bg-muted',
                               'border-l border-border',
                               'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]',
                             ]

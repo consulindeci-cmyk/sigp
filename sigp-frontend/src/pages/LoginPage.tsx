@@ -1,12 +1,10 @@
-import { PageHeader } from '@/components/layout/PageHeader';
 import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, Navigate } from 'react-router-dom'
 import {
-  Eye, EyeOff, AlertCircle, Mail, Lock, Shield,
-  LayoutDashboard, Coins, AlertTriangle, FileText,
+  Eye, EyeOff, AlertCircle, Mail, Lock,
   User, Check
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
@@ -24,13 +22,6 @@ function getStrength(pwd: string) {
   if (pwd.length < 8)   return { label: 'Moyen',   bars: ['bg-orange-400', 'bg-orange-400', 'bg-muted-200'] }
   return                       { label: 'Fort',    bars: ['bg-[#1d9e75]',  'bg-[#1d9e75]',  'bg-[#1d9e75]'] }
 }
-
-const FEATURES = [
-  { Icon: LayoutDashboard, title: 'Tableau de bord',    sub: 'Vue consolidée des KPIs',          color: 'text-blue-400   bg-blue-500/10'   },
-  { Icon: Coins,           title: 'Budget & PTBA',       sub: 'Suivi financier rigoureux',         color: 'text-[#1d9e75] bg-[#1d9e75]/10' },
-  { Icon: AlertTriangle,   title: 'Gestion des risques', sub: 'Matrice et plan d\'atténuation',    color: 'text-orange-400 bg-orange-500/10' },
-  { Icon: FileText,        title: 'Rapports bailleurs',  sub: 'Génération automatique',            color: 'text-indigo-400 bg-indigo-500/10' },
-] as const
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuthStore()
@@ -83,101 +74,8 @@ export default function LoginPage() {
 
   return (
     // ROOT : h-screen + overflow-hidden strict
-    <div className="h-screen w-screen overflow-hidden flex font-sans antialiased bg-white selection:bg-[#1d9e75]/20">
-
-      {/* ══════════════════════════════════════════════
-          COLONNE GAUCHE — Présentation
-          Masquée sur < lg, visible sur lg+
-      ══════════════════════════════════════════════ */}
-      <aside
-        className="hidden lg:flex w-[52%] flex-col h-full overflow-hidden"
-        style={{ background: 'linear-gradient(155deg, #0a1628 0%, #0d1e36 55%, #0f2540 100%)' }}
-      >
-        {/* Blobs décoratifs */}
-        <div className="pointer-events-none absolute top-0 left-0 w-80 h-80 rounded-full bg-[#1d9e75]/10 blur-[100px] -translate-x-1/3 -translate-y-1/3" />
-        <div className="pointer-events-none absolute bottom-0 right-0 w-96 h-96 rounded-full bg-blue-600/8 blur-[120px]" />
-
-        {/* Contenu — flex column avec justify-between pour tout répartir */}
-        <div className="relative z-10 flex flex-col h-full px-10 xl:px-14 py-8 xl:py-10">
-
-          {/* ── HEADER LOGO ── */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-11 h-11 xl:w-12 xl:h-12 bg-gradient-to-br from-[#1d9e75] to-[#138f67] rounded-lg flex items-center justify-center shadow-sm shadow-[#1d9e75]/25">
-              <span className="text-white font-black text-lg xl:text-xl tracking-tighter">GP</span>
-            </div>
-            <div>
-              <PageHeader title="DevProject" description="Plateforme de pilotage des projets" />
-            </div>
-          </div>
-
-          {/* ── ZONE CENTRALE ── flex-1 pour occuper tout l'espace dispo */}
-          <div className="flex-1 flex flex-col justify-center min-h-0 py-4">
-
-            {/* Badge SSL */}
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full w-fit mb-4 xl:mb-5
-              bg-[#1d9e75]/10 border border-[#1d9e75]/25">
-              <Shield size={12} className="text-[#1d9e75]" />
-              <span className="text-[#1d9e75] text-[10px] font-bold uppercase tracking-widest">Accès sécurisé SSL</span>
-            </div>
-
-            {/* Titre principal */}
-            <h2 className="text-3xl xl:text-4xl font-black text-white mb-3 tracking-tight leading-[1.1]">
-              Bienvenue sur<br />votre espace projet
-            </h2>
-            <p className="text-slate-400 text-sm xl:text-base leading-relaxed mb-5 xl:mb-6 max-w-md">
-              Centralisez vos données et suivez l'exécution physique et financière en temps réel.
-            </p>
-
-            {/* Stats cards — compactes */}
-            <div className="grid grid-cols-3 gap-3 mb-5 xl:mb-6">
-              {[
-                { value: '1 200+', label: 'Projets actifs',  accent: 'text-[#1d9e75]' },
-                { value: '94 %',  label: "Taux d'exéc.",     accent: 'text-blue-400'   },
-                { value: '3+',    label: 'Alertes',          accent: 'text-orange-400' },
-              ].map(({ value, label, accent }) => (
-                <div key={label}
-                  className="glass-panel rounded-lg px-3 py-3 xl:px-4 xl:py-3.5 transition-all duration-300 hover:-translate-y-0.5">
-                  <p className={`text-xl xl:text-xl font-black leading-none ${accent}`}>{value}</p>
-                  <p className="text-[10px] xl:text-xs font-semibold text-slate-500 mt-1.5 uppercase tracking-wider">{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Features — compactes */}
-            <ul className="space-y-1">
-              {FEATURES.map(({ Icon, title, sub, color }) => (
-                <li key={title}
-                  className="group flex items-center gap-3 px-2 py-2 -mx-2 rounded-lg
-                    cursor-default transition-all duration-200
-                    hover:bg-white/[0.04] hover:translate-x-1
-                    border-l-2 border-transparent hover:border-[#1d9e75]">
-                  <div className={`w-9 h-9 xl:w-10 xl:h-10 rounded-lg flex items-center justify-center shrink-0 ${color}`}>
-                    <Icon size={16} />
-                  </div>
-                  <div>
-                    <p className="text-slate-200 font-semibold text-xs leading-tight">{title}</p>
-                    <p className="text-slate-500 text-[10px] mt-0.5 font-medium">{sub}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-          </div>
-
-          {/* ── FOOTER ── toujours en bas */}
-          <div className="shrink-0 pt-4 border-t border-white/8 flex items-center justify-between">
-            <p className="text-[10px] text-slate-600 font-medium">SIGP v2.1.0</p>
-            <p className="text-[10px] text-slate-600 font-medium">© 2026 DevProject</p>
-          </div>
-
-        </div>
-      </aside>
-
-      {/* ══════════════════════════════════════════════
-          COLONNE DROITE — Formulaire de connexion
-          Prend toute la largeur sur mobile/tablette
-      ══════════════════════════════════════════════ */}
-      <main className="flex-1 h-full overflow-hidden bg-[#f8fafc] flex items-center justify-center p-4 sm:p-6 lg:p-8 relative">
+    <div className="h-screen w-screen overflow-hidden flex font-sans antialiased bg-[#f8fafc] selection:bg-[#1d9e75]/20">
+      <main className="flex-1 h-full overflow-hidden flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 relative">
 
         {/* Glow doux */}
         <div className="pointer-events-none absolute top-0 right-0 w-80 h-80 bg-blue-100/40 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2" />
