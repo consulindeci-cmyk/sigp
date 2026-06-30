@@ -44,8 +44,8 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* ── NAV (Sticky) ── */}
-      <div className="sticky top-0 z-40 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 pt-6 bg-background border-b border-border shadow-sm">
+      {/* ── NAV (Standard) ── */}
+      <div className="px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 pt-6 bg-background border-b border-border">
         <div className={INNER}>
           <ProjectNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
