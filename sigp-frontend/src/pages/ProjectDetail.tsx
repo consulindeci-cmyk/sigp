@@ -39,7 +39,7 @@ export default function ProjectDetail() {
   const [activeTab, setActiveTab] = useState('overview');
 
   return (
-    <div className="flex flex-col min-h-full bg-background relative">
+    <div className="flex flex-col h-full bg-background relative">
 
       {/* ── HEADER ──────────────────────────────────────────────────────── */}
       <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 bg-background">

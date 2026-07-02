@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit2, Share2, FileText, AlertTriangle, Copy, Check, X } from 'lucide-react';
+import { Edit2, Share2, FileText, AlertTriangle, Copy, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Input } from '@/components/ui/forms/Input';
@@ -74,6 +74,7 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
   const [showShare,   setShowShare]   = useState(false);
   const [showRapport, setShowRapport] = useState(false);
   const [linkCopied,  setLinkCopied]  = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false); // DEFAULT TO EXPANDED
 
   const [rapportType,       setRapportType]       = useState('avancement');
   const [rapportFormat,     setRapportFormat]     = useState('csv');
@@ -144,7 +145,7 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
   return (
     <>
       <Card className="mb-6 border-t-4 border-t-primary rounded-lg shadow-sm bg-card border-border">
-        <CardContent className="p-6">
+        <CardContent className={`p-6 transition-all duration-300 ${isCollapsed ? 'pb-4' : ''}`}>
 
           <PageHeader
             title={project.name}
@@ -160,10 +161,19 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
             actions={
               <>
                 <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsCollapsed(!isCollapsed)}
+                  title={isCollapsed ? "Afficher les détails du projet" : "Masquer les détails du projet"}
+                  className="px-2"
+                >
+                  {isCollapsed ? <ChevronDown className="w-5 h-5 text-muted-foreground" /> : <ChevronUp className="w-5 h-5 text-muted-foreground" />}
+                </Button>
+                <Button
                   variant="outline"
                   leftIcon={<Edit2 className="w-4 h-4" />}
                   onClick={() => setShowEdit(true)}
-                  className="flex-1 md:flex-none"
+                  className="hidden md:flex"
                 >
                   Modifier
                 </Button>
@@ -171,7 +181,7 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
                   variant="outline"
                   leftIcon={<Share2 className="w-4 h-4" />}
                   onClick={() => setShowShare(true)}
-                  className="flex-1 md:flex-none"
+                  className="hidden md:flex"
                 >
                   Partager
                 </Button>
@@ -179,13 +189,17 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
                   variant="secondary"
                   leftIcon={<FileText className="w-4 h-4" />}
                   onClick={() => { setRapportDone(false); setShowRapport(true); }}
-                  className="flex-1 md:flex-none"
+                  className="hidden md:flex"
                 >
                   Rapport
                 </Button>
               </>
             }
           />
+
+          {/* Wrapper collapsible */}
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isCollapsed ? 'max-h-0 opacity-0 mt-0' : 'max-h-[1000px] opacity-100 mt-6'}`}>
+
 
           {/* Meta info grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 pb-6 border-b border-border">
@@ -248,7 +262,7 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
               </div>
             )}
           </div>
-
+          </div>
         </CardContent>
       </Card>
 

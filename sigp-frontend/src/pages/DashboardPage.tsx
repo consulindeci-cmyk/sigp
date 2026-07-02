@@ -268,7 +268,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
 
           {/* Area chart — Décaissements 12 mois */}
-          <Card className="lg:col-span-2">
+          <Card className="min-w-0 lg:col-span-2">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Tendances de Décaissement"
@@ -288,7 +288,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div
-                className="h-64"
+                className="h-64 w-full min-w-0"
                 role="img"
                 aria-label="Graphique en courbe : tendances de décaissement sur 12 mois"
               >
@@ -338,7 +338,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Donut — Statut des projets */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Statut des Projets"
@@ -347,7 +347,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div
-                className="h-64"
+                className="h-64 w-full min-w-0"
                 role="img"
                 aria-label="Graphique en donut : répartition des projets par statut"
               >
@@ -389,7 +389,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
 
           {/* EVM LineChart */}
-          <Card className="lg:col-span-2">
+          <Card className="min-w-0 lg:col-span-2">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Performance EVM du Portefeuille"
@@ -398,7 +398,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div
-                className="h-64"
+                className="h-64 w-full min-w-0"
                 role="img"
                 aria-label="Graphique EVM : courbes Valeur Planifiée, Valeur Acquise, Coût Réel"
               >
@@ -465,7 +465,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Budget Consumption */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Consommation Budgétaire"
@@ -528,7 +528,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
 
           {/* Budget Distribution — Donut */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Répartition du Budget"
@@ -537,7 +537,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div
-                className="h-56"
+                className="h-56 w-full min-w-0"
                 role="img"
                 aria-label="Graphique en donut : répartition du budget par composante"
               >
@@ -576,7 +576,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Funding Distribution — Donut */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Sources de Financement"
@@ -585,7 +585,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div
-                className="h-56"
+                className="h-56 w-full min-w-0"
                 role="img"
                 aria-label="Graphique en donut : répartition des sources de financement"
               >
@@ -630,7 +630,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
 
           {/* Critical Activities */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Activités Critiques"
@@ -683,7 +683,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Main Risks */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Risques Principaux"
@@ -753,7 +753,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
 
           {/* Milestones */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Jalons à Venir"
@@ -818,7 +818,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Events */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Événements Récents"
@@ -871,7 +871,7 @@ export default function DashboardPage() {
 
       {/* ── Timeline ── */}
       <section aria-label="Ligne de temps du portefeuille">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="pb-3">
             <SectionHeader
               title="Ligne de Temps du Portefeuille"
@@ -945,7 +945,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
 
           {/* Budget by Bailleur */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Répartition par Bailleur"
@@ -970,7 +970,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Risks by Category */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Répartition des Risques"
@@ -1001,7 +1001,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
 
           {/* Recent Activities */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle>Activités Récentes</CardTitle>
               <Button
@@ -1039,7 +1039,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Upcoming Deadlines */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle>Échéances à Venir</CardTitle>
               <Button
@@ -1080,7 +1080,7 @@ export default function DashboardPage() {
 
       {/* ── Alerts ── */}
       <section aria-label="Alertes nécessitant une action">
-        <Card className="border-destructive/20">
+        <Card className="min-w-0 border-destructive/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-destructive flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" aria-hidden="true" />

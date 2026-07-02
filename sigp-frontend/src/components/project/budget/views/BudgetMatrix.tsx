@@ -640,7 +640,7 @@ export function BudgetMatrix({
 
       {/* ── Scrollable table ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-x-auto scrollbar-thin relative">
-        <table className="w-full text-sm text-left border-collapse min-w-[1400px]">
+        <table className="w-full text-sm text-left border-collapse min-w-[800px] xl:min-w-[1200px]">
 
           <thead className="sticky top-0 z-10">
             <tr className="bg-primary text-primary-foreground">

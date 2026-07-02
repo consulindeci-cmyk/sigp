@@ -59,7 +59,7 @@ export default function TabOverview({ setActiveTab }: TabOverviewProps) {
     <div className="flex flex-col gap-6">
 
       {/* BLOC 1 : RUBAN KPI */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))' }}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 100px), 1fr))' }}>
         {KPI_ITEMS.map((kpi) => (
           <button
             key={kpi.label}
@@ -73,7 +73,7 @@ export default function TabOverview({ setActiveTab }: TabOverviewProps) {
       </div>
 
       {/* BLOC 2 & 3 : INFOS RAPIDES & ALERTES */}
-      <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+      <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))' }}>
 
         {/* Carte d'Identité */}
         <div className="bg-card border border-border rounded-lg p-5">
@@ -97,7 +97,7 @@ export default function TabOverview({ setActiveTab }: TabOverviewProps) {
             <AlertTriangle className="h-4 w-4" aria-hidden="true" />
             Centre d'Alertes Actives
           </h3>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))' }}>
             <button
               onClick={() => setActiveTab('evm')}
               className="text-left p-3 bg-destructive/5 border border-destructive/20 rounded-md border-l-4 border-l-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-destructive/10 transition-colors"
@@ -138,9 +138,9 @@ export default function TabOverview({ setActiveTab }: TabOverviewProps) {
           Performance &amp; Suivi Analytique
         </h3>
 
-        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))' }}>
 
-          <div className="col-span-full grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))' }}>
+          <div className="col-span-full grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))' }}>
             <Suspense fallback={<WidgetSkeleton />}><EvmChart data={mockEvmData} /></Suspense>
             <Suspense fallback={<WidgetSkeleton />}><DisbursementChart data={mockDisbursements} /></Suspense>
           </div>
@@ -155,7 +155,7 @@ export default function TabOverview({ setActiveTab }: TabOverviewProps) {
           <Suspense fallback={<WidgetSkeleton />}><MilestoneCalendarWidget data={mockMilestones} /></Suspense>
           <Suspense fallback={<WidgetSkeleton />}><ProjectMapWidget /></Suspense>
 
-          <div className="col-span-full grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+          <div className="col-span-full grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))' }}>
             <Suspense fallback={<WidgetSkeleton />}><MonthlyBudgetWidget data={mockDisbursements} /></Suspense>
             <Suspense fallback={<WidgetSkeleton />}><ValidationHistoryWidget data={mockEvents} /></Suspense>
             <Suspense fallback={<WidgetSkeleton />}><EventChronologyWidget data={mockEvents} /></Suspense>
