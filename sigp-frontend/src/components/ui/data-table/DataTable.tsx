@@ -38,7 +38,7 @@ export function DataTable<TData, TValue>({
   }
 
   return (
-    <div className="flex flex-col flex-1 bg-background border border-border rounded-lg shadow-sm overflow-hidden">
+    <div className="flex flex-col flex-1 bg-background border border-border rounded-lg shadow-sm overflow-hidden min-w-0">
       <DataTableToolbar
         table={table}
         searchKey={searchKey}

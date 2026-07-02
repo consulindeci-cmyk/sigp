@@ -21,7 +21,7 @@ export const SunburstChart = memo(({ data }: SunburstChartProps) => {
 
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '300px' }} role="figure" aria-label="Graphique de répartition Sunburst/Donut">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="99%" height="100%">
         <PieChart>
           <Pie
             data={chartData}

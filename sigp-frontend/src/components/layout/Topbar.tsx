@@ -1,4 +1,4 @@
-﻿import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import { Search, Bell, HelpCircle, Menu } from 'lucide-react';
 import { Input } from '@/components/ui/forms/Input';
@@ -29,30 +29,30 @@ export function Topbar() {
       {/* Separator for mobile */}
       <div className="h-6 w-px bg-border md:hidden" aria-hidden="true" />
 
-      <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
+      <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6 min-w-0">
         
         {/* Breadcrumb / Title Area */}
-        <div className="flex items-center text-sm flex-1">
+        <div className="flex items-center text-sm flex-1 min-w-0">
           {/* Desktop Breadcrumb */}
-          <div className="hidden sm:flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-2 min-w-0">
             <Link 
               to="/dashboard" 
-              className="font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
             >
               GPD ERP
             </Link>
-            <span className="text-muted-foreground">/</span>
-            <span className="font-semibold text-foreground tracking-tight">{currentTitle}</span>
+            <span className="text-muted-foreground shrink-0">/</span>
+            <span className="font-semibold text-foreground tracking-tight truncate">{currentTitle}</span>
           </div>
           
           {/* Mobile Title */}
-          <div className="sm:hidden flex items-center">
-            <span className="font-semibold text-foreground tracking-tight">{currentTitle}</span>
+          <div className="sm:hidden flex items-center min-w-0">
+            <span className="font-semibold text-foreground tracking-tight truncate">{currentTitle}</span>
           </div>
         </div>
 
         {/* Search Bar */}
-        <div className="relative flex flex-1 items-center justify-end sm:justify-center">
+        <div className="relative flex flex-1 items-center justify-end sm:justify-center min-w-0">
           <div className="w-full max-w-lg hidden sm:block">
             <Input 
               type="search" 

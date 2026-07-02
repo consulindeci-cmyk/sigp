@@ -49,7 +49,7 @@ export function SCurveChart({ data, height = 280 }: SCurveChartProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ResponsiveContainer width="99%" height={height}>
       <LineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
         <XAxis

@@ -197,7 +197,7 @@ export default function TabEVM() {
           aria-label="Courbe en S — Valeur Planifiée, Valeur Acquise et Coût Réel cumulés en millions USD"
           className="p-4 h-56"
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="99%" height="100%">
             <AreaChart data={S_CURVE} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradVP" x1="0" y1="0" x2="0" y2="1">
@@ -238,7 +238,7 @@ export default function TabEVM() {
             aria-label="Tendance mensuelle de l'Indice de Performance des Coûts (IPC)"
             className="p-4 h-44"
           >
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="99%" height="100%">
               <LineChart data={INDEX_TREND} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
@@ -265,7 +265,7 @@ export default function TabEVM() {
             aria-label="Tendance mensuelle de l'Indice de Performance des Délais (IPD)"
             className="p-4 h-44"
           >
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="99%" height="100%">
               <LineChart data={INDEX_TREND} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />

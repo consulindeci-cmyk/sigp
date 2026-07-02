@@ -676,7 +676,7 @@ export default function ProjectDisbursementTab() {
             aria-label="Graphique évolution mensuelle des décaissements prévus et reçus"
             className="h-[240px]"
           >
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="99%" height="100%">
               <AreaChart data={mockDisbursementChart} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gradPrevu" x1="0" y1="0" x2="0" y2="1">

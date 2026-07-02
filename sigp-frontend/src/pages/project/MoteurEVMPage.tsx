@@ -614,7 +614,7 @@ export default function MoteurEVMPage() {
                   <h2 className="text-sm font-semibold text-foreground mb-4">
                     Courbe en S — PV / EV / AC + EAC projeté
                   </h2>
-                  <ResponsiveContainer width="100%" height={240}>
+                  <ResponsiveContainer width="99%" height={240}>
                     <LineChart data={sCurveData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                       <XAxis dataKey="mois" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />

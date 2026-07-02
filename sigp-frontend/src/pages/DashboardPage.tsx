@@ -292,7 +292,7 @@ export default function DashboardPage() {
                 role="img"
                 aria-label="Graphique en courbe : tendances de décaissement sur 12 mois"
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="99%" height="100%">
                   <AreaChart
                     data={mockDisbursements12Months}
                     margin={{ top: 5, right: 8, left: 0, bottom: 5 }}
@@ -351,7 +351,7 @@ export default function DashboardPage() {
                 role="img"
                 aria-label="Graphique en donut : répartition des projets par statut"
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="99%" height="100%">
                   <PieChart>
                     <Pie
                       data={mockProjectStatusDistribution}
@@ -402,7 +402,7 @@ export default function DashboardPage() {
                 role="img"
                 aria-label="Graphique EVM : courbes Valeur Planifiée, Valeur Acquise, Coût Réel"
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="99%" height="100%">
                   <LineChart
                     data={mockEvmData}
                     margin={{ top: 5, right: 8, left: 0, bottom: 5 }}
@@ -541,7 +541,7 @@ export default function DashboardPage() {
                 role="img"
                 aria-label="Graphique en donut : répartition du budget par composante"
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="99%" height="100%">
                   <PieChart>
                     <Pie
                       data={mockBudgetDistribution.map((d) => ({
@@ -589,7 +589,7 @@ export default function DashboardPage() {
                 role="img"
                 aria-label="Graphique en donut : répartition des sources de financement"
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="99%" height="100%">
                   <PieChart>
                     <Pie
                       data={mockFundingDistribution.map((d) => ({

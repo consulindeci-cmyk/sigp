@@ -1,0 +1,1 @@
+const fs = require('fs'); let c = fs.readFileSync('src/pages/DashboardPage.tsx', 'utf8'); c = c.split('<ResponsiveContainer width="100%"').join('<ResponsiveContainer width="99%"'); fs.writeFileSync('src/pages/DashboardPage.tsx', c);

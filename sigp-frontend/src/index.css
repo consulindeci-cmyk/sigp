@@ -81,14 +81,7 @@
   --topbar-h: 56px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body,#root{height:100%;}
-
-/* Prevent double scrollbars on desktop, but allow native behavior on mobile */
-@media (min-width: 768px) {
-  html, body {
-    overflow: hidden;
-  }
-}
+html,body,#root{height:100%;overflow:hidden;}
 
 html,body{
   font-family:var(--font-body);

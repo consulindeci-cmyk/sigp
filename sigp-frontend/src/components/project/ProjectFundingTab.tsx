@@ -865,7 +865,7 @@ export default function ProjectFundingTab() {
                   Aucune convention enregistrée
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="99%" height="100%">
                   <PieChart>
                     <Pie
                       data={pieData}

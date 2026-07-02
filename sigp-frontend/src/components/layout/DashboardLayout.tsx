@@ -15,13 +15,13 @@ export function DashboardLayout({ children, header, sidebar, className, ...props
           {header}
         </div>
       )}
-      <div className="flex-1 flex items-stretch">
+      <div className="flex-1 flex items-stretch min-w-0">
         {sidebar && (
           <div className="shrink-0 w-64 border-r border-border bg-background hidden lg:block">
             {sidebar}
           </div>
         )}
-        <div className="flex-1 p-4 sm:p-6 lg:p-8">
+        <div className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
           <div className="mx-auto w-full max-w-layout flex flex-col gap-6">
             {children}
           </div>

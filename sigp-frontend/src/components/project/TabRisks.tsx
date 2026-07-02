@@ -523,7 +523,7 @@ export default function TabRisks() {
               aria-label="Graphique barres — répartition des risques par criticité"
               className="h-40"
             >
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="99%" height="100%">
                 <BarChart data={barData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
@@ -551,7 +551,7 @@ export default function TabRisks() {
               aria-label="Graphique radar — répartition des risques par catégorie"
               className="h-40"
             >
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="99%" height="100%">
                 <RadarChart data={radarData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
                   <PolarGrid stroke="var(--border)" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />

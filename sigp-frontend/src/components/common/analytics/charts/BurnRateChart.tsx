@@ -21,7 +21,7 @@ export const BurnRateChart = React.memo(({ data }: BurnRateChartProps) => {
 
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '300px' }} role="figure" aria-label="Graphique du Burn Rate Mensuel">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="99%" height="100%">
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
           <XAxis

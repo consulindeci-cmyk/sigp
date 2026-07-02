@@ -15,7 +15,7 @@ export const HeatmapChart = React.memo(({ data }: HeatmapChartProps) => {
 
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '300px' }} role="figure" aria-label="Graphique de répartition Heatmap (Stacked Bar)">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="99%" height="100%">
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} layout="vertical">
           <CartesianGrid strokeDasharray="3 3" stroke="var(--line-soft)" horizontal={false} />
           <XAxis 

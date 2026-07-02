@@ -69,7 +69,7 @@ export function StatCard({
   className,
 }: StatCardProps) {
   return (
-    <Card className={cn('overflow-hidden shadow-card hover:shadow-sm transition-shadow duration-200', className)}>
+    <Card className={cn('overflow-hidden shadow-card hover:shadow-sm transition-shadow duration-200 min-w-0', className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
           {title}
@@ -94,7 +94,7 @@ export function StatCard({
         </div>
 
         {(description || trend) && (
-          <div className="mt-2 flex items-center gap-1.5 text-xs">
+          <div className="mt-2 flex items-center gap-1.5 text-xs min-w-0">
             {trend && (
               <span
                 className={cn(

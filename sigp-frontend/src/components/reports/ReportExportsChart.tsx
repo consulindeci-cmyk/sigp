@@ -24,7 +24,7 @@ export function ReportExportsChart({ data }: ReportExportsChartProps) {
           role="img"
           aria-label="Graphique d'historique des exports mensuels de rapports"
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="99%" height="100%">
             <BarChart
               data={data}
               margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
