@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer,
@@ -36,6 +37,14 @@ import {
   mockAlerts,
   mockTimelineItems,
 } from '@/mocks/dashboardMocks';
+import {
+  Modal, ModalContent, ModalHeader, ModalTitle,
+  ModalDescription, ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
+import {
+  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
+  SlideOverBody, SlideOverFooter, SlideOverClose,
+} from '@/components/ui/overlays/SlideOver';
 
 // ── Shared tooltip style (Design System tokens) ─────────────────────────────
 const tooltipStyle: React.CSSProperties = {
@@ -88,6 +97,63 @@ function SectionHeader({
 export default function DashboardPage() {
   const navigate = useNavigate();
 
+  const todayLabel = new Date().toLocaleDateString('fr-FR', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+
+  // ── Panel state ─────────────────────────────────────────────────────────
+  const [showDisbReport, setShowDisbReport] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showAllActivities, setShowAllActivities] = useState(false);
+  const [showAllRisks, setShowAllRisks] = useState(false);
+  const [showAllRecentAct, setShowAllRecentAct] = useState(false);
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
+  const [showAllDeadlines, setShowAllDeadlines] = useState(false);
+
+  // ── CSV Export ───────────────────────────────────────────────────────────
+  function exportPortfolioCSV() {
+    const lines: string[][] = [
+      ['RAPPORT PORTEFEUILLE GPD', new Date().toLocaleDateString('fr-FR')],
+      [],
+      ['INDICATEURS CLÉS', ''],
+      ['Indicateur', 'Valeur'],
+      ['Total des projets', String(mockPortfolioKPIs.totalProjets)],
+      ['Projets actifs', String(mockPortfolioKPIs.projetsActifs)],
+      ['Projets terminés', String(mockPortfolioKPIs.projetsTermines)],
+      ['Projets en retard', String(mockPortfolioKPIs.projetsEnRetard)],
+      ['Budget global', mockPortfolioKPIs.budgetGlobal],
+      ['Budget décaissé', mockPortfolioKPIs.budgetDecaisse],
+      ['Taux de décaissement', mockPortfolioKPIs.tauxDecaissement],
+      ['Contrats actifs', String(mockPortfolioKPIs.contratsActifs)],
+      ['Contrats en approbation', String(mockPortfolioKPIs.contratsEnApprobation)],
+      ['Risques critiques', String(mockPortfolioKPIs.risquesCritiques)],
+      [],
+      ['DÉCAISSEMENTS MENSUELS (M$)', ''],
+      ['Mois', 'Montant (M$)'],
+      ...mockDisbursements12Months.map(d => [d.label, String(d.value)]),
+      [],
+      ['RÉPARTITION PAR BAILLEUR', ''],
+      ['Bailleur', 'Budget', 'Part (%)'],
+      ...mockBudgetByBailleur.map(b => [b.label, b.value, String(b.percent)]),
+      [],
+      ['RISQUES PAR CATÉGORIE', ''],
+      ['Catégorie', 'Nombre', 'Part (%)'],
+      ...mockRisksByCategory.map(r => [r.label, String(r.value), String(r.percent)]),
+    ];
+    const csv = '﻿' + lines.map(row =>
+      row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')
+    ).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `portefeuille-gpd-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   // ── Derived KPIs (computed, never hardcoded) ─────────────────────────────
   const pctActifs = Math.round(
     (mockPortfolioKPIs.projetsActifs / mockPortfolioKPIs.totalProjets) * 100,
@@ -101,8 +167,8 @@ export default function DashboardPage() {
       <Button
         variant="outline"
         leftIcon={<Download className="h-4 w-4" aria-hidden="true" />}
-        onClick={() => navigate('/projects')}
-        aria-label="Exporter le rapport du portefeuille"
+        onClick={exportPortfolioCSV}
+        aria-label="Exporter le rapport du portefeuille en CSV"
       >
         Exporter
       </Button>
@@ -117,11 +183,12 @@ export default function DashboardPage() {
   );
 
   return (
+    <>
     <DashboardLayout
       header={
         <PageHeader
           title="Tableau de bord du portefeuille"
-          subtitle="Vue d'ensemble multi-projets — 28 juin 2026"
+          subtitle={`Vue d'ensemble multi-projets — ${todayLabel}`}
           actions={headerActions}
           className="bg-background border-b border-border px-6 py-6 sm:px-8 m-0"
         />
@@ -211,7 +278,7 @@ export default function DashboardPage() {
                     variant="ghost"
                     size="sm"
                     className="h-8 shrink-0"
-                    onClick={() => navigate('/projects')}
+                    onClick={() => setShowDisbReport(true)}
                     aria-label="Voir le rapport complet de décaissement"
                   >
                     Voir le rapport
@@ -573,7 +640,7 @@ export default function DashboardPage() {
                     variant="link"
                     size="sm"
                     className="h-8 pr-0 shrink-0"
-                    onClick={() => navigate('/projects')}
+                    onClick={() => setShowAllActivities(true)}
                     aria-label="Voir toutes les activités critiques"
                   >
                     Voir tout <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
@@ -626,7 +693,7 @@ export default function DashboardPage() {
                     variant="link"
                     size="sm"
                     className="h-8 pr-0 shrink-0"
-                    onClick={() => navigate('/projects')}
+                    onClick={() => setShowAllRisks(true)}
                     aria-label="Voir tous les risques"
                   >
                     Voir tout <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
@@ -696,7 +763,7 @@ export default function DashboardPage() {
                     variant="link"
                     size="sm"
                     className="h-8 pr-0 shrink-0"
-                    onClick={() => navigate('/projects')}
+                    onClick={() => setShowCalendar(true)}
                     aria-label="Voir le calendrier des jalons"
                   >
                     Calendrier <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
@@ -814,7 +881,7 @@ export default function DashboardPage() {
                   variant="link"
                   size="sm"
                   className="h-8 pr-0 shrink-0"
-                  onClick={() => navigate('/projects')}
+                  onClick={() => setShowCalendar(true)}
                   aria-label="Voir le calendrier complet du portefeuille"
                 >
                   Calendrier <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
@@ -941,7 +1008,7 @@ export default function DashboardPage() {
                 variant="link"
                 size="sm"
                 className="h-8 pr-0 shrink-0"
-                onClick={() => navigate('/projects')}
+                onClick={() => setShowAllRecentAct(true)}
                 aria-label="Voir toutes les activités récentes"
               >
                 Voir tout <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
@@ -979,8 +1046,8 @@ export default function DashboardPage() {
                 variant="link"
                 size="sm"
                 className="h-8 pr-0 shrink-0"
-                onClick={() => navigate('/projects')}
-                aria-label="Voir le calendrier des échéances"
+                onClick={() => setShowAllDeadlines(true)}
+                aria-label="Voir toutes les échéances à venir"
               >
                 Calendrier <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
               </Button>
@@ -1026,7 +1093,7 @@ export default function DashboardPage() {
               variant="ghost"
               size="sm"
               className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-              onClick={() => navigate('/projects')}
+              onClick={() => setShowAllAlerts(true)}
               aria-label="Voir toutes les alertes du portefeuille"
             >
               Voir tout
@@ -1061,5 +1128,472 @@ export default function DashboardPage() {
       </section>
 
     </DashboardLayout>
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        PANNEAU 1 — Rapport de Décaissement (Modal)
+    ══════════════════════════════════════════════════════════════════════ */}
+    <Modal open={showDisbReport} onOpenChange={setShowDisbReport}>
+      <ModalContent className="max-w-xl">
+        <ModalHeader>
+          <ModalTitle>Rapport de Décaissement</ModalTitle>
+          <ModalDescription>Décaissements mensuels — 12 derniers mois (M$)</ModalDescription>
+        </ModalHeader>
+        <div className="px-6 pb-2">
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mois</th>
+                  <th className="text-right px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Montant</th>
+                  <th className="text-right px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cumul</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {mockDisbursements12Months.map((d, i) => {
+                  const cumul = Math.round(
+                    mockDisbursements12Months.slice(0, i + 1).reduce((s, x) => s + x.value, 0) * 10
+                  ) / 10;
+                  return (
+                    <tr key={i} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-2 font-medium text-foreground">{d.label}</td>
+                      <td className="px-4 py-2 text-right font-mono tabular-nums text-foreground">{d.value}M$</td>
+                      <td className="px-4 py-2 text-right font-mono tabular-nums text-muted-foreground">{cumul}M$</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-muted/30 border-t-2 border-border">
+                <tr>
+                  <td className="px-4 py-2 font-bold text-foreground text-sm">Total</td>
+                  <td className="px-4 py-2 text-right font-bold font-mono tabular-nums text-foreground">
+                    {Math.round(mockDisbursements12Months.reduce((s, d) => s + d.value, 0) * 10) / 10}M$
+                  </td>
+                  <td className="px-4 py-2 text-right text-muted-foreground">—</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-3 mb-2">
+            <div className="bg-muted/30 rounded-lg p-3 text-center">
+              <p className="text-[11px] text-muted-foreground">Moyenne / mois</p>
+              <p className="text-base font-bold font-mono text-foreground mt-1">
+                {(Math.round(
+                  (mockDisbursements12Months.reduce((s, d) => s + d.value, 0) / mockDisbursements12Months.length) * 10
+                ) / 10)}M$
+              </p>
+            </div>
+            <div className="bg-success/10 rounded-lg p-3 text-center">
+              <p className="text-[11px] text-muted-foreground">Pic mensuel</p>
+              <p className="text-base font-bold font-mono text-success mt-1">
+                {Math.max(...mockDisbursements12Months.map(d => d.value))}M$
+              </p>
+            </div>
+            <div className="bg-primary/10 rounded-lg p-3 text-center">
+              <p className="text-[11px] text-muted-foreground">Taux global</p>
+              <p className="text-base font-bold font-mono text-primary mt-1">
+                {mockPortfolioKPIs.tauxDecaissement}
+              </p>
+            </div>
+          </div>
+        </div>
+        <ModalFooter>
+          <Button
+            variant="outline"
+            leftIcon={<Download className="h-4 w-4" aria-hidden="true" />}
+            onClick={exportPortfolioCSV}
+          >
+            Exporter CSV
+          </Button>
+          <ModalClose asChild>
+            <Button>Fermer</Button>
+          </ModalClose>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        PANNEAU 2 — Calendrier (SlideOver)
+    ══════════════════════════════════════════════════════════════════════ */}
+    <SlideOver open={showCalendar} onOpenChange={setShowCalendar}>
+      <SlideOverContent>
+        <SlideOverHeader>
+          <SlideOverTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-primary" aria-hidden="true" />
+            Calendrier du Portefeuille
+          </SlideOverTitle>
+          <SlideOverClose asChild>
+            <button className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Fermer">
+              ✕
+            </button>
+          </SlideOverClose>
+        </SlideOverHeader>
+        <SlideOverBody className="space-y-6">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Jalons à venir ({mockMilestones.length})
+            </h3>
+            <ul className="space-y-2">
+              {mockMilestones.map(m => (
+                <li key={m.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                  <div className={`p-1.5 rounded-md shrink-0 ${
+                    m.status === 'achieved' ? 'bg-success/10 text-success'
+                    : m.status === 'delayed' ? 'bg-destructive/10 text-destructive'
+                    : 'bg-primary/10 text-primary'
+                  }`} aria-hidden="true">
+                    <Flag className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{m.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{m.date}</p>
+                  </div>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                    m.status === 'achieved' ? 'bg-success/10 text-success'
+                    : m.status === 'delayed' ? 'bg-destructive/10 text-destructive'
+                    : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {m.status === 'achieved' ? 'Atteint' : m.status === 'delayed' ? 'En retard' : 'À venir'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Échéances imminentes ({mockUpcomingDeadlines.length})
+            </h3>
+            <ul className="space-y-2">
+              {mockUpcomingDeadlines.map(d => (
+                <li key={d.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${d.colorClass}`} aria-hidden="true" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{d.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{d.meta}</p>
+                  </div>
+                  <span className="text-xs font-semibold text-muted-foreground shrink-0 whitespace-nowrap bg-muted px-2 py-0.5 rounded-full">
+                    {d.time}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Ligne de temps ({mockTimelineItems.length} événements)
+            </h3>
+            <ul className="space-y-2">
+              {mockTimelineItems.map(t => (
+                <li key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                  <div className={`p-1.5 rounded-md shrink-0 ${
+                    t.type === 'deadline' ? 'bg-warning/10 text-warning'
+                    : t.type === 'milestone' ? 'bg-primary/10 text-primary'
+                    : 'bg-muted text-muted-foreground'
+                  }`} aria-hidden="true">
+                    {t.type === 'deadline'
+                      ? <Calendar className="h-3.5 w-3.5" />
+                      : t.type === 'milestone'
+                      ? <Flag className="h-3.5 w-3.5" />
+                      : <TrendingUp className="h-3.5 w-3.5" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{t.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t.project} · {t.date}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </SlideOverBody>
+        <SlideOverFooter>
+          <SlideOverClose asChild>
+            <Button variant="outline" className="w-full">Fermer</Button>
+          </SlideOverClose>
+        </SlideOverFooter>
+      </SlideOverContent>
+    </SlideOver>
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        PANNEAU 3 — Activités Critiques (SlideOver)
+    ══════════════════════════════════════════════════════════════════════ */}
+    <SlideOver open={showAllActivities} onOpenChange={setShowAllActivities}>
+      <SlideOverContent>
+        <SlideOverHeader>
+          <SlideOverTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />
+            Activités Critiques
+          </SlideOverTitle>
+          <SlideOverClose asChild>
+            <button className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Fermer">
+              ✕
+            </button>
+          </SlideOverClose>
+        </SlideOverHeader>
+        <SlideOverBody className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {mockCriticalActivities.length} activité{mockCriticalActivities.length > 1 ? 's' : ''} nécessitant une intervention immédiate.
+          </p>
+          <ul className="space-y-3">
+            {mockCriticalActivities.map(activity => (
+              <li key={activity.id} className="p-4 rounded-lg border border-border bg-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className={`mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                      activity.status === 'blocked'
+                        ? 'bg-destructive/10 text-destructive'
+                        : 'bg-warning/10 text-warning'
+                    }`}>
+                      {activity.code}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{activity.name}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Statut :{' '}
+                        <span className={`font-semibold ${activity.status === 'blocked' ? 'text-destructive' : 'text-warning'}`}>
+                          {activity.status === 'blocked' ? 'Bloquée' : 'En retard'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className={`text-sm font-bold ${activity.status === 'blocked' ? 'text-destructive' : 'text-warning'}`}>
+                      +{activity.delayDays}j
+                    </span>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">retard</p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+            <p className="text-xs text-destructive font-semibold">Retard cumulé total</p>
+            <p className="text-lg font-bold text-destructive mt-1">
+              {mockCriticalActivities.reduce((s, a) => s + a.delayDays, 0)} jours
+            </p>
+          </div>
+        </SlideOverBody>
+        <SlideOverFooter>
+          <SlideOverClose asChild>
+            <Button variant="outline" className="w-full">Fermer</Button>
+          </SlideOverClose>
+        </SlideOverFooter>
+      </SlideOverContent>
+    </SlideOver>
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        PANNEAU 4 — Risques (SlideOver)
+    ══════════════════════════════════════════════════════════════════════ */}
+    <SlideOver open={showAllRisks} onOpenChange={setShowAllRisks}>
+      <SlideOverContent>
+        <SlideOverHeader>
+          <SlideOverTitle className="flex items-center gap-2">
+            <ShieldAlert className="h-5 w-5 text-destructive" aria-hidden="true" />
+            Risques du Portefeuille
+          </SlideOverTitle>
+          <SlideOverClose asChild>
+            <button className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Fermer">
+              ✕
+            </button>
+          </SlideOverClose>
+        </SlideOverHeader>
+        <SlideOverBody className="space-y-6">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Risques principaux ({mockMainRisks.length})
+            </h3>
+            <ul className="space-y-3">
+              {mockMainRisks.map(risk => (
+                <li key={risk.id} className="p-4 rounded-lg border border-border bg-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${
+                        risk.level === 'high' ? 'bg-destructive'
+                        : risk.level === 'medium' ? 'bg-warning'
+                        : 'bg-success'
+                      }`} aria-hidden="true" />
+                      <p className="text-sm text-foreground">{risk.description}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-bold font-mono tabular-nums text-foreground">{risk.probability}%</p>
+                      <p className="text-[10px] text-muted-foreground">probabilité</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 pl-5">
+                    <ProgressBar
+                      value={risk.probability}
+                      color={risk.level === 'high' ? 'destructive' : risk.level === 'medium' ? 'warning' : 'success'}
+                      size="xs"
+                      aria-label={`Probabilité ${risk.probability}%`}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Par catégorie
+            </h3>
+            <ul className="space-y-3">
+              {mockRisksByCategory.map((cat, i) => (
+                <li key={i}>
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <span className="text-sm text-foreground flex-1 min-w-0 truncate">{cat.label}</span>
+                    <span className="text-sm font-bold font-mono tabular-nums text-foreground shrink-0">{cat.value}</span>
+                  </div>
+                  <ProgressBar
+                    value={cat.percent}
+                    color={cat.color}
+                    size="sm"
+                    aria-label={`${cat.label} : ${cat.value} risques`}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        </SlideOverBody>
+        <SlideOverFooter>
+          <SlideOverClose asChild>
+            <Button variant="outline" className="w-full">Fermer</Button>
+          </SlideOverClose>
+        </SlideOverFooter>
+      </SlideOverContent>
+    </SlideOver>
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        PANNEAU 5 — Activités Récentes (SlideOver)
+    ══════════════════════════════════════════════════════════════════════ */}
+    <SlideOver open={showAllRecentAct} onOpenChange={setShowAllRecentAct}>
+      <SlideOverContent>
+        <SlideOverHeader>
+          <SlideOverTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" aria-hidden="true" />
+            Activités Récentes
+          </SlideOverTitle>
+          <SlideOverClose asChild>
+            <button className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Fermer">
+              ✕
+            </button>
+          </SlideOverClose>
+        </SlideOverHeader>
+        <SlideOverBody>
+          <ul className="divide-y divide-border">
+            {mockRecentActivities.map(item => (
+              <li key={item.id} className="flex items-start gap-4 py-4 hover:bg-muted/30 transition-colors rounded px-2">
+                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${item.colorClass}`} aria-hidden="true" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.meta}</p>
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{item.time}</span>
+              </li>
+            ))}
+          </ul>
+        </SlideOverBody>
+        <SlideOverFooter>
+          <SlideOverClose asChild>
+            <Button variant="outline" className="w-full">Fermer</Button>
+          </SlideOverClose>
+        </SlideOverFooter>
+      </SlideOverContent>
+    </SlideOver>
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        PANNEAU 6 — Alertes (SlideOver)
+    ══════════════════════════════════════════════════════════════════════ */}
+    <SlideOver open={showAllAlerts} onOpenChange={setShowAllAlerts}>
+      <SlideOverContent>
+        <SlideOverHeader>
+          <SlideOverTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+            Alertes — Action Requise
+          </SlideOverTitle>
+          <SlideOverClose asChild>
+            <button className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Fermer">
+              ✕
+            </button>
+          </SlideOverClose>
+        </SlideOverHeader>
+        <SlideOverBody className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {mockAlerts.length} alerte{mockAlerts.length > 1 ? 's' : ''} active{mockAlerts.length > 1 ? 's' : ''} sur le portefeuille.
+          </p>
+          <ul className="space-y-3">
+            {mockAlerts.map(item => (
+              <li key={item.id} className={`p-4 rounded-lg border ${
+                item.type === 'critical'
+                  ? 'border-destructive/20 bg-destructive/5'
+                  : 'border-warning/20 bg-warning/5'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className={`p-1.5 rounded-md shrink-0 ${
+                    item.type === 'critical'
+                      ? 'bg-destructive/10 text-destructive'
+                      : 'bg-warning/10 text-warning'
+                  }`} aria-hidden="true">
+                    <AlertTriangle className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{item.meta}</p>
+                    <span className={`inline-block mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      item.type === 'critical'
+                        ? 'bg-destructive/10 text-destructive'
+                        : 'bg-warning/10 text-warning'
+                    }`}>
+                      {item.type === 'critical' ? 'CRITIQUE' : 'AVERTISSEMENT'}
+                    </span>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </SlideOverBody>
+        <SlideOverFooter>
+          <SlideOverClose asChild>
+            <Button variant="outline" className="w-full">Fermer</Button>
+          </SlideOverClose>
+        </SlideOverFooter>
+      </SlideOverContent>
+    </SlideOver>
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        PANNEAU 7 — Échéances à Venir (SlideOver)
+    ══════════════════════════════════════════════════════════════════════ */}
+    <SlideOver open={showAllDeadlines} onOpenChange={setShowAllDeadlines}>
+      <SlideOverContent>
+        <SlideOverHeader>
+          <SlideOverTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary" aria-hidden="true" />
+            Échéances à Venir
+          </SlideOverTitle>
+          <SlideOverClose asChild>
+            <button className="rounded-sm opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Fermer">
+              ✕
+            </button>
+          </SlideOverClose>
+        </SlideOverHeader>
+        <SlideOverBody>
+          <ul className="divide-y divide-border">
+            {mockUpcomingDeadlines.map(item => (
+              <li key={item.id} className="flex items-start gap-4 py-4 hover:bg-muted/30 transition-colors rounded px-2">
+                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${item.colorClass}`} aria-hidden="true" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.meta}</p>
+                </div>
+                <span className="text-xs font-semibold text-foreground whitespace-nowrap shrink-0 bg-muted px-2 py-0.5 rounded-full">
+                  {item.time}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </SlideOverBody>
+        <SlideOverFooter>
+          <SlideOverClose asChild>
+            <Button variant="outline" className="w-full">Fermer</Button>
+          </SlideOverClose>
+        </SlideOverFooter>
+      </SlideOverContent>
+    </SlideOver>
+    </>
   );
 }

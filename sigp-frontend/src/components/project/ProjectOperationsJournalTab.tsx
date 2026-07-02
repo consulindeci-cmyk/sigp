@@ -1,8 +1,18 @@
+import { useState, useMemo } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Clock } from 'lucide-react';
+import {
+  Clock, Eye, X, Download, CheckCircle2, AlertTriangle,
+  Info, AlertCircle, Activity,
+} from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
+import { Button } from '@/components/ui/forms/Button';
+import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
+import {
+  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
+  SlideOverBody, SlideOverFooter, SlideOverClose,
+} from '@/components/ui/overlays/SlideOver';
 import { cn } from '@/lib/utils';
 import {
   mockOperationLogs,
@@ -14,28 +24,41 @@ import {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch { return dateStr; }
-}
-
 function niveauVariant(niveau: LogLevel): 'success' | 'default' | 'warning' | 'destructive' {
   switch (niveau) {
-    case 'Succès':       return 'success';
-    case 'Info':         return 'default';
+    case 'Succès':        return 'success';
+    case 'Info':          return 'default';
     case 'Avertissement': return 'warning';
-    case 'Erreur':       return 'destructive';
+    case 'Erreur':        return 'destructive';
   }
 }
 
 function niveauDot(niveau: LogLevel): string {
   switch (niveau) {
-    case 'Succès':       return 'bg-success';
-    case 'Info':         return 'bg-primary';
+    case 'Succès':        return 'bg-success';
+    case 'Info':          return 'bg-primary';
     case 'Avertissement': return 'bg-warning';
-    case 'Erreur':       return 'bg-destructive';
+    case 'Erreur':        return 'bg-destructive';
   }
+}
+
+function exportCsv(logs: OperationLog[]) {
+  const HEADERS = ['Date', 'Heure', 'Utilisateur', 'Module', 'Niveau', 'Action', 'Résultat'];
+  const rows = logs.map(l => [
+    l.date, l.heure, l.utilisateur, l.module, l.niveau, l.action, l.resultat,
+  ]);
+  const csv = '﻿' + [HEADERS, ...rows]
+    .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `journal-operations-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,7 +79,7 @@ function RecentLogsTimeline({ logs }: { logs: OperationLog[] }) {
             <div className={cn('flex flex-col gap-0.5 pb-4 min-w-0', isLast && 'pb-0')}>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-mono text-[11px] text-muted-foreground shrink-0">
-                  {formatDate(log.date)} · {log.heure}
+                  {log.date} · {log.heure}
                 </span>
                 <Badge variant={niveauVariant(log.niveau)} className="text-[10px] shrink-0">{log.niveau}</Badge>
                 <Badge variant="outline" className="text-[10px] shrink-0">{log.module}</Badge>
@@ -77,15 +100,90 @@ function RecentLogsTimeline({ logs }: { logs: OperationLog[] }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Columns
+// SlideOver — détail d'une entrée (lecture seule, journal immuable)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildLogColumns(): ColumnDef<OperationLog, any>[] {
+function LogDetailSlideOver({
+  open, onOpenChange, log,
+}: {
+  open:         boolean;
+  onOpenChange: (open: boolean) => void;
+  log:          OperationLog | null;
+}) {
+  return (
+    <SlideOver open={open} onOpenChange={onOpenChange}>
+      <SlideOverContent>
+        <SlideOverHeader>
+          <SlideOverTitle>Détails de l'opération</SlideOverTitle>
+          <SlideOverClose asChild>
+            <Button variant="ghost" size="sm" aria-label="Fermer"><X className="h-4 w-4" /></Button>
+          </SlideOverClose>
+        </SlideOverHeader>
+
+        <SlideOverBody>
+          {log ? (
+            <div className="flex flex-col gap-5">
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant={niveauVariant(log.niveau)} className="text-[11px]">{log.niveau}</Badge>
+                <Badge variant="outline" className="text-[11px]">{log.module}</Badge>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Action</p>
+                <p className="text-[14px] font-semibold text-foreground leading-snug">{log.action}</p>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Résultat</p>
+                <p className="text-[13px] text-foreground leading-relaxed">{log.resultat}</p>
+              </div>
+
+              <div className="border-t border-border pt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Utilisateur</p>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {log.initialesUtilisateur}
+                    </div>
+                    <span className="text-[13px] text-foreground">{log.utilisateur}</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date & Heure</p>
+                  <p className="font-mono text-[13px] text-foreground">{log.date} à {log.heure}</p>
+                </div>
+              </div>
+
+              <div className="bg-muted/30 rounded-lg p-3 border border-border">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Référence</p>
+                <p className="font-mono text-[11px] text-muted-foreground">ID: {log.id}</p>
+              </div>
+
+            </div>
+          ) : null}
+        </SlideOverBody>
+
+        <SlideOverFooter>
+          <SlideOverClose asChild>
+            <Button variant="outline">Fermer</Button>
+          </SlideOverClose>
+        </SlideOverFooter>
+      </SlideOverContent>
+    </SlideOver>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Colonnes du DataTable
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildLogColumns(onView: (log: OperationLog) => void): ColumnDef<OperationLog, unknown>[] {
   return [
     {
       id: 'datetime',
       header: 'Date / Heure',
-      meta: { isSticky: true } as any,
+      meta: { isSticky: true } as Record<string, unknown>,
       cell: ({ row }) => (
         <div className="flex flex-col gap-0.5 min-w-[110px]">
           <span className="font-mono text-[12px] font-semibold text-foreground">{row.original.date}</span>
@@ -140,16 +238,50 @@ function buildLogColumns(): ColumnDef<OperationLog, any>[] {
         <span className="text-[11px] text-muted-foreground line-clamp-2 max-w-[240px]">{getValue() as string}</span>
       ),
     },
+    {
+      id: 'actions',
+      enableHiding: false,
+      meta: { align: 'right' } as Record<string, unknown>,
+      cell: ({ row }) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Voir les détails"
+          onClick={() => onView(row.original)}
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+      ),
+    },
   ];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main export
+// Composant principal
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectOperationsJournalTab() {
-  const columns = buildLogColumns();
-  const recent = mockOperationLogs.slice(0, 5);
+  const [slideOverOpen, setSlideOverOpen] = useState(false);
+  const [selected,      setSelected]      = useState<OperationLog | null>(null);
+  const [exported,      setExported]      = useState(false);
+
+  // ── KPIs calculés depuis les données mock ─────────────────────────────────
+  const kpis = useMemo(() => ({
+    total:          mockOperationLogs.length,
+    succes:         mockOperationLogs.filter(l => l.niveau === 'Succès').length,
+    erreurs:        mockOperationLogs.filter(l => l.niveau === 'Erreur' || l.niveau === 'Avertissement').length,
+    modules:        new Set(mockOperationLogs.map(l => l.module)).size,
+  }), []);
+
+  const recent = useMemo(() => mockOperationLogs.slice(0, 5), []);
+
+  function handleExportCsv() {
+    exportCsv(mockOperationLogs);
+    setExported(true);
+    setTimeout(() => setExported(false), 2500);
+  }
+
+  const columns = buildLogColumns((log) => { setSelected(log); setSlideOverOpen(true); });
 
   return (
     <section aria-label="Journal des Opérations" className="flex flex-col gap-6">
@@ -158,11 +290,62 @@ export default function ProjectOperationsJournalTab() {
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
         <div>
           <h1 className="text-base font-bold text-foreground">Journal des Opérations</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Traçabilité complète des actions et événements système</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Traçabilité complète des actions et événements système
+          </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={handleExportCsv}
+        >
+          <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+          Exporter CSV
+        </Button>
       </div>
 
-      {/* Timeline récente */}
+      {/* ── Feedback export ───────────────────────────────────────────────── */}
+      {exported && (
+        <div className="flex items-center gap-2 text-success text-xs bg-success/10 border border-success/20 rounded-md px-3 py-2">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Export CSV téléchargé avec succès.
+        </div>
+      )}
+
+      {/* ── KPI Strip ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total opérations"
+          value={kpis.total}
+          icon={<Activity className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="primary"
+          description="Entrées enregistrées"
+        />
+        <StatCard
+          title="Opérations réussies"
+          value={kpis.succes}
+          icon={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="success"
+          description="Statut Succès"
+        />
+        <StatCard
+          title="Alertes & Erreurs"
+          value={kpis.erreurs}
+          icon={<AlertTriangle className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="warning"
+          description="Avertissements + Erreurs"
+        />
+        <StatCard
+          title="Modules tracés"
+          value={kpis.modules}
+          icon={<Info className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="default"
+          description="Modules distincts"
+        />
+      </div>
+
+      {/* ── Timeline récente ──────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Activité récente</CardTitle>
@@ -172,10 +355,11 @@ export default function ProjectOperationsJournalTab() {
         </CardContent>
       </Card>
 
-      {/* DataTable complète */}
+      {/* ── DataTable complète ────────────────────────────────────────────── */}
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Journal complet des opérations</CardTitle>
+          <span className="text-xs text-muted-foreground">{mockOperationLogs.length} entrées</span>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -188,41 +372,61 @@ export default function ProjectOperationsJournalTab() {
                 id: 'niveau',
                 title: 'Niveau',
                 options: [
-                  { label: 'Succès', value: 'Succès' },
-                  { label: 'Info', value: 'Info' },
+                  { label: 'Succès',        value: 'Succès'        },
+                  { label: 'Info',          value: 'Info'          },
                   { label: 'Avertissement', value: 'Avertissement' },
-                  { label: 'Erreur', value: 'Erreur' },
+                  { label: 'Erreur',        value: 'Erreur'        },
                 ],
               },
               {
                 id: 'module',
                 title: 'Module',
                 options: [
-                  { label: 'Budget', value: 'Budget' },
-                  { label: 'Activités', value: 'Activités' },
-                  { label: 'Livrables', value: 'Livrables' },
-                  { label: 'Décaissements', value: 'Décaissements' },
-                  { label: 'Gouvernance', value: 'Gouvernance' },
-                  { label: 'Risques', value: 'Risques' },
-                  { label: 'Documents', value: 'Documents' },
+                  { label: 'Budget',         value: 'Budget'        },
+                  { label: 'Activités',      value: 'Activités'     },
+                  { label: 'Livrables',      value: 'Livrables'     },
+                  { label: 'Décaissements',  value: 'Décaissements' },
+                  { label: 'Gouvernance',    value: 'Gouvernance'   },
+                  { label: 'Risques',        value: 'Risques'       },
+                  { label: 'Documents',      value: 'Documents'     },
                 ],
               },
               {
                 id: 'utilisateur',
                 title: 'Utilisateur',
                 options: [
-                  { label: 'Amadou Diallo', value: 'Amadou Diallo' },
+                  { label: 'Amadou Diallo',    value: 'Amadou Diallo'    },
                   { label: 'Fatoumata Moussa', value: 'Fatoumata Moussa' },
-                  { label: 'Aïchata Koné', value: 'Aïchata Koné' },
-                  { label: 'Rabiou Hamidou', value: 'Rabiou Hamidou' },
-                  { label: 'Boubacar Issa', value: 'Boubacar Issa' },
-                  { label: 'Salif Traoré', value: 'Salif Traoré' },
+                  { label: 'Aïchata Koné',     value: 'Aïchata Koné'     },
+                  { label: 'Rabiou Hamidou',   value: 'Rabiou Hamidou'   },
+                  { label: 'Boubacar Issa',    value: 'Boubacar Issa'    },
+                  { label: 'Salif Traoré',     value: 'Salif Traoré'     },
                 ],
               },
             ]}
           />
         </CardContent>
       </Card>
+
+      {/* ── Notice registre immuable ──────────────────────────────────────── */}
+      <div className="flex items-start gap-3 bg-primary/5 border border-primary/20 rounded-lg p-4">
+        <AlertCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+        <div>
+          <h4 className="text-sm font-semibold text-foreground">Registre en lecture seule</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Ce journal est <strong>immuable</strong> (Append-Only). Les entrées ne peuvent pas être
+            modifiées ni supprimées. Il constitue la trace d'audit officielle du projet.
+          </p>
+        </div>
+      </div>
+
+      {/* ── SlideOver détail ──────────────────────────────────────────────── */}
+      <LogDetailSlideOver
+        open={slideOverOpen}
+        onOpenChange={setSlideOverOpen}
+        log={selected}
+      />
+
     </section>
   );
 }

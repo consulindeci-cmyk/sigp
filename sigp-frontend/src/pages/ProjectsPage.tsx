@@ -3,12 +3,11 @@ import { Link } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   Download, Plus, Eye, Edit, Copy, Archive, Trash2,
-  LayoutGrid, List, CheckCircle2,
+  LayoutGrid, List,
 } from 'lucide-react';
 import { ContentLayout } from '@/components/layout/ContentLayout';
 import { PageHeader } from '@/components/layout/AppShell';
-import { Button, buttonVariants } from '@/components/ui/forms/Button';
-import { Select } from '@/components/ui/forms/Select';
+import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import { DataTable } from '@/components/ui/data-table/DataTable';
@@ -30,26 +29,21 @@ import {
   mockProjects,
   uniqueOptions,
   type Project,
+  type ProjectSector,
+  type ProjectStatus,
   type ProjectsKPIs,
 } from '@/mocks/projectsMocks';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Static filter options (based on all possible values)
+// Static filter options (status values never change)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS = [
   { label: 'En bonne voie', value: 'En bonne voie' },
-  { label: 'À risque', value: 'À risque' },
-  { label: 'En retard', value: 'En retard' },
-  { label: 'Clôturé', value: 'Clôturé' },
+  { label: 'À risque',      value: 'À risque'       },
+  { label: 'En retard',     value: 'En retard'      },
+  { label: 'Clôturé',      value: 'Clôturé'        },
   { label: 'En préparation', value: 'En préparation' },
-];
-
-const projectFilters: DataTableFilter[] = [
-  { id: 'status', title: 'Statut', options: STATUS_OPTIONS },
-  { id: 'donor',  title: 'Bailleur', options: uniqueOptions(mockProjects, 'donor') },
-  { id: 'sector', title: 'Secteur',  options: uniqueOptions(mockProjects, 'sector') },
-  { id: 'country', title: 'Pays',   options: uniqueOptions(mockProjects, 'country') },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,7 +61,6 @@ function formatDateShort(iso: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ViewMode = 'table' | 'grid';
-type ExportFormat = 'xlsx' | 'csv' | 'pdf';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>(mockProjects);
@@ -82,10 +75,12 @@ export default function ProjectsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
+  // Archive modal
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [projectToArchive, setProjectToArchive] = useState<Project | null>(null);
+
   // Export modal
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx');
-  const [exportDone, setExportDone] = useState(false);
 
   // ── Dynamic KPIs ──────────────────────────────────────────────────────────
   const kpis = useMemo<ProjectsKPIs>(() => ({
@@ -98,7 +93,21 @@ export default function ProjectsPage() {
       '$' + (projects.reduce((s, p) => s + p.budgetTotal, 0) / 1_000_000).toFixed(1) + 'M',
   }), [projects]);
 
+  // Dynamic filter options — update automatically when projects array changes
+  const projectFilters = useMemo<DataTableFilter[]>(() => [
+    { id: 'status',  title: 'Statut',   options: STATUS_OPTIONS },
+    { id: 'donor',   title: 'Bailleur', options: uniqueOptions(projects, 'donor') },
+    { id: 'sector',  title: 'Secteur',  options: uniqueOptions(projects, 'sector') },
+    { id: 'country', title: 'Pays',     options: uniqueOptions(projects, 'country') },
+  ], [projects]);
+
   // ── Actions ───────────────────────────────────────────────────────────────
+  function openNew() {
+    setSelectedProject(null);
+    setSlideOverMode('new');
+    setSlideOverOpen(true);
+  }
+
   function openView(project: Project) {
     setSelectedProject(project);
     setSlideOverMode('view');
@@ -109,6 +118,40 @@ export default function ProjectsPage() {
     setSelectedProject(project);
     setSlideOverMode('edit');
     setSlideOverOpen(true);
+  }
+
+  function handleSave(data: Partial<Project>) {
+    if (slideOverMode === 'new') {
+      const newProject: Project = {
+        id: `proj-${Date.now()}`,
+        code: data.code ?? '',
+        name: data.name ?? '',
+        description: data.description ?? '',
+        donor: data.donor ?? '',
+        sector: (data.sector ?? 'Infrastructure') as ProjectSector,
+        country: data.country ?? '',
+        manager: data.manager ?? '',
+        initialesManager: data.initialesManager ?? '',
+        startDate: data.startDate ?? '',
+        endDate: data.endDate ?? '',
+        budgetTotal: data.budgetTotal ?? 0,
+        devise: data.devise ?? 'USD',
+        budgetDisplay: data.budgetDisplay ?? '$0',
+        status: (data.status ?? 'En préparation') as ProjectStatus,
+        profileScore: 0,
+        progressScore: 0,
+        tauxDecaissement: 0,
+        composantes: 0,
+        activites: 0,
+        livrables: 0,
+      };
+      setProjects((prev) => [newProject, ...prev]);
+    } else if (slideOverMode === 'edit' && selectedProject) {
+      setProjects((prev) =>
+        prev.map((p) => p.id === selectedProject.id ? { ...p, ...data } : p)
+      );
+    }
+    setSlideOverOpen(false);
   }
 
   function handleDuplicate(project: Project) {
@@ -124,10 +167,18 @@ export default function ProjectsPage() {
     setProjects((prev) => [dup, ...prev]);
   }
 
-  function handleArchive(project: Project) {
+  function openArchive(project: Project) {
+    setProjectToArchive(project);
+    setArchiveModalOpen(true);
+  }
+
+  function handleArchiveConfirm() {
+    if (!projectToArchive) return;
     setProjects((prev) =>
-      prev.map((p) => p.id === project.id ? { ...p, status: 'Clôturé' as const } : p)
+      prev.map((p) => p.id === projectToArchive.id ? { ...p, status: 'Clôturé' as const } : p)
     );
+    setArchiveModalOpen(false);
+    setProjectToArchive(null);
   }
 
   function openDelete(project: Project) {
@@ -143,25 +194,48 @@ export default function ProjectsPage() {
   }
 
   function handleExport() {
-    setExportDone(true);
-    setTimeout(() => {
-      setExportDone(false);
-      setExportModalOpen(false);
-    }, 1500);
-  }
-
-  function handleSave() {
-    setSlideOverOpen(false);
+    const headers = [
+      'Code', 'Nom', 'Bailleur', 'Secteur', 'Pays', 'Chef de Projet',
+      'Statut', 'Budget', 'Devise', 'Date Début', 'Date Fin',
+      'Progression (%)', 'Taux Décaissement (%)',
+    ];
+    const rows = projects.map((p) => [
+      p.code, p.name, p.donor, p.sector, p.country, p.manager,
+      p.status, String(p.budgetTotal), p.devise, p.startDate, p.endDate,
+      String(p.progressScore), String(p.tauxDecaissement),
+    ]);
+    const csv = '﻿' + [headers, ...rows]
+      .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `projets-gpd-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setExportModalOpen(false);
   }
 
   // ── Row action builder ────────────────────────────────────────────────────
   function getActions(project: Project): ActionItem[] {
     return [
-      { label: 'Voir',      icon: <Eye className="h-3.5 w-3.5" />,     onClick: () => openView(project) },
-      { label: 'Modifier',  icon: <Edit className="h-3.5 w-3.5" />,    onClick: () => openEdit(project) },
-      { label: 'Dupliquer', icon: <Copy className="h-3.5 w-3.5" />,    onClick: () => handleDuplicate(project) },
-      { label: 'Archiver',  icon: <Archive className="h-3.5 w-3.5" />, onClick: () => handleArchive(project), separator: true, disabled: project.status === 'Clôturé' },
-      { label: 'Supprimer', icon: <Trash2 className="h-3.5 w-3.5" />,  onClick: () => openDelete(project), variant: 'destructive', separator: true },
+      { label: 'Voir',      icon: <Eye     className="h-3.5 w-3.5" />, onClick: () => openView(project) },
+      { label: 'Modifier',  icon: <Edit    className="h-3.5 w-3.5" />, onClick: () => openEdit(project) },
+      { label: 'Dupliquer', icon: <Copy    className="h-3.5 w-3.5" />, onClick: () => handleDuplicate(project) },
+      {
+        label: 'Archiver', icon: <Archive className="h-3.5 w-3.5" />,
+        onClick: () => openArchive(project),
+        separator: true,
+        disabled: project.status === 'Clôturé',
+      },
+      {
+        label: 'Supprimer', icon: <Trash2 className="h-3.5 w-3.5" />,
+        onClick: () => openDelete(project),
+        variant: 'destructive', separator: true,
+      },
     ];
   }
 
@@ -279,6 +353,15 @@ export default function ProjectsPage() {
       enableHiding: true,
       cell: () => null,
     },
+    // Hidden column for multi-field search (name + code + donor + sector + country + manager)
+    {
+      id: 'search',
+      accessorFn: (row) =>
+        [row.name, row.code, row.donor, row.sector, row.country, row.manager].join(' '),
+      enableHiding: true,
+      header: '',
+      cell: () => null,
+    },
     {
       id: 'actions',
       enableHiding: false,
@@ -299,17 +382,18 @@ export default function ProjectsPage() {
       <Button
         variant="outline"
         leftIcon={<Download className="h-4 w-4" />}
-        onClick={() => { setExportDone(false); setExportModalOpen(true); }}
+        onClick={() => setExportModalOpen(true)}
       >
         Exporter
       </Button>
-      <Link
-        to="/projects/new"
-        className={cn(buttonVariants({ variant: 'default' }), 'gap-2')}
+      <Button
+        variant="default"
+        leftIcon={<Plus className="h-4 w-4" />}
+        onClick={openNew}
         aria-label="Créer un nouveau projet"
       >
-        <Plus className="h-4 w-4" aria-hidden="true" /> Nouveau Projet
-      </Link>
+        Nouveau Projet
+      </Button>
     </>
   );
 
@@ -326,7 +410,9 @@ export default function ProjectsPage() {
         onClick={() => setView('table')}
         className={cn(
           'flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          view === 'table' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          view === 'table'
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
         )}
         aria-label="Vue tableau"
       >
@@ -339,7 +425,9 @@ export default function ProjectsPage() {
         onClick={() => setView('grid')}
         className={cn(
           'flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          view === 'grid' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          view === 'grid'
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
         )}
         aria-label="Vue grille"
       >
@@ -372,8 +460,8 @@ export default function ProjectsPage() {
         <DataTable
           columns={columns}
           data={projects}
-          searchKey="name"
-          searchPlaceholder="Rechercher un projet..."
+          searchKey="search"
+          searchPlaceholder="Rechercher un projet, bailleur, pays..."
           filters={projectFilters}
           enableRowSelection
         />
@@ -392,7 +480,7 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* ── SlideOver View/Edit ─────────────────────────────────────────── */}
+      {/* ── SlideOver View / Edit / New ─────────────────────────────────── */}
       <ProjectSlideOver
         open={slideOverOpen}
         onOpenChange={setSlideOverOpen}
@@ -424,47 +512,46 @@ export default function ProjectsPage() {
         </ModalContent>
       </Modal>
 
+      {/* ── Archive Confirmation Modal ──────────────────────────────────── */}
+      <Modal open={archiveModalOpen} onOpenChange={setArchiveModalOpen}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Confirmer l'archivage</ModalTitle>
+            <ModalDescription>
+              Voulez-vous archiver{' '}
+              <strong className="text-foreground">{projectToArchive?.name}</strong> ?
+              Le statut passera à <em>Clôturé</em>.
+            </ModalDescription>
+          </ModalHeader>
+          <ModalFooter>
+            <ModalClose asChild>
+              <Button variant="outline">Annuler</Button>
+            </ModalClose>
+            <Button variant="default" onClick={handleArchiveConfirm}>
+              <Archive className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              Archiver
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       {/* ── Export Modal ────────────────────────────────────────────────── */}
       <Modal open={exportModalOpen} onOpenChange={setExportModalOpen}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Exporter les projets</ModalTitle>
             <ModalDescription>
-              Sélectionnez le format d'export pour les {projects.length} projets visibles.
+              {projects.length} projet{projects.length !== 1 ? 's' : ''} seront exportés en CSV
+              (compatible Excel).
             </ModalDescription>
           </ModalHeader>
-
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="export-format">
-                Format d'export
-              </label>
-              <Select
-                id="export-format"
-                value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-              >
-                <option value="xlsx">Microsoft Excel (.xlsx)</option>
-                <option value="csv">CSV (.csv)</option>
-                <option value="pdf">PDF (.pdf)</option>
-              </Select>
-            </div>
-
-            {exportDone && (
-              <div className="flex items-center gap-2 text-success text-sm bg-success/10 rounded-md px-3 py-2 border border-success/20">
-                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                Export {exportFormat.toUpperCase()} généré — téléchargement simulé
-              </div>
-            )}
-          </div>
-
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="default" onClick={handleExport} disabled={exportDone}>
+            <Button variant="default" onClick={handleExport}>
               <Download className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              {exportDone ? 'En cours...' : 'Exporter'}
+              Télécharger CSV
             </Button>
           </ModalFooter>
         </ModalContent>

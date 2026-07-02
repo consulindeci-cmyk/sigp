@@ -8,11 +8,11 @@ import {
 import { ColumnDef } from '@tanstack/react-table'
 import { mockDocuments } from '@/mocks/documentsMock'
 import type { DocumentMock } from '@/mocks/documentsMock'
-import { StatCard }   from '@/components/ui/data-display/StatCard'
-import { Badge }      from '@/components/ui/data-display/Badge'
-import { Button }     from '@/components/ui/forms/Button'
-import { Input }      from '@/components/ui/forms/Input'
-import { DataTable }  from '@/components/ui/data-table/DataTable'
+import { StatCard } from '@/components/ui/data-display/StatCard'
+import { Badge } from '@/components/ui/data-display/Badge'
+import { Button } from '@/components/ui/forms/Button'
+import { Input } from '@/components/ui/forms/Input'
+import { DataTable } from '@/components/ui/data-table/DataTable'
 
 // ─── Hook local ──────────────────────────────────────────────────────────────
 
@@ -45,32 +45,32 @@ type DocBadgeVariant = 'destructive' | 'success' | 'info' | 'warning' | 'seconda
 
 function getTypeBadgeVariant(type: string): DocBadgeVariant {
   switch (type) {
-    case 'PDF':  return 'destructive'
+    case 'PDF': return 'destructive'
     case 'XLSX': return 'success'
     case 'DOCX': return 'info'
-    case 'IMG':  return 'warning'
-    default:     return 'secondary'
+    case 'IMG': return 'warning'
+    default: return 'secondary'
   }
 }
 
 function FileIcon({ type }: { type: string }) {
   if (type === 'XLSX') return <FileSpreadsheet className="h-5 w-5 text-success" aria-hidden="true" />
-  if (type === 'DOCX') return <FileText         className="h-5 w-5 text-info"    aria-hidden="true" />
-  if (type === 'PDF')  return <FileText         className="h-5 w-5 text-destructive" aria-hidden="true" />
-  return                      <File             className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+  if (type === 'DOCX') return <FileText className="h-5 w-5 text-info" aria-hidden="true" />
+  if (type === 'PDF') return <FileText className="h-5 w-5 text-destructive" aria-hidden="true" />
+  return <File className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
 }
 
 function FileIconBg(type: string): string {
   if (type === 'XLSX') return 'bg-success/10'
   if (type === 'DOCX') return 'bg-info/10'
-  if (type === 'PDF')  return 'bg-destructive/10'
+  if (type === 'PDF') return 'bg-destructive/10'
   return 'bg-muted/30'
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
-  const [search, setSearch]               = useState('')
+  const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -84,11 +84,11 @@ export default function DocumentsPage() {
 
   // KPIs dynamiques depuis les données
   const kpis = useMemo(() => {
-    const docs    = documents ?? []
+    const docs = documents ?? []
     const totalKo = docs.reduce((sum, d) => sum + d.taille_ko, 0)
     return {
-      total:  docs.length,
-      pdfs:   docs.filter(d => d.type === 'PDF').length,
+      total: docs.length,
+      pdfs: docs.filter(d => d.type === 'PDF').length,
       autres: docs.filter(d => d.type !== 'PDF').length,
       taille: formatSize(totalKo),
     }

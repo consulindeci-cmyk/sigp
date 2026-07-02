@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -18,6 +18,10 @@ import {
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import {
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
+  ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
+import {
   mockDisbursementRecords,
   mockDisbursementKPIs,
   mockDisbursementChart,
@@ -31,8 +35,8 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CHART_COLORS = {
-  prevu:  'hsl(var(--muted-foreground))',
-  recu:   'hsl(var(--primary))',
+  prevu: 'hsl(var(--muted-foreground))',
+  recu:  'hsl(var(--primary))',
 };
 
 const tooltipStyle = {
@@ -53,9 +57,7 @@ function formatDate(dateStr: string | null): string {
     return new Date(dateStr).toLocaleDateString('fr-FR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
     });
-  } catch {
-    return '—';
-  }
+  } catch { return '—'; }
 }
 
 function formatMontant(value: number, devise: DisbursementDevise): string {
@@ -63,10 +65,8 @@ function formatMontant(value: number, devise: DisbursementDevise): string {
     return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value) + ' XOF';
   }
   return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: devise,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    style: 'currency', currency: devise,
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(value);
 }
 
@@ -80,25 +80,131 @@ function statutVariant(statut: DisbursementStatus): 'success' | 'warning' | 'sec
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Controlled form state
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DisbFormValues {
+  bailleur:      string;
+  convention:    string;
+  reference:     string;
+  tranche:       string;
+  montantPrevu:  string;
+  montantRecu:   string;
+  devise:        string;
+  statut:        string;
+  datePrevue:    string;
+  dateReception: string;
+}
+
+type DisbFormErrors = Partial<Record<keyof DisbFormValues, string>>;
+
+const EMPTY_FORM: DisbFormValues = {
+  bailleur: '', convention: '', reference: '', tranche: '',
+  montantPrevu: '', montantRecu: '0',
+  devise: 'USD', statut: 'Planifié',
+  datePrevue: '', dateReception: '',
+};
+
+function recordToForm(r: DisbursementRecord): DisbFormValues {
+  return {
+    bailleur:      r.bailleur,
+    convention:    r.convention,
+    reference:     r.reference,
+    tranche:       r.tranche,
+    montantPrevu:  String(r.montantPrevu),
+    montantRecu:   String(r.montantRecu),
+    devise:        r.devise,
+    statut:        r.statut,
+    datePrevue:    r.datePrevue,
+    dateReception: r.dateReception ?? '',
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Field row helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FRow({
+  id, label, error, full = false, children,
+}: {
+  id?: string; label: string; error?: string; full?: boolean; children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-1.5${full ? ' sm:col-span-2' : ''}`}>
+      <label className="text-sm font-medium text-foreground" htmlFor={id}>{label}</label>
+      {children}
+      {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SlideOver — Voir / Ajouter / Modifier
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SlideOverMode = 'view' | 'edit' | 'new';
 
 function DisbursementSlideOver({
-  open, onOpenChange, record, mode,
+  open, onOpenChange, record, mode, onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   record: DisbursementRecord | null;
   mode: SlideOverMode;
+  onSave?: (data: Partial<DisbursementRecord>) => void;
 }) {
+  const [values, setValues] = useState<DisbFormValues>(EMPTY_FORM);
+  const [errors, setErrors] = useState<DisbFormErrors>({});
+  const readOnly = mode === 'view';
+
+  useEffect(() => {
+    if (!open) return;
+    setErrors({});
+    if (mode === 'new') setValues(EMPTY_FORM);
+    else if (record) setValues(recordToForm(record));
+  }, [open, mode, record?.id]);
+
+  function set(k: keyof DisbFormValues, v: string) {
+    setValues(prev => ({ ...prev, [k]: v }));
+    if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
+  }
+
+  function validate(): boolean {
+    const errs: DisbFormErrors = {};
+    if (!values.bailleur.trim())   errs.bailleur   = 'Requis';
+    if (!values.reference.trim())  errs.reference  = 'Requis';
+    if (!values.tranche.trim())    errs.tranche    = 'Requis';
+    if (!values.datePrevue)        errs.datePrevue = 'Requis';
+    if (!values.montantPrevu || Number(values.montantPrevu) <= 0)
+      errs.montantPrevu = 'Montant requis (> 0)';
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  function handleSave() {
+    if (!validate()) return;
+    const montantPrevu = Number(values.montantPrevu);
+    const montantRecu  = Number(values.montantRecu) || 0;
+    onSave?.({
+      bailleur:      values.bailleur.trim(),
+      convention:    values.convention.trim(),
+      reference:     values.reference.trim(),
+      tranche:       values.tranche.trim(),
+      montantPrevu,
+      montantRecu,
+      solde:         montantPrevu - montantRecu,
+      devise:        values.devise as DisbursementDevise,
+      statut:        values.statut as DisbursementStatus,
+      datePrevue:    values.datePrevue,
+      dateReception: values.dateReception || null,
+    });
+  }
+
   const titles: Record<SlideOverMode, string> = {
     view: 'Détails du décaissement',
     edit: 'Modifier le décaissement',
     new:  'Nouveau décaissement',
   };
-  const readOnly = mode === 'view';
 
   return (
     <SlideOver open={open} onOpenChange={onOpenChange}>
@@ -114,8 +220,8 @@ function DisbursementSlideOver({
 
         <SlideOverBody>
           {readOnly && record ? (
+            // ── View mode ────────────────────────────────────────────────
             <div className="flex flex-col gap-5">
-              {/* Status + Reference header */}
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Référence</p>
@@ -145,7 +251,6 @@ function DisbursementSlideOver({
                 </div>
               </div>
 
-              {/* Montants */}
               <div className="grid grid-cols-3 gap-3 bg-muted/40 rounded-lg p-4">
                 <div className="text-center">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Prévu</p>
@@ -167,7 +272,6 @@ function DisbursementSlideOver({
                 </div>
               </div>
 
-              {/* Dates */}
               <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date prévue</p>
@@ -180,56 +284,100 @@ function DisbursementSlideOver({
               </div>
             </div>
           ) : (
+            // ── Edit / New mode — controlled form ─────────────────────────
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-bailleur">Bailleur</label>
-                <Input id="dis-bailleur" defaultValue={record?.bailleur ?? ''} placeholder="Nom du bailleur" />
-              </div>
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-convention">Convention</label>
-                <Input id="dis-convention" defaultValue={record?.convention ?? ''} placeholder="Réf. convention" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-ref">Référence</label>
-                <Input id="dis-ref" defaultValue={record?.reference ?? ''} placeholder="DEC-XXX-XXXX" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-tranche">Tranche</label>
-                <Input id="dis-tranche" defaultValue={record?.tranche ?? ''} placeholder="Tranche 1" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-prevu">Montant prévu</label>
-                <Input id="dis-prevu" type="number" defaultValue={record?.montantPrevu ?? ''} placeholder="0" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-recu">Montant reçu</label>
-                <Input id="dis-recu" type="number" defaultValue={record?.montantRecu ?? ''} placeholder="0" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-devise">Devise</label>
-                <Select id="dis-devise" defaultValue={record?.devise ?? 'USD'}>
+              <FRow id="dis-bailleur" label="Bailleur" error={errors.bailleur} full>
+                <Input
+                  id="dis-bailleur"
+                  value={values.bailleur}
+                  onChange={e => set('bailleur', e.target.value)}
+                  placeholder="Nom du bailleur"
+                />
+              </FRow>
+
+              <FRow id="dis-convention" label="Convention" full>
+                <Input
+                  id="dis-convention"
+                  value={values.convention}
+                  onChange={e => set('convention', e.target.value)}
+                  placeholder="Réf. convention"
+                />
+              </FRow>
+
+              <FRow id="dis-ref" label="Référence" error={errors.reference}>
+                <Input
+                  id="dis-ref"
+                  value={values.reference}
+                  onChange={e => set('reference', e.target.value)}
+                  placeholder="DEC-XXX-XXXX"
+                />
+              </FRow>
+
+              <FRow id="dis-tranche" label="Tranche" error={errors.tranche}>
+                <Input
+                  id="dis-tranche"
+                  value={values.tranche}
+                  onChange={e => set('tranche', e.target.value)}
+                  placeholder="Tranche 1"
+                />
+              </FRow>
+
+              <FRow id="dis-prevu" label="Montant prévu" error={errors.montantPrevu}>
+                <Input
+                  id="dis-prevu"
+                  type="number"
+                  min={0}
+                  value={values.montantPrevu}
+                  onChange={e => set('montantPrevu', e.target.value)}
+                  placeholder="0"
+                />
+              </FRow>
+
+              <FRow id="dis-recu" label="Montant reçu">
+                <Input
+                  id="dis-recu"
+                  type="number"
+                  min={0}
+                  value={values.montantRecu}
+                  onChange={e => set('montantRecu', e.target.value)}
+                  placeholder="0"
+                />
+              </FRow>
+
+              <FRow id="dis-devise" label="Devise">
+                <Select id="dis-devise" value={values.devise} onChange={e => set('devise', e.target.value)}>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                   <option value="XOF">XOF</option>
                 </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-statut">Statut</label>
-                <Select id="dis-statut" defaultValue={record?.statut ?? 'Planifié'}>
+              </FRow>
+
+              <FRow id="dis-statut" label="Statut">
+                <Select id="dis-statut" value={values.statut} onChange={e => set('statut', e.target.value)}>
                   <option value="Planifié">Planifié</option>
                   <option value="En attente">En attente</option>
                   <option value="Reçu">Reçu</option>
                   <option value="En retard">En retard</option>
                 </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-datep">Date prévue</label>
-                <Input id="dis-datep" type="date" defaultValue={record?.datePrevue ?? ''} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="dis-dater">Date de réception</label>
-                <Input id="dis-dater" type="date" defaultValue={record?.dateReception ?? ''} />
-              </div>
+              </FRow>
+
+              <FRow id="dis-datep" label="Date prévue" error={errors.datePrevue}>
+                <Input
+                  id="dis-datep"
+                  type="date"
+                  value={values.datePrevue}
+                  onChange={e => set('datePrevue', e.target.value)}
+                />
+              </FRow>
+
+              <FRow id="dis-dater" label="Date de réception">
+                <Input
+                  id="dis-dater"
+                  type="date"
+                  value={values.dateReception}
+                  onChange={e => set('dateReception', e.target.value)}
+                />
+              </FRow>
             </div>
           )}
         </SlideOverBody>
@@ -239,9 +387,9 @@ function DisbursementSlideOver({
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
           </SlideOverClose>
           {!readOnly && (
-            <SlideOverClose asChild>
-              <Button variant="default">{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
-            </SlideOverClose>
+            <Button variant="default" onClick={handleSave}>
+              {mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
+            </Button>
           )}
         </SlideOverFooter>
       </SlideOverContent>
@@ -254,8 +402,8 @@ function DisbursementSlideOver({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildDisbursementColumns(
-  onView: (r: DisbursementRecord) => void,
-  onEdit: (r: DisbursementRecord) => void,
+  onView:   (r: DisbursementRecord) => void,
+  onEdit:   (r: DisbursementRecord) => void,
   onDelete: (id: string) => void,
 ): ColumnDef<DisbursementRecord, any>[] {
   return [
@@ -388,15 +536,63 @@ function buildDisbursementColumns(
 
 export default function ProjectDisbursementTab() {
   const [records, setRecords] = useState<DisbursementRecord[]>(mockDisbursementRecords);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
-  const [slideOverMode, setSlideOverMode] = useState<SlideOverMode>('new');
+  const [slideOverOpen, setSlideOverOpen]   = useState(false);
+  const [slideOverMode, setSlideOverMode]   = useState<SlideOverMode>('new');
   const [selectedRecord, setSelectedRecord] = useState<DisbursementRecord | null>(null);
 
-  const columns = buildDisbursementColumns(
-    (r) => { setSelectedRecord(r); setSlideOverMode('view'); setSlideOverOpen(true); },
-    (r) => { setSelectedRecord(r); setSlideOverMode('edit'); setSlideOverOpen(true); },
-    (id) => setRecords((prev) => prev.filter((r) => r.id !== id)),
-  );
+  // Delete confirmation
+  const [deleteModalOpen,  setDeleteModalOpen]  = useState(false);
+  const [recordToDelete,   setRecordToDelete]   = useState<string | null>(null);
+
+  function openView(r: DisbursementRecord) {
+    setSelectedRecord(r); setSlideOverMode('view'); setSlideOverOpen(true);
+  }
+  function openEdit(r: DisbursementRecord) {
+    setSelectedRecord(r); setSlideOverMode('edit'); setSlideOverOpen(true);
+  }
+  function openDeleteModal(id: string) {
+    setRecordToDelete(id); setDeleteModalOpen(true);
+  }
+  function handleDeleteConfirm() {
+    if (recordToDelete) setRecords(prev => prev.filter(r => r.id !== recordToDelete));
+    setDeleteModalOpen(false);
+    setRecordToDelete(null);
+  }
+
+  function handleSave(data: Partial<DisbursementRecord>) {
+    if (slideOverMode === 'new') {
+      const newRecord: DisbursementRecord = {
+        id: `d-${Date.now()}`,
+        bailleur:      data.bailleur      ?? '',
+        convention:    data.convention    ?? '',
+        reference:     data.reference     ?? '',
+        tranche:       data.tranche       ?? '',
+        montantPrevu:  data.montantPrevu  ?? 0,
+        montantRecu:   data.montantRecu   ?? 0,
+        solde:         data.solde         ?? 0,
+        datePrevue:    data.datePrevue    ?? '',
+        dateReception: data.dateReception ?? null,
+        statut:        data.statut        ?? 'Planifié',
+        devise:        data.devise        ?? 'USD',
+      };
+      setRecords(prev => [newRecord, ...prev]);
+    } else if (selectedRecord) {
+      setRecords(prev => prev.map(r =>
+        r.id === selectedRecord.id ? { ...r, ...data } : r
+      ));
+    }
+    setSlideOverOpen(false);
+  }
+
+  // Dynamic KPIs
+  const totalPrevu = records.reduce((s, r) => s + r.montantPrevu, 0);
+  const totalRecu  = records.reduce((s, r) => s + r.montantRecu, 0);
+  const tauxDec    = totalPrevu > 0 ? Math.round((totalRecu / totalPrevu) * 100) : 0;
+  const enAttente  = records.filter(r => r.statut === 'En attente').length;
+  const enRetard   = records.filter(r => r.statut === 'En retard').length;
+  const recu       = records.filter(r => r.statut === 'Reçu').length;
+
+  const columns = buildDisbursementColumns(openView, openEdit, openDeleteModal);
 
   return (
     <section aria-label="Suivi des Décaissements" className="flex flex-col gap-6">
@@ -415,23 +611,18 @@ export default function ProjectDisbursementTab() {
           value={mockDisbursementKPIs.montantTotalRecu}
           icon={<Wallet className="h-4 w-4 text-success" aria-hidden="true" />}
           iconVariant="success"
-          trend={{
-            value: mockDisbursementKPIs.tauxDecaissement,
-            label: 'taux de décaissement',
-            isPositive: true,
-            unit: '%',
-          }}
+          trend={{ value: tauxDec, label: 'taux de décaissement', isPositive: true, unit: '%' }}
         />
         <StatCard
           title="En Attente"
-          value={mockDisbursementKPIs.nombreEnAttente}
+          value={enAttente}
           icon={<Clock className="h-4 w-4 text-warning" aria-hidden="true" />}
           iconVariant="warning"
-          description={`${mockDisbursementKPIs.nombreRecu} décaissements reçus`}
+          description={`${recu} décaissement${recu > 1 ? 's' : ''} reçu${recu > 1 ? 's' : ''}`}
         />
         <StatCard
           title="En Retard"
-          value={mockDisbursementKPIs.nombreEnRetard}
+          value={enRetard}
           icon={<AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />}
           iconVariant="destructive"
           description="Tranches non reçues à échéance"
@@ -453,44 +644,21 @@ export default function ProjectDisbursementTab() {
               <AreaChart data={mockDisbursementChart} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gradPrevu" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={CHART_COLORS.prevu} stopOpacity={0.3} />
+                    <stop offset="5%"  stopColor={CHART_COLORS.prevu} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={CHART_COLORS.prevu} stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="gradRecu" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={CHART_COLORS.recu} stopOpacity={0.3} />
+                    <stop offset="5%"  stopColor={CHART_COLORS.recu} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={CHART_COLORS.recu} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v: any) => [`${v}M USD éq.`, undefined]}
-                />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={(v: any) => <span className="text-[11px] text-muted-foreground">{v}</span>}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="prevu"
-                  name="Prévu"
-                  stroke={CHART_COLORS.prevu}
-                  fill="url(#gradPrevu)"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="recu"
-                  name="Reçu"
-                  stroke={CHART_COLORS.recu}
-                  fill="url(#gradRecu)"
-                  strokeWidth={2}
-                  dot={false}
-                />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [`${v}M USD éq.`, undefined]} />
+                <Legend iconType="circle" iconSize={8} formatter={(v: any) => <span className="text-[11px] text-muted-foreground">{v}</span>} />
+                <Area type="monotone" dataKey="prevu" name="Prévu" stroke={CHART_COLORS.prevu} fill="url(#gradPrevu)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="recu"  name="Reçu"  stroke={CHART_COLORS.recu}  fill="url(#gradRecu)"  strokeWidth={2} dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -500,7 +668,7 @@ export default function ProjectDisbursementTab() {
       {/* DataTable */}
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Registre des décaissements</CardTitle>
+          <CardTitle className="text-base">Registre des décaissements ({records.length})</CardTitle>
           <Button
             variant="default" size="sm" aria-label="Ajouter un décaissement"
             onClick={() => { setSelectedRecord(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
@@ -517,18 +685,16 @@ export default function ProjectDisbursementTab() {
             searchPlaceholder="Rechercher par référence..."
             filters={[
               {
-                id: 'statut',
-                title: 'Statut',
+                id: 'statut', title: 'Statut',
                 options: [
-                  { label: 'Reçu', value: 'Reçu' },
+                  { label: 'Reçu',       value: 'Reçu' },
                   { label: 'En attente', value: 'En attente' },
-                  { label: 'Planifié', value: 'Planifié' },
-                  { label: 'En retard', value: 'En retard' },
+                  { label: 'Planifié',   value: 'Planifié' },
+                  { label: 'En retard',  value: 'En retard' },
                 ],
               },
               {
-                id: 'devise',
-                title: 'Devise',
+                id: 'devise', title: 'Devise',
                 options: [
                   { label: 'USD', value: 'USD' },
                   { label: 'EUR', value: 'EUR' },
@@ -540,13 +706,35 @@ export default function ProjectDisbursementTab() {
         </CardContent>
       </Card>
 
-      {/* SlideOver */}
+      {/* ── SlideOver ────────────────────────────────────────────────────── */}
       <DisbursementSlideOver
         open={slideOverOpen}
         onOpenChange={setSlideOverOpen}
         record={selectedRecord}
         mode={slideOverMode}
+        onSave={handleSave}
       />
+
+      {/* ── Delete Confirmation Modal ──────────────────────────────────── */}
+      <Modal open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Confirmer la suppression</ModalTitle>
+            <ModalDescription>
+              Êtes-vous sûr de vouloir supprimer ce décaissement ? Cette action est irréversible.
+            </ModalDescription>
+          </ModalHeader>
+          <ModalFooter>
+            <ModalClose asChild>
+              <Button variant="outline">Annuler</Button>
+            </ModalClose>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              <Trash2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              Supprimer
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </section>
   );
 }

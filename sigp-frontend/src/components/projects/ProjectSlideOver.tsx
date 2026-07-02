@@ -1,4 +1,6 @@
-import { X, CalendarDays, User, MapPin, DollarSign, Activity } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, CalendarDays, User, MapPin, DollarSign } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
@@ -10,11 +12,9 @@ import {
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import { statusVariant, progressColor } from '@/components/projects/ProjectCard';
-import type { Project } from '@/mocks/projectsMocks';
+import type { Project, ProjectStatus, ProjectSector } from '@/mocks/projectsMocks';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ProjectSlideOverMode = 'view' | 'edit' | 'new';
 
@@ -26,9 +26,7 @@ export interface ProjectSlideOverProps {
   onSave?: (data: Partial<Project>) => void;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string): string {
   try {
@@ -45,9 +43,73 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// View mode
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Form state types ──────────────────────────────────────────────────────────
+
+interface FormValues {
+  code: string;
+  status: string;
+  name: string;
+  description: string;
+  donor: string;
+  sector: string;
+  country: string;
+  manager: string;
+  startDate: string;
+  endDate: string;
+  budgetTotal: string;
+  devise: string;
+}
+
+type FormErrors = Partial<Record<keyof FormValues, string>>;
+
+const EMPTY_FORM: FormValues = {
+  code: '', status: 'En préparation', name: '', description: '',
+  donor: '', sector: '', country: '', manager: '',
+  startDate: '', endDate: '', budgetTotal: '', devise: 'USD',
+};
+
+function projectToForm(p: Project): FormValues {
+  return {
+    code: p.code,
+    status: p.status,
+    name: p.name,
+    description: p.description,
+    donor: p.donor,
+    sector: p.sector,
+    country: p.country,
+    manager: p.manager,
+    startDate: p.startDate,
+    endDate: p.endDate,
+    budgetTotal: String(p.budgetTotal),
+    devise: p.devise,
+  };
+}
+
+// ── FieldRow helper ───────────────────────────────────────────────────────────
+
+function FieldRow({
+  id, label, error, required = false, full = false, children,
+}: {
+  id?: string;
+  label: string;
+  error?: string;
+  required?: boolean;
+  full?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn('flex flex-col gap-1.5', full && 'sm:col-span-2')}>
+      <label className="text-sm font-medium text-foreground" htmlFor={id}>
+        {label}
+        {required && <span className="text-destructive ml-0.5" aria-hidden="true"> *</span>}
+      </label>
+      {children}
+      {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+// ── View mode ─────────────────────────────────────────────────────────────────
 
 function ProjectViewContent({ project }: { project: Project }) {
   return (
@@ -103,11 +165,14 @@ function ProjectViewContent({ project }: { project: Project }) {
       <div className="bg-muted/40 rounded-lg p-4">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            <DollarSign className="h-3 w-3" aria-hidden="true" />Budget total
+            <DollarSign className="h-3 w-3" aria-hidden="true" />
+            Budget total
           </div>
           <span className="font-mono text-[16px] font-bold text-foreground">{project.budgetDisplay}</span>
         </div>
-        <p className="text-[11px] text-muted-foreground">{project.devise} — Taux de décaissement : {project.tauxDecaissement}%</p>
+        <p className="text-[11px] text-muted-foreground">
+          {project.devise} — Taux de décaissement : {project.tauxDecaissement}%
+        </p>
         <ProgressBar
           value={project.tauxDecaissement}
           size="sm"
@@ -124,23 +189,33 @@ function ProjectViewContent({ project }: { project: Project }) {
             <span className="font-bold uppercase tracking-wider text-muted-foreground">Progression physique</span>
             <span className="font-mono font-semibold text-foreground">{project.progressScore}%</span>
           </div>
-          <ProgressBar value={project.progressScore} size="sm" color={progressColor(project.progressScore)} aria-label={`Progression ${project.progressScore}%`} />
+          <ProgressBar
+            value={project.progressScore}
+            size="sm"
+            color={progressColor(project.progressScore)}
+            aria-label={`Progression ${project.progressScore}%`}
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-bold uppercase tracking-wider text-muted-foreground">Profil qualité</span>
             <span className="font-mono font-semibold text-foreground">{project.profileScore}%</span>
           </div>
-          <ProgressBar value={project.profileScore} size="sm" color="warning" aria-label={`Profil ${project.profileScore}%`} />
+          <ProgressBar
+            value={project.profileScore}
+            size="sm"
+            color="warning"
+            aria-label={`Profil ${project.profileScore}%`}
+          />
         </div>
       </div>
 
       {/* Stats rapides */}
       <div className="grid grid-cols-3 gap-3 border-t border-border pt-4">
         {[
-          { label: 'Composantes', value: project.composantes, icon: <Activity className="h-3.5 w-3.5" /> },
-          { label: 'Activités', value: project.activites, icon: <Activity className="h-3.5 w-3.5" /> },
-          { label: 'Livrables', value: project.livrables, icon: <Activity className="h-3.5 w-3.5" /> },
+          { label: 'Composantes', value: project.composantes },
+          { label: 'Activités',   value: project.activites   },
+          { label: 'Livrables',   value: project.livrables   },
         ].map(({ label, value }) => (
           <div key={label} className="flex flex-col items-center gap-1 bg-muted/40 rounded-lg p-3">
             <span className="text-[20px] font-bold text-foreground">{value}</span>
@@ -152,39 +227,69 @@ function ProjectViewContent({ project }: { project: Project }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Form mode (edit / new)
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Form mode (controlled) ────────────────────────────────────────────────────
 
-function ProjectFormContent({ project }: { project: Project | null }) {
+function ProjectFormContent({
+  values,
+  errors,
+  onChange,
+}: {
+  values: FormValues;
+  errors: FormErrors;
+  onChange: (k: keyof FormValues, v: string) => void;
+}) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-code">Code projet</label>
-        <Input id="proj-code" defaultValue={project?.code ?? ''} placeholder="PROJ-XXX" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-statut">Statut</label>
-        <Select id="proj-statut" defaultValue={project?.status ?? 'En préparation'}>
+
+      <FieldRow id="proj-code" label="Code projet" error={errors.code} required>
+        <Input
+          id="proj-code"
+          value={values.code}
+          onChange={e => onChange('code', e.target.value)}
+          placeholder="PROJ-XXX"
+        />
+      </FieldRow>
+
+      <FieldRow id="proj-statut" label="Statut">
+        <Select
+          id="proj-statut"
+          value={values.status}
+          onChange={e => onChange('status', e.target.value)}
+        >
           <option value="En préparation">En préparation</option>
           <option value="En bonne voie">En bonne voie</option>
           <option value="À risque">À risque</option>
           <option value="En retard">En retard</option>
           <option value="Clôturé">Clôturé</option>
         </Select>
-      </div>
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-nom">Nom du projet</label>
-        <Input id="proj-nom" defaultValue={project?.name ?? ''} placeholder="Intitulé complet du projet" />
-      </div>
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-desc">Description</label>
-        <Textarea id="proj-desc" defaultValue={project?.description ?? ''} rows={3} placeholder="Description du projet et objectifs" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-bailleur">Bailleur</label>
-        <Select id="proj-bailleur" defaultValue={project?.donor ?? ''}>
-          <option value="">Sélectionner</option>
+      </FieldRow>
+
+      <FieldRow id="proj-nom" label="Nom du projet" error={errors.name} required full>
+        <Input
+          id="proj-nom"
+          value={values.name}
+          onChange={e => onChange('name', e.target.value)}
+          placeholder="Intitulé complet du projet"
+        />
+      </FieldRow>
+
+      <FieldRow id="proj-desc" label="Description" full>
+        <Textarea
+          id="proj-desc"
+          value={values.description}
+          onChange={e => onChange('description', e.target.value)}
+          rows={3}
+          placeholder="Description du projet et objectifs principaux"
+        />
+      </FieldRow>
+
+      <FieldRow id="proj-bailleur" label="Bailleur" error={errors.donor} required>
+        <Select
+          id="proj-bailleur"
+          value={values.donor}
+          onChange={e => onChange('donor', e.target.value)}
+        >
+          <option value="">Sélectionner un bailleur</option>
           <option value="AFD">AFD</option>
           <option value="Banque Mondiale">Banque Mondiale</option>
           <option value="Union Européenne">Union Européenne</option>
@@ -194,11 +299,15 @@ function ProjectFormContent({ project }: { project: Project | null }) {
           <option value="OMS">OMS</option>
           <option value="UNICEF">UNICEF</option>
         </Select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-secteur">Secteur</label>
-        <Select id="proj-secteur" defaultValue={project?.sector ?? ''}>
-          <option value="">Sélectionner</option>
+      </FieldRow>
+
+      <FieldRow id="proj-secteur" label="Secteur" error={errors.sector} required>
+        <Select
+          id="proj-secteur"
+          value={values.sector}
+          onChange={e => onChange('sector', e.target.value)}
+        >
+          <option value="">Sélectionner un secteur</option>
           <option value="Eau & Assainissement">Eau & Assainissement</option>
           <option value="Agriculture">Agriculture</option>
           <option value="Santé">Santé</option>
@@ -207,51 +316,156 @@ function ProjectFormContent({ project }: { project: Project | null }) {
           <option value="Énergie">Énergie</option>
           <option value="Gouvernance">Gouvernance</option>
         </Select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-pays">Pays</label>
-        <Select id="proj-pays" defaultValue={project?.country ?? ''}>
-          <option value="">Sélectionner</option>
+      </FieldRow>
+
+      <FieldRow id="proj-pays" label="Pays" error={errors.country} required>
+        <Select
+          id="proj-pays"
+          value={values.country}
+          onChange={e => onChange('country', e.target.value)}
+        >
+          <option value="">Sélectionner un pays</option>
           <option value="Niger">Niger</option>
           <option value="Mali">Mali</option>
           <option value="Burkina Faso">Burkina Faso</option>
           <option value="Sénégal">Sénégal</option>
           <option value="Côte d'Ivoire">Côte d'Ivoire</option>
         </Select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-manager">Chef de projet</label>
-        <Input id="proj-manager" defaultValue={project?.manager ?? ''} placeholder="Nom du chef de projet" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-debut">Date début</label>
-        <Input id="proj-debut" type="date" defaultValue={project?.startDate ?? ''} />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-fin">Date fin prévue</label>
-        <Input id="proj-fin" type="date" defaultValue={project?.endDate ?? ''} />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-budget">Budget total</label>
-        <Input id="proj-budget" type="number" min={0} defaultValue={project?.budgetTotal ?? ''} placeholder="0" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-foreground" htmlFor="proj-devise">Devise</label>
-        <Select id="proj-devise" defaultValue={project?.devise ?? 'USD'}>
+      </FieldRow>
+
+      <FieldRow id="proj-manager" label="Chef de projet" error={errors.manager} required>
+        <Input
+          id="proj-manager"
+          value={values.manager}
+          onChange={e => onChange('manager', e.target.value)}
+          placeholder="Prénom Nom"
+        />
+      </FieldRow>
+
+      <FieldRow id="proj-debut" label="Date début" error={errors.startDate} required>
+        <Input
+          id="proj-debut"
+          type="date"
+          value={values.startDate}
+          onChange={e => onChange('startDate', e.target.value)}
+        />
+      </FieldRow>
+
+      <FieldRow id="proj-fin" label="Date fin prévue" error={errors.endDate} required>
+        <Input
+          id="proj-fin"
+          type="date"
+          value={values.endDate}
+          onChange={e => onChange('endDate', e.target.value)}
+        />
+      </FieldRow>
+
+      <FieldRow id="proj-budget" label="Budget total" error={errors.budgetTotal} required>
+        <Input
+          id="proj-budget"
+          type="number"
+          min={0}
+          step={1000}
+          value={values.budgetTotal}
+          onChange={e => onChange('budgetTotal', e.target.value)}
+          placeholder="ex. 5000000"
+        />
+      </FieldRow>
+
+      <FieldRow id="proj-devise" label="Devise">
+        <Select
+          id="proj-devise"
+          value={values.devise}
+          onChange={e => onChange('devise', e.target.value)}
+        >
           <option value="USD">USD — Dollar américain</option>
           <option value="EUR">EUR — Euro</option>
           <option value="XOF">XOF — Franc CFA</option>
         </Select>
-      </div>
+      </FieldRow>
+
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main export
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────────
 
-export function ProjectSlideOver({ open, onOpenChange, project, mode, onSave }: ProjectSlideOverProps) {
+export function ProjectSlideOver({
+  open,
+  onOpenChange,
+  project,
+  mode,
+  onSave,
+}: ProjectSlideOverProps) {
+  const [values, setValues] = useState<FormValues>(EMPTY_FORM);
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  // Sync form when the panel opens or the mode/project changes
+  useEffect(() => {
+    if (!open) return;
+    setErrors({});
+    if (mode === 'new') {
+      setValues(EMPTY_FORM);
+    } else if (mode === 'edit' && project) {
+      setValues(projectToForm(project));
+    }
+  }, [open, mode, project?.id]);
+
+  function handleChange(k: keyof FormValues, v: string) {
+    setValues(prev => ({ ...prev, [k]: v }));
+    if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
+  }
+
+  function validate(): boolean {
+    const errs: FormErrors = {};
+    if (!values.code.trim()) errs.code = 'Code requis';
+    if (!values.name.trim()) errs.name = 'Nom requis';
+    if (!values.donor) errs.donor = 'Bailleur requis';
+    if (!values.sector) errs.sector = 'Secteur requis';
+    if (!values.country) errs.country = 'Pays requis';
+    if (!values.manager.trim()) errs.manager = 'Chef de projet requis';
+    if (!values.startDate) errs.startDate = 'Date requise';
+    if (!values.endDate) errs.endDate = 'Date requise';
+    if (!values.budgetTotal || Number(values.budgetTotal) <= 0) {
+      errs.budgetTotal = 'Montant requis (> 0)';
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  function handleSave() {
+    if (!validate()) return;
+
+    const budgetTotal = Number(values.budgetTotal);
+    const sym = values.devise === 'EUR' ? '€' : values.devise === 'XOF' ? '' : '$';
+    const budgetDisplay = budgetTotal >= 1_000_000
+      ? `${sym}${(budgetTotal / 1_000_000).toFixed(1)}M`
+      : `${sym}${budgetTotal.toLocaleString('fr-FR')}`;
+
+    const parts = values.manager.trim().split(/\s+/);
+    const initialesManager = parts.length >= 2
+      ? `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase()
+      : (parts[0]?.[0] ?? '').toUpperCase();
+
+    onSave?.({
+      code: values.code.trim(),
+      name: values.name.trim(),
+      description: values.description.trim(),
+      donor: values.donor,
+      sector: values.sector as ProjectSector,
+      country: values.country,
+      manager: values.manager.trim(),
+      initialesManager,
+      startDate: values.startDate,
+      endDate: values.endDate,
+      budgetTotal,
+      devise: values.devise,
+      budgetDisplay,
+      status: values.status as ProjectStatus,
+    });
+    // Parent is responsible for closing the SlideOver after successful save
+  }
+
   const titles: Record<ProjectSlideOverMode, string> = {
     view: 'Détails du projet',
     edit: 'Modifier le projet',
@@ -262,10 +476,11 @@ export function ProjectSlideOver({ open, onOpenChange, project, mode, onSave }: 
   return (
     <SlideOver open={open} onOpenChange={onOpenChange}>
       <SlideOverContent className="sm:max-w-lg">
+
         <SlideOverHeader>
           <SlideOverTitle>{titles[mode]}</SlideOverTitle>
           <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer">
+            <Button variant="ghost" size="sm" aria-label="Fermer le panneau">
               <X className="h-4 w-4" />
             </Button>
           </SlideOverClose>
@@ -275,22 +490,27 @@ export function ProjectSlideOver({ open, onOpenChange, project, mode, onSave }: 
           {readOnly && project ? (
             <ProjectViewContent project={project} />
           ) : (
-            <ProjectFormContent project={project} />
+            <ProjectFormContent
+              values={values}
+              errors={errors}
+              onChange={handleChange}
+            />
           )}
         </SlideOverBody>
 
         <SlideOverFooter>
           <SlideOverClose asChild>
-            <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
+            <Button variant="outline">
+              {readOnly ? 'Fermer' : 'Annuler'}
+            </Button>
           </SlideOverClose>
           {!readOnly && (
-            <SlideOverClose asChild>
-              <Button variant="default" onClick={() => onSave?.({})}>
-                {mode === 'edit' ? 'Enregistrer' : 'Créer le projet'}
-              </Button>
-            </SlideOverClose>
+            <Button variant="default" onClick={handleSave}>
+              {mode === 'edit' ? 'Enregistrer les modifications' : 'Créer le projet'}
+            </Button>
           )}
         </SlideOverFooter>
+
       </SlideOverContent>
     </SlideOver>
   );

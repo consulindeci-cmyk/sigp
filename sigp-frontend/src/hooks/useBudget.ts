@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { mockBudget, mockBudgetVersion } from '@/mocks/budgetMock';
+import { mockBudget, ALL_BUDGET_VERSIONS } from '@/mocks/budgetMock';
 import type { Budget, BudgetVersion } from '@/types/budget';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -20,7 +20,9 @@ export function useBudgetVersion(projetId: string, versionId?: string) {
     queryKey: ['budget-version', projetId, versionId],
     queryFn: async (): Promise<BudgetVersion> => {
       await delay(500);
-      return mockBudgetVersion;
+      // Return the matching version, or the active version as fallback
+      const found = ALL_BUDGET_VERSIONS.find(v => v.id === versionId || v.numero_version === versionId);
+      return found ?? ALL_BUDGET_VERSIONS[0];
     },
     enabled: !!projetId,
   });

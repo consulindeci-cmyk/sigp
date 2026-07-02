@@ -1,120 +1,903 @@
-import type { BudgetVersion } from '@/types/budget';
+import { useState, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
+import type { BudgetLigne } from '@/types/budget';
 import { BudgetMatrixRow } from './BudgetMatrixRow';
-import { Filter } from 'lucide-react';
+import {
+  BudgetLigneSlideOver, BAILLEURS_REF, CATEGORIES_REF,
+  type LigneSlideOverMode,
+} from './BudgetLigneSlideOver';
+import {
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
+  ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
+import {
+  Filter, Plus, Download, Printer, History, Search, Trash2, X,
+  Upload, Clock, CheckCircle, AlertTriangle,
+} from 'lucide-react';
 import { Select } from '@/components/ui/forms/Select';
+import { Input } from '@/components/ui/forms/Input';
+import { Button } from '@/components/ui/forms/Button';
+import { formatMoney } from '@/utils/format';
 
-interface BudgetMatrixProps {
-  budgetVersion: BudgetVersion;
+// ─────────────────────────────────────────────────────────────────────────────
+// Exported types (consumed by BudgetPage)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LigneHistoryEntry {
+  id:       string;
+  ligneId:  string;
+  action:   'CREATION' | 'MODIFICATION' | 'DUPLICATION' | 'SUPPRESSION';
+  date:     string;
+  user:     string;
+  comment?: string;
+  before?:  Partial<BudgetLigne>;
+  after?:   Partial<BudgetLigne>;
 }
 
-export function BudgetMatrix({ budgetVersion }: BudgetMatrixProps) {
-  const lignes = budgetVersion.lignes || [];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Import row structure
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ImportRow {
+  rowIndex: number;
+  wbs_nom:  string;
+  wbs_id:   string;
+  bailleur_id:   string;
+  bailleur_nom:  string;
+  categorie_id:  string;
+  source_financement_id: string;
+  compte_comptable_id?: string;
+  montant_initial: number;
+  montant_revise:  number;
+  montant_pre_engage: number;
+  montant_engage:     number;
+  montant_liquide:    number;
+  montant_decaisse:   number;
+  isValid: boolean;
+  errors:  string[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parse helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseNum(v: unknown): number {
+  const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function findBailleur(raw: string) {
+  const r = raw.trim().toUpperCase();
+  return BAILLEURS_REF.find(b =>
+    b.id === r
+    || b.nom.toUpperCase().includes(r)
+    || r.includes(b.id)
+    || r.includes(b.nom.toUpperCase())
+  );
+}
+
+function findCategorie(raw: string) {
+  const r = raw.trim().toUpperCase();
+  return CATEGORIES_REF.find(c =>
+    c.id === r
+    || c.nom.toUpperCase().includes(r)
+    || r.includes(c.id)
+  );
+}
+
+function colVal(row: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const k of keys) {
+    const found = Object.entries(row).find(([col]) => col.toLowerCase().includes(k.toLowerCase()));
+    if (found && found[1] !== '' && found[1] !== undefined) return found[1];
+  }
+  return '';
+}
+
+async function parseImportFile(file: File): Promise<ImportRow[]> {
+  const buffer = await file.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+
+  return rows
+    .filter(row => Object.values(row).some(v => String(v).trim() !== ''))
+    .map((row, i) => {
+      const wbs_nom = String(colVal(row, 'composante', 'wbs nom', 'wbs_nom', 'libellé', 'libelle')).trim();
+      const wbs_id  = String(colVal(row, 'code wbs', 'wbs_id', 'wbs id', 'code')).trim()
+                      || `wbs-import-${i + 1}`;
+      const bailleurRaw  = String(colVal(row, 'bailleur')).trim();
+      const categorieRaw = String(colVal(row, 'catégorie', 'categorie', 'categ')).trim();
+      const sourceRaw    = String(colVal(row, 'source')).trim();
+      const compteRaw    = String(colVal(row, 'compte', 'pcg')).trim();
+
+      const bailleur  = findBailleur(bailleurRaw);
+      const categorie = findCategorie(categorieRaw);
+
+      const montant_initial    = parseNum(colVal(row, 'initial'));
+      const montant_revise     = parseNum(colVal(row, 'révisé', 'revise', 'revised')) || montant_initial;
+      const montant_pre_engage = parseNum(colVal(row, 'pré-engagé', 'pre-engage', 'pre_engage'));
+      const montant_engage     = parseNum(colVal(row, 'engagé', 'engage'));
+      const montant_liquide    = parseNum(colVal(row, 'liquidé', 'liquide'));
+      const montant_decaisse   = parseNum(colVal(row, 'décaissé', 'decaisse', 'décaisse'));
+
+      const errors: string[] = [];
+      if (!wbs_nom)       errors.push('Composante/WBS manquant');
+      if (!bailleur)      errors.push(`Bailleur inconnu : "${bailleurRaw}"`);
+      if (!categorie)     errors.push(`Catégorie inconnue : "${categorieRaw}"`);
+      if (montant_initial <= 0) errors.push('Montant initial requis (> 0)');
+
+      return {
+        rowIndex:              i + 2,
+        wbs_nom,
+        wbs_id,
+        bailleur_id:           bailleur?.id            || '',
+        bailleur_nom:          bailleur?.nom           || bailleurRaw,
+        categorie_id:          categorie?.id           || '',
+        source_financement_id: sourceRaw               || 'PRET',
+        compte_comptable_id:   compteRaw               || undefined,
+        montant_initial,
+        montant_revise,
+        montant_pre_engage,
+        montant_engage,
+        montant_liquide,
+        montant_decaisse,
+        isValid: errors.length === 0,
+        errors,
+      };
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function exportToCsv(lignes: BudgetLigne[], filename: string) {
+  const HEADERS = [
+    'Composante (WBS)', 'Code WBS', 'Bailleur', 'Source', 'Catégorie', 'Compte PCG',
+    'Initial', 'Révisé', 'Pré-engagé', 'Engagé', 'Liquidé', 'Décaissé',
+    'Solde disponible', 'Reste à payer',
+  ];
+  const rows = lignes.map(l => [
+    l.wbs_nom || l.wbs_id, l.wbs_id,
+    l.bailleur_nom || l.bailleur_id, l.source_financement_id, l.categorie_id,
+    l.compte_comptable_id || '',
+    l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
+    l.montant_liquide, l.montant_decaisse, l.solde_disponible, l.reste_a_payer,
+  ]);
+  const csv = '﻿' + [HEADERS, ...rows]
+    .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportToXlsx(lignes: BudgetLigne[], filename: string) {
+  const HEADERS = [
+    'Composante (WBS)', 'Code WBS', 'Bailleur', 'Source', 'Catégorie', 'Compte PCG',
+    'Initial', 'Révisé', 'Pré-engagé', 'Engagé', 'Liquidé', 'Décaissé',
+    'Solde disponible', 'Reste à payer',
+  ];
+  const rows = lignes.map(l => [
+    l.wbs_nom || l.wbs_id, l.wbs_id,
+    l.bailleur_nom || l.bailleur_id, l.source_financement_id, l.categorie_id,
+    l.compte_comptable_id || '',
+    l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
+    l.montant_liquide, l.montant_decaisse, l.solde_disponible, l.reste_a_payer,
+  ]);
+
+  // Totals row
+  const numCols = [6, 7, 8, 9, 10, 11, 12, 13] as const;
+  const totRow: (string | number)[] = ['TOTAL', '', '', '', '', ''];
+  for (const ci of numCols) {
+    totRow.push(lignes.reduce((s, l) => {
+      const vals = [
+        l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
+        l.montant_liquide, l.montant_decaisse, l.solde_disponible, l.reste_a_payer,
+      ];
+      return s + (vals[ci - 6] ?? 0);
+    }, 0));
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows, totRow]);
+
+  // Column widths
+  ws['!cols'] = [
+    { wch: 30 }, { wch: 12 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 10 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Budget Matrix');
+  XLSX.writeFile(wb, filename);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Print helper — new window, A4 landscape, hides app chrome
+// ─────────────────────────────────────────────────────────────────────────────
+
+function printLignes(lignes: BudgetLigne[]) {
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n);
+
+  const th = (label: string) => `<th>${label}</th>`;
+  const td = (val: string | number, align = 'left') =>
+    `<td style="text-align:${align}">${val}</td>`;
+
+  const totInit  = lignes.reduce((s, l) => s + l.montant_initial,    0);
+  const totRev   = lignes.reduce((s, l) => s + l.montant_revise,     0);
+  const totPre   = lignes.reduce((s, l) => s + l.montant_pre_engage, 0);
+  const totEng   = lignes.reduce((s, l) => s + l.montant_engage,     0);
+  const totLiq   = lignes.reduce((s, l) => s + l.montant_liquide,    0);
+  const totDec   = lignes.reduce((s, l) => s + l.montant_decaisse,   0);
+  const totDispo = lignes.reduce((s, l) => s + l.solde_disponible,   0);
+  const totRap   = lignes.reduce((s, l) => s + l.reste_a_payer,      0);
+
+  const date = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Budget — Matrice Globale</title>
+<style>
+  @page { size: A4 landscape; margin: 1cm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 9px; color: #111; margin: 0; }
+  h1 { font-size: 13px; margin: 0 0 2px; }
+  .sub { font-size: 9px; color: #666; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1e3a5f; color: #fff; padding: 4px 6px; font-size: 8px; text-align: left; border: 1px solid #ccc; }
+  td { padding: 3px 6px; border: 1px solid #ddd; }
+  tr:nth-child(even) { background: #f5f7fa; }
+  tfoot tr { background: #1e3a5f; color: #fff; font-weight: bold; }
+  .r { text-align: right; font-family: monospace; }
+</style>
+</head>
+<body>
+<h1>Budget &amp; Suivi Financier — Matrice Globale</h1>
+<div class="sub">Imprimé le ${date} · ${lignes.length} ligne(s) budgétaire(s)</div>
+<table>
+<thead>
+<tr>
+  ${th('Composante (WBS)')}${th('Bailleur')}${th('Catégorie')}${th('Compte')}
+  ${th('Initial')}${th('Révisé')}${th('Pré-eng.')}${th('Engagé')}
+  ${th('Liquidé')}${th('Décaissé')}${th('Disponible')}${th('RAP')}
+</tr>
+</thead>
+<tbody>
+${lignes.map(l => `<tr>
+  ${td(l.wbs_nom || l.wbs_id)}${td(l.bailleur_nom || l.bailleur_id)}
+  ${td(l.categorie_id)}${td(l.compte_comptable_id || '—')}
+  ${td(fmt(l.montant_initial), 'right')}${td(fmt(l.montant_revise), 'right')}
+  ${td(fmt(l.montant_pre_engage), 'right')}${td(fmt(l.montant_engage), 'right')}
+  ${td(fmt(l.montant_liquide), 'right')}${td(fmt(l.montant_decaisse), 'right')}
+  ${td(fmt(l.solde_disponible), 'right')}${td(fmt(l.reste_a_payer), 'right')}
+</tr>`).join('')}
+</tbody>
+<tfoot>
+<tr>
+  <td colspan="4">TOTAL (${lignes.length} ligne${lignes.length > 1 ? 's' : ''})</td>
+  <td class="r">${fmt(totInit)}</td><td class="r">${fmt(totRev)}</td>
+  <td class="r">${fmt(totPre)}</td><td class="r">${fmt(totEng)}</td>
+  <td class="r">${fmt(totLiq)}</td><td class="r">${fmt(totDec)}</td>
+  <td class="r">${fmt(totDispo)}</td><td class="r">${fmt(totRap)}</td>
+</tr>
+</tfoot>
+</table>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=1100,height=700');
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 300);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action label helper (historique)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ACTION_LABELS: Record<LigneHistoryEntry['action'], string> = {
+  CREATION:     'Création',
+  MODIFICATION: 'Modification',
+  DUPLICATION:  'Duplication',
+  SUPPRESSION:  'Suppression',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Props
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface BudgetMatrixProps {
+  lignes:           BudgetLigne[];
+  lineHistory:      LigneHistoryEntry[];
+  onAddLigne:       (data: Partial<BudgetLigne>) => void;
+  onEditLigne:      (id: string, data: Partial<BudgetLigne>) => void;
+  onDeleteLigne:    (id: string) => void;
+  onDuplicateLigne: (id: string) => void;
+  onImportLignes:   (lignes: Partial<BudgetLigne>[]) => void;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function BudgetMatrix({
+  lignes, lineHistory, onAddLigne, onEditLigne, onDeleteLigne, onDuplicateLigne, onImportLignes,
+}: BudgetMatrixProps) {
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+  const [filterBailleur,  setFilterBailleur]  = useState('');
+  const [filterCategorie, setFilterCategorie] = useState('');
+  const [searchQuery,     setSearchQuery]     = useState('');
+
+  // ── SlideOver (add / edit) ─────────────────────────────────────────────────
+  const [slideOverOpen,  setSlideOverOpen]  = useState(false);
+  const [slideOverMode,  setSlideOverMode]  = useState<LigneSlideOverMode>('new');
+  const [selectedLigne,  setSelectedLigne]  = useState<BudgetLigne | null>(null);
+
+  // ── Delete modal ───────────────────────────────────────────────────────────
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [ligneToDelete,   setLigneToDelete]   = useState<string | null>(null);
+
+  // ── Global historique modal ───────────────────────────────────────────────
+  const [historiqueOpen, setHistoriqueOpen] = useState(false);
+
+  // ── Per-ligne historique modal ────────────────────────────────────────────
+  const [ligneHistoriqueOpen,    setLigneHistoriqueOpen]    = useState(false);
+  const [ligneHistoriqueId,      setLigneHistoriqueId]      = useState<string | null>(null);
+
+  // ── Import ────────────────────────────────────────────────────────────────
+  const fileInputRef           = useRef<HTMLInputElement>(null);
+  const [importModalOpen,      setImportModalOpen]      = useState(false);
+  const [importRows,           setImportRows]           = useState<ImportRow[]>([]);
+  const [importLoading,        setImportLoading]        = useState(false);
+  const [importFileName,       setImportFileName]       = useState('');
+
+  // ── Export feedback ────────────────────────────────────────────────────────
+  const [exportDone, setExportDone] = useState<'csv' | 'excel' | null>(null);
+
+  // ── Computed options ──────────────────────────────────────────────────────
+  const bailleurOptions = useMemo(() => {
+    const ids = [...new Set(lignes.map(l => l.bailleur_id))];
+    return ids.map(id => ({
+      id,
+      nom: BAILLEURS_REF.find(b => b.id === id)?.nom
+        || lignes.find(l => l.bailleur_id === id)?.bailleur_nom
+        || id,
+    }));
+  }, [lignes]);
+
+  const categorieOptions = useMemo(() => {
+    const ids = [...new Set(lignes.map(l => l.categorie_id))];
+    return ids.map(id => ({
+      id,
+      nom: CATEGORIES_REF.find(c => c.id === id)?.nom || id,
+    }));
+  }, [lignes]);
+
+  // ── Filtered lignes ────────────────────────────────────────────────────────
+  const filteredLignes = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return lignes.filter(l => {
+      if (filterBailleur  && l.bailleur_id  !== filterBailleur)  return false;
+      if (filterCategorie && l.categorie_id !== filterCategorie) return false;
+      if (q) {
+        const hay = [l.wbs_nom, l.wbs_id, l.bailleur_nom, l.bailleur_id, l.categorie_id, l.compte_comptable_id].join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [lignes, filterBailleur, filterCategorie, searchQuery]);
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  const totals = useMemo(() => ({
+    montant_initial:    filteredLignes.reduce((s, l) => s + l.montant_initial,    0),
+    montant_revise:     filteredLignes.reduce((s, l) => s + l.montant_revise,     0),
+    montant_pre_engage: filteredLignes.reduce((s, l) => s + l.montant_pre_engage, 0),
+    montant_engage:     filteredLignes.reduce((s, l) => s + l.montant_engage,     0),
+    montant_liquide:    filteredLignes.reduce((s, l) => s + l.montant_liquide,    0),
+    montant_decaisse:   filteredLignes.reduce((s, l) => s + l.montant_decaisse,   0),
+    solde_disponible:   filteredLignes.reduce((s, l) => s + l.solde_disponible,   0),
+    reste_a_payer:      filteredLignes.reduce((s, l) => s + l.reste_a_payer,      0),
+  }), [filteredLignes]);
+
+  // ── Per-ligne history (selected) ──────────────────────────────────────────
+  const selectedLigneHistory = useMemo(() =>
+    ligneHistoriqueId
+      ? lineHistory.filter(h => h.ligneId === ligneHistoriqueId)
+      : [],
+    [ligneHistoriqueId, lineHistory]
+  );
+
+  const ligneHistoriqueNom = useMemo(() => {
+    if (!ligneHistoriqueId) return '';
+    return lignes.find(l => l.id === ligneHistoriqueId)?.wbs_nom
+      || lineHistory.find(h => h.ligneId === ligneHistoriqueId)?.after?.wbs_nom
+      || ligneHistoriqueId;
+  }, [ligneHistoriqueId, lignes, lineHistory]);
+
+  // ── hasHistory lookup ─────────────────────────────────────────────────────
+  const lignesWithHistory = useMemo(() => new Set(lineHistory.map(h => h.ligneId)), [lineHistory]);
+
+  // ── Journal global dérivé du lineHistory réel de la session ──────────────
+  const globalAuditEntries = useMemo(() =>
+    [...lineHistory].reverse().map(h => {
+      const wbsNom = h.after?.wbs_nom ?? h.before?.wbs_nom ?? '';
+      const actionStr = h.comment
+        ? `${ACTION_LABELS[h.action]} — ${h.comment}`
+        : wbsNom
+          ? `${ACTION_LABELS[h.action]} : ${wbsNom}`
+          : ACTION_LABELS[h.action];
+      return {
+        id:     h.id,
+        date:   new Date(h.date).toLocaleString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        }),
+        user:   h.user,
+        action: actionStr,
+        statut: h.action,
+      };
+    }),
+  [lineHistory]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  function openAddNew() {
+    setSelectedLigne(null);
+    setSlideOverMode('new');
+    setSlideOverOpen(true);
+  }
+
+  function openEdit(ligne: BudgetLigne) {
+    setSelectedLigne(ligne);
+    setSlideOverMode('edit');
+    setSlideOverOpen(true);
+  }
+
+  function handleSave(data: Partial<BudgetLigne>) {
+    if (slideOverMode === 'new')       onAddLigne(data);
+    else if (selectedLigne)            onEditLigne(selectedLigne.id, data);
+    setSlideOverOpen(false);
+  }
+
+  function openDeleteModal(id: string) {
+    setLigneToDelete(id);
+    setDeleteModalOpen(true);
+  }
+
+  function confirmDelete() {
+    if (ligneToDelete) { onDeleteLigne(ligneToDelete); setLigneToDelete(null); }
+    setDeleteModalOpen(false);
+  }
+
+  function openLigneHistorique(id: string) {
+    setLigneHistoriqueId(id);
+    setLigneHistoriqueOpen(true);
+  }
+
+  function handleExportCsv() {
+    exportToCsv(filteredLignes, `budget-matrix-${new Date().toISOString().slice(0, 10)}.csv`);
+    setExportDone('csv');
+    setTimeout(() => setExportDone(null), 2000);
+  }
+
+  function handleExportXlsx() {
+    exportToXlsx(filteredLignes, `budget-matrix-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    setExportDone('excel');
+    setTimeout(() => setExportDone(null), 2000);
+  }
+
+  // ── Import ────────────────────────────────────────────────────────────────
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportLoading(true);
+    try {
+      const rows = await parseImportFile(file);
+      setImportRows(rows);
+      setImportModalOpen(true);
+    } catch {
+      alert('Erreur lors de la lecture du fichier. Vérifiez le format (XLSX ou CSV).');
+    } finally {
+      setImportLoading(false);
+      e.target.value = '';
+    }
+  }
+
+  const validImportRows     = importRows.filter(r => r.isValid);
+  const invalidImportRows   = importRows.filter(r => !r.isValid);
+
+  function confirmImport() {
+    const toAdd: Partial<BudgetLigne>[] = validImportRows.map(r => {
+      const solde = Math.max(0, r.montant_revise - r.montant_pre_engage - r.montant_engage);
+      const rap   = Math.max(0, r.montant_engage - r.montant_decaisse);
+      return {
+        wbs_nom:               r.wbs_nom,
+        wbs_id:                r.wbs_id,
+        bailleur_id:           r.bailleur_id,
+        bailleur_nom:          r.bailleur_nom,
+        source_financement_id: r.source_financement_id,
+        categorie_id:          r.categorie_id,
+        compte_comptable_id:   r.compte_comptable_id,
+        montant_initial:       r.montant_initial,
+        montant_revise:        r.montant_revise,
+        montant_pre_engage:    r.montant_pre_engage,
+        montant_engage:        r.montant_engage,
+        montant_liquide:       r.montant_liquide,
+        montant_decaisse:      r.montant_decaisse,
+        solde_disponible:      solde,
+        reste_a_payer:         rap,
+      };
+    });
+    onImportLignes(toAdd);
+    setImportModalOpen(false);
+    setImportRows([]);
+    setImportFileName('');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
-      {/* ── Filter toolbar ──────────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center flex-wrap gap-3 px-4 py-2.5 border-b border-border bg-card">
+      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex items-center flex-wrap gap-2 px-4 py-2.5 border-b border-border bg-card">
+
+        {/* Filters */}
         <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
           <Filter className="h-3.5 w-3.5" />
           Filtres :
         </div>
-        <Select wrapperClassName="w-auto" className="h-8 text-xs py-1">
-          <option value="">Tous les Bailleurs</option>
-          <option value="BM">Banque Mondiale</option>
-          <option value="AFD">AFD</option>
+
+        <Select wrapperClassName="w-auto" className="h-8 text-xs py-1" value={filterBailleur} onChange={e => setFilterBailleur(e.target.value)}>
+          <option value="">Tous les bailleurs</option>
+          {bailleurOptions.map(b => <option key={b.id} value={b.id}>{b.nom}</option>)}
         </Select>
-        <Select wrapperClassName="w-auto" className="h-8 text-xs py-1">
-          <option value="">Toutes les Catégories</option>
-          <option value="TRAVAUX">Travaux</option>
-          <option value="BIENS">Biens</option>
+
+        <Select wrapperClassName="w-auto" className="h-8 text-xs py-1" value={filterCategorie} onChange={e => setFilterCategorie(e.target.value)}>
+          <option value="">Toutes les catégories</option>
+          {categorieOptions.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
         </Select>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Rechercher…"
+            className="h-8 text-xs pl-8 pr-7 w-44"
+          />
+          {searchQuery && (
+            <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchQuery('')} aria-label="Effacer">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
         <div className="flex-1" />
-        <span className="text-xs text-muted-foreground font-medium">
-          {lignes.length} Ligne(s) budgétaire(s)
+
+        <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">
+          {filteredLignes.length} / {lignes.length} ligne(s)
         </span>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={() => setHistoriqueOpen(true)} title="Historique global">
+            <History className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Historique</span>
+          </Button>
+
+          <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={handleExportCsv} title="Exporter CSV">
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{exportDone === 'csv' ? '✓ CSV' : 'Export CSV'}</span>
+          </Button>
+
+          <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={handleExportXlsx} title="Exporter Excel (XLSX)">
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{exportDone === 'excel' ? '✓ Excel' : 'Export Excel'}</span>
+          </Button>
+
+          <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={() => printLignes(filteredLignes)} title="Imprimer">
+            <Printer className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Imprimer</span>
+          </Button>
+
+          {/* Hidden file input for import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={importLoading}>
+            <Upload className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{importLoading ? 'Lecture…' : 'Importer Excel'}</span>
+          </Button>
+
+          <Button variant="default" size="sm" className="h-8 text-xs gap-1.5" onClick={openAddNew}>
+            <Plus className="h-3.5 w-3.5" />
+            Ajouter ligne
+          </Button>
+        </div>
       </div>
 
-      {/* ── Scrollable table ────────────────────────────────────────────── */}
+      {/* ── Scrollable table ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-x-auto scrollbar-thin relative">
-        <table className="w-full text-sm text-left border-collapse min-w-[1200px]">
+        <table className="w-full text-sm text-left border-collapse min-w-[1400px]">
 
           <thead className="sticky top-0 z-10">
-
-            {/* Group header row */}
             <tr className="bg-primary text-primary-foreground">
-              <th
-                colSpan={4}
-                className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 sticky left-0 z-[12] bg-primary"
-              >
+              <th colSpan={4} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 sticky left-0 z-[12] bg-primary">
                 Dimensions Analytiques
               </th>
-              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">
-                Budget
-              </th>
-              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">
-                Engagements
-              </th>
-              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">
-                Décaissements
-              </th>
-              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-center">
-                Soldes
-              </th>
+              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Budget</th>
+              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Engagements</th>
+              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Décaissements</th>
+              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Soldes</th>
+              <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-center">Actions</th>
             </tr>
-
-            {/* Column header row */}
             <tr className="bg-primary/80 text-primary-foreground">
-              <th className="px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-r border-primary-foreground/20 border-b border-primary sticky left-0 z-[12] bg-primary/80">
-                Composante (WBS)
-              </th>
-              <th className="px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-r border-primary-foreground/20 border-b border-primary">
-                Bailleur
-              </th>
-              <th className="px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-r border-primary-foreground/20 border-b border-primary">
-                Catégorie
-              </th>
-              <th className="px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-r-2 border-primary-foreground/20 border-b border-primary">
-                Compte (PCG)
-              </th>
-
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-b border-primary">Initial</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-r-2 border-primary-foreground/20 border-b border-primary">
-                Révisé
-              </th>
-
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-b border-primary">Pré-engagé</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-r-2 border-primary-foreground/20 border-b border-primary">
-                Engagé
-              </th>
-
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-b border-primary">Liquidé</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-r-2 border-primary-foreground/20 border-b border-primary">
-                Décaissé
-              </th>
-
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-b border-primary">Disponible</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-right whitespace-nowrap border-b border-primary">Reste à payer</th>
+              {[
+                ['Composante (WBS)', 'sticky left-0 z-[12] bg-primary/80 border-r'],
+                ['Bailleur'], ['Catégorie'],
+                ['Compte (PCG)', 'border-r-2'],
+                ['Initial', 'text-right'], ['Révisé', 'text-right border-r-2'],
+                ['Pré-engagé', 'text-right'], ['Engagé', 'text-right border-r-2'],
+                ['Liquidé', 'text-right'], ['Décaissé', 'text-right border-r-2'],
+                ['Disponible', 'text-right'], ['Reste à payer', 'text-right border-r-2'],
+                ['—', 'text-center'],
+              ].map(([label, cls = '']) => (
+                <th key={label} className={`px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-b border-primary border-primary-foreground/20 ${cls}`}>
+                  {label}
+                </th>
+              ))}
             </tr>
-
           </thead>
 
           <tbody className="divide-y divide-border">
-            {lignes.length === 0 ? (
+            {filteredLignes.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  Aucune ligne budgétaire pour cette version.
+                <td colSpan={13} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  {lignes.length === 0
+                    ? 'Aucune ligne budgétaire. Cliquez sur « Ajouter ligne » ou « Importer Excel ».'
+                    : 'Aucune ligne ne correspond aux filtres appliqués.'}
                 </td>
               </tr>
             ) : (
-              lignes.map(ligne => (
-                <BudgetMatrixRow key={ligne.id} ligne={ligne} />
+              filteredLignes.map(ligne => (
+                <BudgetMatrixRow
+                  key={ligne.id}
+                  ligne={ligne}
+                  hasHistory={lignesWithHistory.has(ligne.id)}
+                  onEdit={openEdit}
+                  onDelete={openDeleteModal}
+                  onDuplicate={onDuplicateLigne}
+                  onViewHistory={openLigneHistorique}
+                />
               ))
             )}
           </tbody>
 
+          {filteredLignes.length > 0 && (
+            <tfoot>
+              <tr className="bg-primary/5 border-t-2 border-primary/30 font-bold">
+                <td colSpan={4} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide sticky left-0 z-[1] bg-muted/30 border-r border-border">
+                  TOTAL ({filteredLignes.length} ligne{filteredLignes.length > 1 ? 's' : ''})
+                </td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">{formatMoney(totals.montant_initial)}</td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-r-2 border-border">{formatMoney(totals.montant_revise)}</td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-warning">{formatMoney(totals.montant_pre_engage)}</td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-warning border-r-2 border-border">{formatMoney(totals.montant_engage)}</td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">{formatMoney(totals.montant_liquide)}</td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-success border-r-2 border-border">{formatMoney(totals.montant_decaisse)}</td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-primary">{formatMoney(totals.solde_disponible)}</td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground border-r-2 border-border">{formatMoney(totals.reste_a_payer)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
+
+      {/* ── BudgetLigneSlideOver ─────────────────────────────────────────────── */}
+      <BudgetLigneSlideOver
+        open={slideOverOpen}
+        onOpenChange={setSlideOverOpen}
+        ligne={selectedLigne}
+        mode={slideOverMode}
+        onSave={handleSave}
+      />
+
+      {/* ── Delete confirmation ──────────────────────────────────────────────── */}
+      <Modal open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Supprimer la ligne budgétaire</ModalTitle>
+            <ModalDescription>Cette action est irréversible. La ligne sera définitivement supprimée.</ModalDescription>
+          </ModalHeader>
+          <ModalFooter>
+            <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
+            <Button variant="destructive" leftIcon={<Trash2 className="h-4 w-4" />} onClick={confirmDelete}>Supprimer</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* ── Historique global ─────────────────────────────────────────────────── */}
+      <Modal open={historiqueOpen} onOpenChange={setHistoriqueOpen}>
+        <ModalContent className="max-w-2xl">
+          <ModalHeader>
+            <ModalTitle>Historique des modifications</ModalTitle>
+            <ModalDescription>
+              Journal d'audit de la session — {globalAuditEntries.length} événement{globalAuditEntries.length !== 1 ? 's' : ''}.
+            </ModalDescription>
+          </ModalHeader>
+          <div className="py-2 max-h-80 overflow-y-auto">
+            {globalAuditEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Aucune opération effectuée dans cette session.
+              </p>
+            ) : (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-muted/50 text-left">
+                    {['Date', 'Utilisateur', 'Action', 'Type'].map(h => (
+                      <th key={h} className="px-3 py-2 text-xs font-semibold text-muted-foreground">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {globalAuditEntries.map(entry => (
+                    <tr key={entry.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-3 py-2 text-xs font-mono text-muted-foreground whitespace-nowrap">{entry.date}</td>
+                      <td className="px-3 py-2 text-xs font-medium text-foreground">{entry.user}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{entry.action}</td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+                          {entry.statut}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <ModalFooter>
+            <ModalClose asChild><Button variant="outline">Fermer</Button></ModalClose>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* ── Historique par ligne ─────────────────────────────────────────────── */}
+      <Modal open={ligneHistoriqueOpen} onOpenChange={setLigneHistoriqueOpen}>
+        <ModalContent className="max-w-xl">
+          <ModalHeader>
+            <ModalTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" />
+              Historique — {ligneHistoriqueNom || ligneHistoriqueId}
+            </ModalTitle>
+            <ModalDescription>
+              {selectedLigneHistory.length} événement{selectedLigneHistory.length !== 1 ? 's' : ''} enregistré{selectedLigneHistory.length !== 1 ? 's' : ''}.
+            </ModalDescription>
+          </ModalHeader>
+          <div className="py-2 max-h-80 overflow-y-auto">
+            {selectedLigneHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Aucun historique disponible.</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {[...selectedLigneHistory].reverse().map(entry => (
+                  <div key={entry.id} className="flex gap-3 p-3 bg-muted/20 rounded-lg">
+                    <div className="w-2 h-2 mt-1.5 rounded-full bg-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-foreground">{ACTION_LABELS[entry.action]}</span>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {new Date(entry.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Par {entry.user}</p>
+                      {entry.comment && <p className="text-[11px] text-muted-foreground italic mt-0.5">{entry.comment}</p>}
+                      {entry.after?.montant_revise !== undefined && entry.before?.montant_revise !== undefined && entry.before.montant_revise !== entry.after.montant_revise && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Budget révisé : {formatMoney(entry.before.montant_revise)} → {formatMoney(entry.after.montant_revise)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <ModalFooter>
+            <ModalClose asChild><Button variant="outline">Fermer</Button></ModalClose>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* ── Import preview modal ─────────────────────────────────────────────── */}
+      <Modal open={importModalOpen} onOpenChange={open => { if (!open) { setImportModalOpen(false); setImportRows([]); } }}>
+        <ModalContent className="max-w-3xl">
+          <ModalHeader>
+            <ModalTitle className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-primary" />
+              Aperçu de l'import — {importFileName}
+            </ModalTitle>
+            <ModalDescription>
+              {importRows.length} ligne{importRows.length !== 1 ? 's' : ''} détectée{importRows.length !== 1 ? 's' : ''} ·
+              <span className="text-success font-medium ml-1">{validImportRows.length} valide{validImportRows.length !== 1 ? 's' : ''}</span>
+              {invalidImportRows.length > 0 && (
+                <span className="text-destructive font-medium ml-1">· {invalidImportRows.length} avec erreur{invalidImportRows.length !== 1 ? 's' : ''}</span>
+              )}
+            </ModalDescription>
+          </ModalHeader>
+
+          <div className="max-h-96 overflow-y-auto overflow-x-auto">
+            <table className="w-full text-xs border-collapse min-w-[600px]">
+              <thead>
+                <tr className="bg-muted/50 sticky top-0">
+                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Composante</th>
+                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Bailleur</th>
+                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Catégorie</th>
+                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Montant initial</th>
+                  <th className="px-3 py-2 text-center font-semibold text-muted-foreground">Statut</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {importRows.map(r => (
+                  <tr key={r.rowIndex} className={`${r.isValid ? '' : 'bg-destructive/5'}`}>
+                    <td className="px-3 py-2 font-medium text-foreground">{r.wbs_nom || <span className="text-destructive italic">—</span>}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{r.bailleur_nom || <span className="text-destructive italic">Inconnu</span>}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{r.categorie_id || <span className="text-destructive italic">Inconnue</span>}</td>
+                    <td className="px-3 py-2 text-right font-mono">{formatMoney(r.montant_initial)}</td>
+                    <td className="px-3 py-2 text-center">
+                      {r.isValid
+                        ? <CheckCircle className="h-3.5 w-3.5 text-success mx-auto" />
+                        : (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                            {r.errors.map((e, i) => (
+                              <span key={i} className="text-[10px] text-destructive">{e}</span>
+                            ))}
+                          </div>
+                        )
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <ModalFooter>
+            <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
+            <Button
+              variant="default"
+              onClick={confirmImport}
+              disabled={validImportRows.length === 0}
+            >
+              <Upload className="h-4 w-4 mr-1.5" />
+              Importer {validImportRows.length} ligne{validImportRows.length !== 1 ? 's' : ''}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
     </div>
   );

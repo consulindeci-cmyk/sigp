@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { Plus, Edit, Trash2, User, Mail, Phone, X, Crown, Star, Eye, Building2 } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
@@ -16,6 +16,10 @@ import {
   SlideOverFooter,
   SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
+import {
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
+  ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
 import {
   Tabs,
   TabsList,
@@ -122,6 +126,53 @@ function KeyActorCard({ member, label, icon: Icon }: { member: TeamMember; label
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Controlled form state for TeamMemberSlideOver
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TeamFormValues {
+  prenom:    string;
+  nom:       string;
+  role:      string;
+  structure: string;
+  email:     string;
+  telephone: string;
+  dateDebut: string;
+  status:    string;
+}
+
+type TeamFormErrors = Partial<Record<keyof TeamFormValues, string>>;
+
+const EMPTY_TEAM: TeamFormValues = {
+  prenom: '', nom: '', role: '', structure: '',
+  email: '', telephone: '', dateDebut: '', status: 'Actif',
+};
+
+function memberToForm(m: TeamMember): TeamFormValues {
+  return {
+    prenom:    m.prenom,
+    nom:       m.nom,
+    role:      m.role,
+    structure: m.structure,
+    email:     m.email,
+    telephone: m.telephone,
+    dateDebut: m.dateDebut,
+    status:    m.status,
+  };
+}
+
+function FRow({ id, label, error, full = false, children }: {
+  id?: string; label: string; error?: string; full?: boolean; children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-1.5${full ? ' sm:col-span-2' : ''}`}>
+      <label className="text-sm font-medium text-foreground" htmlFor={id}>{label}</label>
+      {children}
+      {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SlideOver — Voir / Ajouter / Modifier membre d'équipe
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -132,18 +183,63 @@ function TeamMemberSlideOver({
   onOpenChange,
   member,
   mode,
+  onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member: TeamMember | null;
   mode: SlideOverMode;
+  onSave?: (data: Partial<TeamMember>) => void;
 }) {
+  const [values, setValues] = useState<TeamFormValues>(EMPTY_TEAM);
+  const [errors, setErrors] = useState<TeamFormErrors>({});
+  const readOnly = mode === 'view';
+
+  useEffect(() => {
+    if (!open) return;
+    setErrors({});
+    if (mode === 'new') setValues(EMPTY_TEAM);
+    else if (member) setValues(memberToForm(member));
+  }, [open, mode, member?.id]);
+
+  function set(k: keyof TeamFormValues, v: string) {
+    setValues(prev => ({ ...prev, [k]: v }));
+    if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
+  }
+
+  function validate(): boolean {
+    const errs: TeamFormErrors = {};
+    if (!values.prenom.trim())    errs.prenom    = 'Requis';
+    if (!values.nom.trim())       errs.nom       = 'Requis';
+    if (!values.role.trim())      errs.role      = 'Requis';
+    if (!values.email.trim())     errs.email     = 'Requis';
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  function handleSave() {
+    if (!validate()) return;
+    const prenom    = values.prenom.trim();
+    const nom       = values.nom.trim();
+    const initiales = `${prenom[0] ?? ''}${nom[0] ?? ''}`.toUpperCase();
+    onSave?.({
+      prenom,
+      nom,
+      initiales,
+      role:      values.role as TeamMember['role'],
+      structure: values.structure.trim(),
+      email:     values.email.trim(),
+      telephone: values.telephone.trim(),
+      dateDebut: values.dateDebut,
+      status:    values.status as ActorStatus,
+    });
+  }
+
   const titles: Record<SlideOverMode, string> = {
     view: 'Détails du membre',
     edit: 'Modifier le membre',
     new:  'Ajouter un membre',
   };
-  const readOnly = mode === 'view';
 
   return (
     <SlideOver open={open} onOpenChange={onOpenChange}>
@@ -159,7 +255,6 @@ function TeamMemberSlideOver({
 
         <SlideOverBody>
           {readOnly && member ? (
-            // ── View mode — read-only detail card ──────────────────────────
             <div className="flex flex-col gap-5">
               <div className="flex items-center gap-4">
                 <div className="h-14 w-14 rounded-full bg-primary/10 text-primary flex items-center justify-center text-lg font-bold shrink-0">
@@ -191,19 +286,27 @@ function TeamMemberSlideOver({
               </div>
             </div>
           ) : (
-            // ── Edit / New mode — editable form ────────────────────────────
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-prenom">Prénom</label>
-                <Input id="gov-prenom" defaultValue={member?.prenom ?? ''} placeholder="Prénom" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-nom">Nom</label>
-                <Input id="gov-nom" defaultValue={member?.nom ?? ''} placeholder="Nom" />
-              </div>
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-role">Rôle</label>
-                <Select id="gov-role" defaultValue={member?.role ?? ''}>
+              <FRow id="gov-prenom" label="Prénom" error={errors.prenom}>
+                <Input
+                  id="gov-prenom"
+                  value={values.prenom}
+                  onChange={e => set('prenom', e.target.value)}
+                  placeholder="Prénom"
+                />
+              </FRow>
+
+              <FRow id="gov-nom" label="Nom" error={errors.nom}>
+                <Input
+                  id="gov-nom"
+                  value={values.nom}
+                  onChange={e => set('nom', e.target.value)}
+                  placeholder="Nom"
+                />
+              </FRow>
+
+              <FRow id="gov-role" label="Rôle" error={errors.role} full>
+                <Select id="gov-role" value={values.role} onChange={e => set('role', e.target.value)}>
                   <option value="">Sélectionner un rôle</option>
                   <option value="Responsable Projet">Responsable Projet</option>
                   <option value="Sponsor">Sponsor</option>
@@ -214,31 +317,53 @@ function TeamMemberSlideOver({
                   <option value="Chargé de Passation">Chargé de Passation</option>
                   <option value="Assistant Administratif">Assistant Administratif</option>
                 </Select>
-              </div>
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-structure">Structure</label>
-                <Input id="gov-structure" defaultValue={member?.structure ?? ''} placeholder="Organisation / Structure" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-email">Email</label>
-                <Input id="gov-email" type="email" defaultValue={member?.email ?? ''} placeholder="email@exemple.com" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-tel">Téléphone</label>
-                <Input id="gov-tel" defaultValue={member?.telephone ?? ''} placeholder="+227 XX XX XX XX" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-date">Date de début</label>
-                <Input id="gov-date" type="date" defaultValue={member?.dateDebut ?? ''} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="gov-status">Statut</label>
-                <Select id="gov-status" defaultValue={member?.status ?? 'Actif'}>
+                {errors.role && <p className="text-xs text-destructive" role="alert">{errors.role}</p>}
+              </FRow>
+
+              <FRow id="gov-structure" label="Structure" full>
+                <Input
+                  id="gov-structure"
+                  value={values.structure}
+                  onChange={e => set('structure', e.target.value)}
+                  placeholder="Organisation / Structure"
+                />
+              </FRow>
+
+              <FRow id="gov-email" label="Email" error={errors.email}>
+                <Input
+                  id="gov-email"
+                  type="email"
+                  value={values.email}
+                  onChange={e => set('email', e.target.value)}
+                  placeholder="email@exemple.com"
+                />
+              </FRow>
+
+              <FRow id="gov-tel" label="Téléphone">
+                <Input
+                  id="gov-tel"
+                  value={values.telephone}
+                  onChange={e => set('telephone', e.target.value)}
+                  placeholder="+227 XX XX XX XX"
+                />
+              </FRow>
+
+              <FRow id="gov-date" label="Date de début">
+                <Input
+                  id="gov-date"
+                  type="date"
+                  value={values.dateDebut}
+                  onChange={e => set('dateDebut', e.target.value)}
+                />
+              </FRow>
+
+              <FRow id="gov-status" label="Statut">
+                <Select id="gov-status" value={values.status} onChange={e => set('status', e.target.value)}>
                   <option value="Actif">Actif</option>
                   <option value="Inactif">Inactif</option>
                   <option value="En congé">En congé</option>
                 </Select>
-              </div>
+              </FRow>
             </div>
           )}
         </SlideOverBody>
@@ -248,9 +373,9 @@ function TeamMemberSlideOver({
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
           </SlideOverClose>
           {!readOnly && (
-            <SlideOverClose asChild>
-              <Button variant="default">{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
-            </SlideOverClose>
+            <Button variant="default" onClick={handleSave}>
+              {mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
+            </Button>
           )}
         </SlideOverFooter>
       </SlideOverContent>
@@ -521,7 +646,6 @@ function buildContactColumns(): ColumnDef<Contact, any>[] {
   ];
 }
 
-// Colonnes dédiées aux bailleurs (sous-ensemble de Stakeholder)
 function buildBailleurColumns(): ColumnDef<Stakeholder, any>[] {
   return [
     {
@@ -584,19 +708,51 @@ function buildBailleurColumns(): ColumnDef<Stakeholder, any>[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectGovernanceTab() {
-  const [teamData, setTeamData] = useState<TeamMember[]>(mockTeamMembers);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
-  const [slideOverMode, setSlideOverMode] = useState<SlideOverMode>('new');
+  const [teamData,       setTeamData]       = useState<TeamMember[]>(mockTeamMembers);
+  const [slideOverOpen,  setSlideOverOpen]  = useState(false);
+  const [slideOverMode,  setSlideOverMode]  = useState<SlideOverMode>('new');
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
 
-  // Bailleurs = sous-ensemble des parties prenantes
-  const bailleurs = mockStakeholders.filter((s) => s.type === 'Bailleur');
+  // Delete confirmation
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [memberToDelete,  setMemberToDelete]  = useState<string | null>(null);
 
-  const teamColumns = buildTeamColumns(
-    (member) => { setSelectedMember(member); setSlideOverMode('view'); setSlideOverOpen(true); },
-    (member) => { setSelectedMember(member); setSlideOverMode('edit'); setSlideOverOpen(true); },
-    (id) => setTeamData((prev) => prev.filter((m) => m.id !== id)),
-  );
+  const bailleurs = mockStakeholders.filter(s => s.type === 'Bailleur');
+
+  function openView(m: TeamMember)   { setSelectedMember(m); setSlideOverMode('view'); setSlideOverOpen(true); }
+  function openEdit(m: TeamMember)   { setSelectedMember(m); setSlideOverMode('edit'); setSlideOverOpen(true); }
+  function openDelete(id: string)    { setMemberToDelete(id); setDeleteModalOpen(true); }
+
+  function handleDeleteConfirm() {
+    if (memberToDelete) setTeamData(prev => prev.filter(m => m.id !== memberToDelete));
+    setDeleteModalOpen(false);
+    setMemberToDelete(null);
+  }
+
+  function handleSave(data: Partial<TeamMember>) {
+    if (slideOverMode === 'new') {
+      const newMember: TeamMember = {
+        id:         `tm-${Date.now()}`,
+        prenom:     data.prenom     ?? '',
+        nom:        data.nom        ?? '',
+        initiales:  data.initiales  ?? '',
+        role:       data.role       ?? 'Coordinateur',
+        structure:  data.structure  ?? '',
+        email:      data.email      ?? '',
+        telephone:  data.telephone  ?? '',
+        dateDebut:  data.dateDebut  ?? '',
+        status:     data.status     ?? 'Actif',
+      };
+      setTeamData(prev => [newMember, ...prev]);
+    } else if (selectedMember) {
+      setTeamData(prev => prev.map(m =>
+        m.id === selectedMember.id ? { ...m, ...data } : m
+      ));
+    }
+    setSlideOverOpen(false);
+  }
+
+  const teamColumns = buildTeamColumns(openView, openEdit, openDelete);
 
   return (
     <section aria-label="Gouvernance & Acteurs" className="flex flex-col gap-6">
@@ -680,9 +836,9 @@ export default function ProjectGovernanceTab() {
                   id: 'status',
                   title: 'Tous les statuts',
                   options: [
-                    { label: 'Actif', value: 'Actif' },
-                    { label: 'Inactif', value: 'Inactif' },
-                    { label: 'En congé', value: 'En congé' },
+                    { label: 'Actif',     value: 'Actif'    },
+                    { label: 'Inactif',   value: 'Inactif'  },
+                    { label: 'En congé',  value: 'En congé' },
                   ],
                 }]}
               />
@@ -710,9 +866,9 @@ export default function ProjectGovernanceTab() {
                   id: 'type',
                   title: 'Type de comité',
                   options: [
-                    { label: 'Comité de Pilotage', value: 'Comité de Pilotage' },
-                    { label: 'Comité Technique', value: 'Comité Technique' },
-                    { label: 'Comité de Coordination', value: 'Comité de Coordination' },
+                    { label: 'Comité de Pilotage',      value: 'Comité de Pilotage'      },
+                    { label: 'Comité Technique',         value: 'Comité Technique'         },
+                    { label: 'Comité de Coordination',   value: 'Comité de Coordination'  },
                   ],
                 }]}
               />
@@ -771,12 +927,12 @@ export default function ProjectGovernanceTab() {
                     id: 'type',
                     title: 'Type',
                     options: [
-                      { label: 'Bailleur', value: 'Bailleur' },
-                      { label: 'Gouvernement', value: 'Gouvernement' },
+                      { label: 'Bailleur',       value: 'Bailleur'       },
+                      { label: 'Gouvernement',   value: 'Gouvernement'   },
                       { label: 'ONG Partenaire', value: 'ONG Partenaire' },
-                      { label: 'Secteur Privé', value: 'Secteur Privé' },
+                      { label: 'Secteur Privé',  value: 'Secteur Privé'  },
                       { label: 'Société Civile', value: 'Société Civile' },
-                      { label: 'Bénéficiaire', value: 'Bénéficiaire' },
+                      { label: 'Bénéficiaire',   value: 'Bénéficiaire'   },
                     ],
                   },
                   {
@@ -814,10 +970,10 @@ export default function ProjectGovernanceTab() {
                   id: 'categorie',
                   title: 'Catégorie',
                   options: [
-                    { label: 'Urgence', value: 'Urgence' },
-                    { label: 'Technique', value: 'Technique' },
+                    { label: 'Urgence',       value: 'Urgence'       },
+                    { label: 'Technique',     value: 'Technique'     },
                     { label: 'Administratif', value: 'Administratif' },
-                    { label: 'Bailleur', value: 'Bailleur' },
+                    { label: 'Bailleur',      value: 'Bailleur'      },
                   ],
                 }]}
               />
@@ -826,13 +982,35 @@ export default function ProjectGovernanceTab() {
         </TabsContent>
       </Tabs>
 
-      {/* SlideOver Voir / Ajouter / Modifier */}
+      {/* ── SlideOver ────────────────────────────────────────────────────── */}
       <TeamMemberSlideOver
         open={slideOverOpen}
         onOpenChange={setSlideOverOpen}
         member={selectedMember}
         mode={slideOverMode}
+        onSave={handleSave}
       />
+
+      {/* ── Delete Confirmation Modal ──────────────────────────────────── */}
+      <Modal open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Confirmer la suppression</ModalTitle>
+            <ModalDescription>
+              Voulez-vous supprimer ce membre de l'équipe ? Cette action est irréversible.
+            </ModalDescription>
+          </ModalHeader>
+          <ModalFooter>
+            <ModalClose asChild>
+              <Button variant="outline">Annuler</Button>
+            </ModalClose>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              <Trash2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              Supprimer
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </section>
   );
 }

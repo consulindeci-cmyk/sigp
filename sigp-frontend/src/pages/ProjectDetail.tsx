@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import ProjectHeader from '../components/project/layout/ProjectHeader';
 import ProjectNavigation from '../components/project/layout/ProjectNavigation';
 
@@ -26,32 +27,35 @@ import ProjectHistoryTab from '../components/project/ProjectHistoryTab';
 import ProjectCommentsTab from '../components/project/ProjectCommentsTab';
 import ProjectSettingsTab from '../components/project/ProjectSettingsTab';
 
-// Padding applied to all natural-flow tabs
+import { mockProjects, type Project } from '@/mocks/projectsMocks';
+
 const PAD = 'px-4 sm:px-6 lg:px-8 py-6';
 const INNER = 'mx-auto w-full max-w-layout';
 
 export default function ProjectDetail() {
+  const { id } = useParams<{ id: string }>();
+  const initialProject = mockProjects.find(p => p.id === id) ?? mockProjects[0];
+  const [project, setProject] = useState<Project>(initialProject);
   const [activeTab, setActiveTab] = useState('overview');
-  const [isEditing, setIsEditing] = useState(false);
 
   return (
     <div className="flex flex-col min-h-full bg-background relative">
 
-      {/* ── HEADER (Scrolls out naturally) ── */}
+      {/* ── HEADER ──────────────────────────────────────────────────────── */}
       <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 bg-background">
         <div className={INNER}>
-          <ProjectHeader isEditing={isEditing} setIsEditing={setIsEditing} />
+          <ProjectHeader project={project} onProjectUpdate={setProject} />
         </div>
       </div>
 
-      {/* ── NAV (Standard) ── */}
+      {/* ── NAV ─────────────────────────────────────────────────────────── */}
       <div className="px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 pt-6 bg-background border-b border-border">
         <div className={INNER}>
           <ProjectNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
       </div>
 
-      {/* ── TAB CONTENT (Grows naturally) ── */}
+      {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col bg-muted/10">
 
         {/* Full-height tabs: fill the container, manage their own scroll */}

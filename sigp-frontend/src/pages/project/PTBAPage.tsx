@@ -17,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/naviga
 import PTBAMatrix from '@/components/project/ptba/views/PTBAMatrix';
 import { PTBACalendarView } from '@/components/project/ptba/views/PTBACalendarView';
 import { PTBAGanttView } from '@/components/project/ptba/views/PTBAGanttView';
+import * as XLSX from 'xlsx';
 import type { PTBA } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,9 +74,21 @@ function EmptyPTBAView({ annee }: { annee: number }) {
 // S-Curve mini widget
 // ─────────────────────────────────────────────────────────────────────────────
 
-const S_CURVE_POINTS = [10, 15, 25, 40, 55, 65, 80, 85, 90, 95, 98, 100];
+const MONTH_KEYS = [
+  'm1_montant', 'm2_montant', 'm3_montant', 'm4_montant',
+  'm5_montant', 'm6_montant', 'm7_montant', 'm8_montant',
+  'm9_montant', 'm10_montant', 'm11_montant', 'm12_montant',
+] as const;
 
-function SCurveWidget() {
+function SCurveWidget({ ptba }: { ptba: PTBA }) {
+  const lignes = ptba.lignes ?? [];
+  const budget = ptba.budget_total || 1;
+  let cumul = 0;
+  const points = MONTH_KEYS.map(k => {
+    const monthly = lignes.reduce((s, l) => s + l[k], 0);
+    cumul += monthly;
+    return Math.min(100, Math.round((cumul / budget) * 100));
+  });
   return (
     <Card className="flex-1 min-w-[160px]" role="figure" aria-label="Courbe en S d'absorption budgétaire">
       <CardContent className="pt-3 pb-2 h-full flex flex-col">
@@ -84,7 +97,7 @@ function SCurveWidget() {
           Absorption (S-Curve)
         </div>
         <div className="flex-1 flex items-end gap-[2px] min-h-[48px]">
-          {S_CURVE_POINTS.map((h, i) => (
+          {points.map((h, i) => (
             <div key={i} className="flex-1 flex items-end relative h-full">
               <div
                 className="w-full bg-primary/20 rounded-t-sm"
@@ -106,9 +119,11 @@ function SCurveWidget() {
 // Heatmap mini widget
 // ─────────────────────────────────────────────────────────────────────────────
 
-const HEATMAP_DENSITY = [0.1, 0.2, 0.4, 0.8, 1, 0.7, 0.3, 0.2, 0.6, 0.9, 0.5, 0.1];
-
-function HeatmapWidget() {
+function HeatmapWidget({ ptba }: { ptba: PTBA }) {
+  const lignes = ptba.lignes ?? [];
+  const monthly = MONTH_KEYS.map(k => lignes.reduce((s, l) => s + l[k], 0));
+  const maxMonthly = Math.max(...monthly, 1);
+  const density = monthly.map(v => v / maxMonthly);
   return (
     <Card className="flex-1 min-w-[160px]" role="figure" aria-label="Heatmap densité activité mensuelle">
       <CardContent className="pt-3 pb-2 h-full flex flex-col">
@@ -117,11 +132,11 @@ function HeatmapWidget() {
           Densité mensuelle
         </div>
         <div className="flex-1 grid grid-cols-12 gap-[2px] items-center min-h-[36px]">
-          {HEATMAP_DENSITY.map((op, i) => (
+          {density.map((op, i) => (
             <div
               key={i}
               className="aspect-square bg-warning rounded-sm"
-              style={{ opacity: op }}
+              style={{ opacity: Math.max(0.08, op) }}
               title={`Mois ${i + 1}`}
               aria-hidden="true"
             />
@@ -136,7 +151,45 @@ function HeatmapWidget() {
 // Matrix ribbon toolbar
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MatrixRibbon() {
+function MatrixRibbon({ ptba }: { ptba: PTBA }) {
+  function handleExportXlsx() {
+    const lignes = ptba.lignes ?? [];
+    const HEADERS = [
+      'Activité', 'WBS', 'Bailleur', 'Budget Total',
+      'Q1', 'Jan', 'Fév', 'Mar',
+      'Q2', 'Avr', 'Mai', 'Juin',
+      'Q3', 'Juil', 'Août', 'Sept',
+      'Q4', 'Oct', 'Nov', 'Déc',
+      'Engagé', 'Décaissé', 'Progression %',
+    ];
+    const rows = lignes.map(l => [
+      l.activite_nom, l.wbs_id, l.bailleur_id ?? '', l.montant_total,
+      l.q1_montant, l.m1_montant, l.m2_montant, l.m3_montant,
+      l.q2_montant, l.m4_montant, l.m5_montant, l.m6_montant,
+      l.q3_montant, l.m7_montant, l.m8_montant, l.m9_montant,
+      l.q4_montant, l.m10_montant, l.m11_montant, l.m12_montant,
+      l.montant_engage, l.montant_decaisse, l.progression_physique,
+    ]);
+    const totalRow = [
+      'TOTAL', '', '', lignes.reduce((s, l) => s + l.montant_total, 0),
+      lignes.reduce((s, l) => s + l.q1_montant, 0), 0, 0, 0,
+      lignes.reduce((s, l) => s + l.q2_montant, 0), 0, 0, 0,
+      lignes.reduce((s, l) => s + l.q3_montant, 0), 0, 0, 0,
+      lignes.reduce((s, l) => s + l.q4_montant, 0), 0, 0, 0,
+      lignes.reduce((s, l) => s + l.montant_engage, 0),
+      lignes.reduce((s, l) => s + l.montant_decaisse, 0),
+      '',
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows, totalRow]);
+    ws['!cols'] = [
+      { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
+      ...Array(19).fill({ wch: 10 }),
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `PTBA ${ptba.annee}`);
+    XLSX.writeFile(wb, `ptba-${ptba.annee}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   return (
     <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border flex-wrap">
       <Button variant="outline" size="sm" disabled className="text-xs h-7 px-2.5">
@@ -152,7 +205,7 @@ function MatrixRibbon() {
       <Button
         variant="outline"
         size="sm"
-        disabled
+        onClick={handleExportXlsx}
         leftIcon={<FileText className="h-3 w-3" />}
         className="text-xs h-7 px-2.5"
       >
@@ -203,6 +256,7 @@ export default function PTBAPage() {
     if (action === 'SOUMETTRE') targetStatus = 'SOUMIS';
     if (action === 'APPROUVER') targetStatus = 'APPROUVE';
     if (action === 'REJETER') targetStatus = 'REJETE';
+    setLocalPtba(prev => prev ? { ...prev, statut: targetStatus } : prev);
     workflowMutation.mutate({ ptbaId: ptba.id, nouveauStatut: targetStatus, commentaire: `Action : ${action}` });
   };
 
@@ -220,7 +274,7 @@ export default function PTBAPage() {
 
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            <PageHeader title={`PTBA {annee}`} />
+            <PageHeader title={`PTBA ${annee}`} />
             {ptba && renderStatusBadge(ptba.statut)}
           </div>
 
@@ -340,8 +394,8 @@ export default function PTBAPage() {
             </div>
 
             {/* Mini charts */}
-            <SCurveWidget />
-            <HeatmapWidget />
+            <SCurveWidget ptba={ptba} />
+            <HeatmapWidget ptba={ptba} />
 
           </div>
 
@@ -365,7 +419,7 @@ export default function PTBAPage() {
             {/* Matrix */}
             <TabsContent value="matrix" className="flex-1 min-h-0 overflow-hidden mt-0">
               <div className="flex flex-col h-full">
-                <MatrixRibbon />
+                <MatrixRibbon ptba={ptba} />
                 <div className="flex-1 overflow-hidden">
                   <PTBAMatrix ptba={ptba} onUpdatePTBA={setLocalPtba} />
                 </div>

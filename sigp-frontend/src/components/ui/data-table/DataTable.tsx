@@ -70,7 +70,7 @@ export function DataTable<TData, TValue>({
                         key={header.id}
                         onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                         className={cn(
-                          'px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap select-none',
+                          'px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap select-none',
                           canSort && 'cursor-pointer hover:text-foreground hover:bg-muted/50 transition-colors',
                           align === 'right' && 'text-right',
                           align === 'center' && 'text-center',
@@ -125,7 +125,7 @@ export function DataTable<TData, TValue>({
                         <td
                           key={cell.id}
                           className={cn(
-                            'px-4 py-2.5 text-sm align-middle whitespace-nowrap',
+                            'px-3 py-2 text-[13px] align-middle whitespace-nowrap',
                             align === 'right' && 'text-right',
                             align === 'center' && 'text-center',
                             isStickyLeft && [
