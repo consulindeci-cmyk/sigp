@@ -1,44 +1,144 @@
-import { PageHeader } from '@/components/layout/PageHeader';
-import { useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
-import { useContracts } from '@/hooks/useContracts';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Button } from '@/components/ui/forms/Button';
-import { Plus, FileSignature, DollarSign, Activity } from 'lucide-react';
+import { Plus, FileSignature, DollarSign, CheckCircle2, Archive, Download } from 'lucide-react';
 import { formatMoney } from '@/utils/format';
 import { getContractColumns } from '@/components/project/contracts/views/contractColumns';
 import { contractFilters } from '@/components/project/contracts/views/contractFilters';
+import { ContractSlideOver } from '@/components/project/contracts/forms/ContractSlideOver';
+import { mockContracts } from '@/mocks/contractsMock';
 import type { Contract } from '@/types/contract';
+import * as XLSX from 'xlsx';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EXPORT_HEADERS = [
+  'Référence', 'Intitulé', 'Statut', 'Bailleur', 'Titulaire',
+  'WBS', 'Budget Ligne', 'PPM Ligne',
+  'Devise', 'Montant Devise', 'Montant Base (XOF)', 'Taux Change',
+  'Date Signature', 'Ordre de Service', 'Fin Prévue', 'Fin Réelle',
+  'Réc. Provisoire', 'Réc. Définitive',
+  'Garantie Exéc. (%)', 'Avance (%)', 'Retenue (%)',
+];
+
+function toRow(c: Contract): (string | number)[] {
+  return [
+    c.reference, c.intitule, c.statut, c.bailleur_id, c.fournisseur_id,
+    c.wbs_id, c.budget_ligne_id, c.ppm_ligne_id,
+    c.devise_code, c.montant_initial_devise, c.montant_initial_base, c.taux_change_contractuel,
+    c.date_signature ?? '', c.date_ordre_service ?? '', c.fin_prevue ?? '', c.fin_reelle ?? '',
+    c.reception_provisoire ?? '', c.reception_definitive ?? '',
+    c.garantie_bonne_execution_taux ?? '', c.garantie_avance_taux ?? '', c.retenue_garantie_taux ?? '',
+  ];
+}
+
+function exportCsv(contracts: Contract[]) {
+  const content = '﻿' + [EXPORT_HEADERS, ...contracts.map(toRow)]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+    .join('\n');
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `contrats-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportXlsx(contracts: Contract[]) {
+  const ws = XLSX.utils.aoa_to_sheet([EXPORT_HEADERS, ...contracts.map(toRow)]);
+  ws['!cols'] = [
+    { wch: 18 }, { wch: 40 }, { wch: 14 }, { wch: 16 }, { wch: 20 },
+    { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 10 },
+    { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
+    { wch: 14 }, { wch: 14 },
+    { wch: 14 }, { wch: 10 }, { wch: 12 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Contrats');
+  XLSX.writeFile(wb, `contrats-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ContractsPage() {
   const { id: urlProjectId } = useParams();
   const { activeProjectId } = useUIStore();
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  const { data: contracts = [], isLoading, error } = useContracts(resolvedProjectId);
+  const [contracts, setContracts] = useState<Contract[]>(mockContracts);
+  const [slideOpen, setSlideOpen] = useState(false);
+  const [slideMode, setSlideMode] = useState<'view' | 'edit' | 'new'>('view');
+  const [selected, setSelected] = useState<Contract | null>(null);
 
-  const handleEdit = (_contract: Contract) => {};
-  const handleView = (_contract: Contract) => {};
+  const handleNew = () => {
+    setSelected(null);
+    setSlideMode('new');
+    setSlideOpen(true);
+  };
 
-  const columns = useMemo(() => getContractColumns({ onEdit: handleEdit, onView: handleView }), []);
+  const handleView = useCallback((contract: Contract) => {
+    setSelected(contract);
+    setSlideMode('view');
+    setSlideOpen(true);
+  }, []);
 
-  // ── KPI Calculations ───────────────────────────────────────────────────
-  const { totalContracts, montantEngage, tauxExecution } = useMemo(() => {
-    let engage = 0;
+  const handleEdit = useCallback((contract: Contract) => {
+    setSelected(contract);
+    setSlideMode('edit');
+    setSlideOpen(true);
+  }, []);
+
+  const handleSave = (data: Omit<Contract, 'id' | 'version_hash' | 'projet_id'>) => {
+    if (slideMode === 'new') {
+      const newC: Contract = {
+        ...data,
+        id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        projet_id: resolvedProjectId,
+        version_hash: `hash-${Date.now()}`,
+      };
+      setContracts(prev => [newC, ...prev]);
+    } else if (selected) {
+      setContracts(prev =>
+        prev.map(c => c.id === selected.id
+          ? { ...c, ...data, version_hash: `hash-${Date.now()}` }
+          : c
+        )
+      );
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    setContracts(prev => prev.filter(c => c.id !== id));
+  };
+
+  const kpis = useMemo(() => {
+    let montantEngage = 0;
+    let enExecution = 0;
+    let termines = 0;
+
     contracts.forEach(c => {
-      if (c.statut !== 'BROUILLON' && c.statut !== 'RESILIE' && c.statut !== 'SUSPENDU') {
-        engage += c.montant_initial_base || 0;
-      }
+      if (!['BROUILLON', 'RESILIE', 'SUSPENDU'].includes(c.statut))
+        montantEngage += c.montant_initial_base || 0;
+      if (c.statut === 'EN_EXECUTION') enExecution++;
+      if (c.statut === 'TERMINE' || c.statut === 'CLOTURE') termines++;
     });
 
-    return {
-      totalContracts: contracts.length,
-      montantEngage: engage,
-      tauxExecution: contracts.length > 0 ? 'N/A' : '0%',
-    };
+    return { total: contracts.length, montantEngage, enExecution, termines };
   }, [contracts]);
+
+  const columns = useMemo(
+    () => getContractColumns({ onEdit: handleEdit, onView: handleView }),
+    [handleEdit, handleView]
+  );
 
   if (!resolvedProjectId) {
     return (
@@ -54,36 +154,49 @@ export default function ContractsPage() {
 
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
-        <div>
-          <PageHeader title="Gestion des Contrats" description="Suivi de l'exécution physique et financière des marchés signés." />
+        <PageHeader title="Gestion des Contrats" description="Suivi de l'exécution physique et financière des marchés signés." />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => exportXlsx(contracts)}>
+            Excel
+          </Button>
+          <Button variant="ghost" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => exportCsv(contracts)}>
+            CSV
+          </Button>
+          <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={handleNew}>
+            Nouveau Contrat
+          </Button>
         </div>
-        <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs">
-          Nouveau Contrat
-        </Button>
       </div>
 
       {/* ── KPI STRIP ───────────────────────────────────────────────────────── */}
-      <div className="shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 py-3 border-b border-border bg-muted/10">
+      <div className="shrink-0 grid grid-cols-2 sm:grid-cols-4 gap-3 px-4 py-3 border-b border-border bg-muted/10">
         <StatCard
           title="Total Contrats"
-          value={totalContracts}
+          value={kpis.total}
           icon={<FileSignature className="h-4 w-4" />}
           iconVariant="primary"
           description="marchés enregistrés"
         />
         <StatCard
           title="Montant Engagé (XOF)"
-          value={formatMoney(montantEngage)}
+          value={formatMoney(kpis.montantEngage)}
           icon={<DollarSign className="h-4 w-4" />}
           iconVariant="warning"
           description="hors brouillons / résiliés"
         />
         <StatCard
-          title="Taux d'Exécution Global"
-          value={tauxExecution}
-          icon={<Activity className="h-4 w-4" />}
+          title="En Exécution"
+          value={kpis.enExecution}
+          icon={<CheckCircle2 className="h-4 w-4" />}
           iconVariant="success"
-          description="basé sur les décaissements"
+          description="contrats actifs"
+        />
+        <StatCard
+          title="Terminés / Clôturés"
+          value={kpis.termines}
+          icon={<Archive className="h-4 w-4" />}
+          iconVariant="info"
+          description="marchés soldés"
         />
       </div>
 
@@ -92,9 +205,8 @@ export default function ContractsPage() {
         <DataTable
           columns={columns}
           data={contracts}
-          isLoading={isLoading}
-          isError={!!error}
-          errorMessage={error instanceof Error ? error.message : "Erreur de chargement des contrats"}
+          isLoading={false}
+          isError={false}
           searchKey="identification"
           searchPlaceholder="Rechercher (Réf, Objet, Titulaire)..."
           filters={contractFilters}
@@ -102,6 +214,17 @@ export default function ContractsPage() {
           onRowClick={handleView}
         />
       </div>
+
+      {/* ── SLIDEOVER ───────────────────────────────────────────────────────── */}
+      <ContractSlideOver
+        open={slideOpen}
+        onClose={() => setSlideOpen(false)}
+        mode={slideMode}
+        contract={selected}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        onSwitchToEdit={() => setSlideMode('edit')}
+      />
     </div>
   );
 }

@@ -38,8 +38,6 @@ export function generateMockContracts(count: number): Contract[] {
       date_ordre_service: new Date(dateSign.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString(),
       fin_prevue: new Date(dateSign.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
       version_hash: 'v1',
     };
   });

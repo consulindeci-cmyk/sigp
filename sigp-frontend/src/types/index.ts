@@ -12,6 +12,12 @@ export type StatutTache = 'A_FAIRE' | 'EN_COURS' | 'TERMINE' | 'ANNULE' | 'EN_AT
 
 export type NiveauRisque = 'FAIBLE' | 'MODERE' | 'ELEVE' | 'CRITIQUE';
 
+export type RisqueCategorie =
+  | 'Technique' | 'Financier' | 'Opérationnel' | 'Juridique'
+  | 'Environnemental' | 'Social' | 'Sécurité' | 'Institutionnel' | 'Gouvernance';
+
+export type StatutRisque = 'OUVERT' | 'EN_COURS' | 'MAÎTRISÉ' | 'CLOS';
+
 export interface User {
   id: string;
   prenom: string;
@@ -123,14 +129,18 @@ export interface Risque {
   projet_id: string;
   code_risque: string;
   description: string;
-  categorie: string;
-  probabilite: number;
-  impact: number;
-  criticite: number;
+  categorie: RisqueCategorie;
+  probabilite: 1 | 2 | 3;
+  impact: 1 | 2 | 3;
+  criticite: number;         // calculée = probabilite × impact (1–9)
   niveau_criticite: NiveauRisque;
-  statut: string;
+  statut: StatutRisque;
+  responsable: string;
   plan_mitigation?: string;
+  date_identification: string;
+  date_revision_prevue?: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export type StatutWBS = 'NON_COMMENCE' | 'EN_COURS' | 'TERMINE' | 'EN_RETARD' | 'ANNULE';
@@ -215,3 +225,30 @@ export interface Marche {
 
 export * from './budget';
 export * from './ppm';
+
+// ─── EVM — données par période (moteur de calcul local) ──────────────────────
+
+export interface EvmPeriode {
+  id: string;
+  label: string;
+  dateControle: string; // YYYY-MM
+  bac: number;
+  pv: number;
+  ev: number;
+  ac: number;
+  cv: number;
+  sv: number;
+  cvPct: number;
+  svPct: number;
+  cpi: number;
+  spi: number;
+  eac: number;        // primary = eac_cpi
+  eac_cpi: number;   // BAC/CPI
+  eac_budget: number;    // AC + (BAC−EV) au taux budget
+  eac_composite: number; // AC + (BAC−EV)/(CPI×SPI)
+  etc: number;
+  vac: number;
+  tcpi: number;
+  pctComplete: number;
+  commentaire: string;
+}

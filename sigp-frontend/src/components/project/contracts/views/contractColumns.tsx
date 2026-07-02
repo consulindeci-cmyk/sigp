@@ -72,7 +72,7 @@ interface GetContractColumnsOptions {
   onView?: (contract: Contract) => void;
 }
 
-export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions = {}): ColumnDef<Contract, any>[] {
+export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions = {}): ColumnDef<Contract, unknown>[] {
   return [
     // ── Sélection ────────────────────────────────────────────────────────
     {
@@ -93,7 +93,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       ),
       enableSorting: false,
       enableHiding: false,
-      meta: { isSticky: true, align: 'center' } as any,
+      meta: { isSticky: true, align: 'center' } as Record<string, unknown>,
     },
     // ── Colonne 1 : Sticky — Référence & Intitulé ──────────────────────────
     {
@@ -101,7 +101,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'reference',
       header: 'Réf. & Intitulé',
       enableSorting: true,
-      meta: { isSticky: true } as any,
+      meta: { isSticky: true } as Record<string, unknown>,
       cell: ({ row }) => {
         const { reference, intitule } = row.original;
         return (
@@ -179,7 +179,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'montant_initial_devise',
       header: 'Montant Contractuel',
       enableSorting: true,
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ row }) => {
         const { montant_initial_devise, montant_initial_base, devise_code } = row.original;
         return (
@@ -202,7 +202,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'devise_code',
       header: 'Devise',
       enableSorting: false,
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
         <span className="font-mono text-[11px] font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
           {getValue() as string}
@@ -214,7 +214,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'date_signature',
       header: 'Signature',
       enableSorting: true,
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
         <span className="font-mono text-[12px] text-muted-foreground">
           {formatDate(getValue() as string)}
@@ -226,7 +226,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'date_ordre_service',
       header: 'Ordre de Service',
       enableSorting: true,
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
         <span className="font-mono text-[12px] font-semibold text-foreground">
           {formatDate(getValue() as string)}
@@ -238,7 +238,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'fin_prevue',
       header: 'Fin Prévue',
       enableSorting: true,
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ row }) => {
         const date = row.original.fin_prevue;
         const overdue = row.original.statut === 'EN_EXECUTION' && isOverdue(date);
@@ -258,7 +258,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'reception_provisoire',
       header: 'Réc. Provisoire',
       enableSorting: true,
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
         <span className="font-mono text-[12px] text-muted-foreground">
           {formatDate(getValue() as string)}
@@ -270,7 +270,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'retenue_garantie_taux',
       header: 'Ret. Garantie',
       enableSorting: false,
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ getValue }) => {
         const val = getValue() as number | undefined;
         return (
@@ -285,7 +285,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
       accessorKey: 'date_expiration_garantie',
       header: 'Exp. Garantie',
       enableSorting: true,
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => {
         const date = getValue() as string | undefined;
         const expired = isOverdue(date);
@@ -303,7 +303,7 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
     {
       id: 'actions',
       enableHiding: false,
-      meta: { isStickyRight: true, align: 'center' } as any,
+      meta: { isStickyRight: true, align: 'center' } as Record<string, unknown>,
       cell: ({ row }) => {
         const contract = row.original;
         

@@ -12,6 +12,7 @@ import { LayoutGrid, GitCommit, TrendingUp, Download, Plus, Loader2, Package } f
 import { PPMLigne } from '@/types';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
+import * as XLSX from 'xlsx';
 
 type BadgeVariant = 'success' | 'secondary' | 'warning' | 'default'
 
@@ -82,6 +83,37 @@ export default function PPMPage() {
 
   const selectedLigne = selectedLigneId ? lignes.find(l => l.id === selectedLigneId) : null;
 
+  function handleExportXlsx() {
+    const HEADERS = [
+      'Référence', 'WBS', 'Description', 'Catégorie', 'Méthode', 'Revue', 'Bailleur',
+      'Montant (Devise)', 'Devise', 'Montant Base (XOF)',
+      'Prép. DAO', 'Lanc. DAO', 'Remise Offres', 'Évaluation',
+      'ANO', 'Attribution', 'Signature Contrat', 'Démarrage', 'Statut',
+    ];
+    const rows = lignes.map(l => [
+      l.reference_marche, l.wbs_id, l.description, l.categorie, l.methode, l.type_revue, l.bailleur_id,
+      l.montant_estime_devise, l.devise_code, l.montant_estime_base,
+      l.dates_cles.preparation_dao_prevue ?? '',
+      l.dates_cles.lancement_dao_prevue ?? '',
+      l.dates_cles.remise_offres_prevue ?? '',
+      l.dates_cles.ouverture_evaluation_prevue ?? '',
+      l.dates_cles.avis_non_objection_prevue ?? '',
+      l.dates_cles.attribution_prevue ?? '',
+      l.dates_cles.signature_contrat_prevue ?? '',
+      l.dates_cles.demarrage_prevue ?? '',
+      l.statut,
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows]);
+    ws['!cols'] = [
+      { wch: 18 }, { wch: 12 }, { wch: 35 }, { wch: 22 }, { wch: 8 }, { wch: 7 }, { wch: 10 },
+      { wch: 16 }, { wch: 6 }, { wch: 18 },
+      ...Array(9).fill({ wch: 12 }),
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `PPM ${activeVersion?.numero_version ?? 'Export'}`);
+    XLSX.writeFile(wb, `ppm-${activeVersion?.numero_version ?? 'export'}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
 
@@ -94,7 +126,7 @@ export default function PPMPage() {
           {renderStatusBadge(activeVersion?.statut)}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs">
+          <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={handleExportXlsx}>
             Exporter Excel
           </Button>
           <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => handleOpenForm()}>

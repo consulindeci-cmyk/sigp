@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import type { PPMLigne } from '@/types/ppm';
 import { PPMMatrixRow } from './PPMMatrixRow';
 import { Filter } from 'lucide-react';
@@ -21,36 +22,79 @@ const TH_COL_SECTION = `${TH_COL} border-r-2`
 const TH_COL_LAST = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-b border-border bg-muted/30 whitespace-nowrap'
 
 export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
+  const [filterBailleur,  setFilterBailleur]  = useState('');
+  const [filterCategorie, setFilterCategorie] = useState('');
+  const [filterStatut,    setFilterStatut]    = useState('');
+
+  const filteredLignes = useMemo(() => {
+    return lignes.filter(l => {
+      if (filterBailleur  && l.bailleur_id !== filterBailleur)                          return false;
+      if (filterCategorie && !l.categorie.startsWith(filterCategorie))                  return false;
+      if (filterStatut    && !matchStatutGroupe(l.statut, filterStatut))                return false;
+      return true;
+    });
+  }, [lignes, filterBailleur, filterCategorie, filterStatut]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
       {/* ── BARRE DE FILTRES ─────────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center gap-4 px-4 py-2.5 bg-card border-b border-border">
+      <div className="shrink-0 flex items-center gap-4 px-4 py-2.5 bg-card border-b border-border flex-wrap">
         <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
           <Filter size={13} aria-hidden="true" /> Filtres :
         </div>
-        <select className={SELECT_CLASS}>
+
+        <select
+          className={SELECT_CLASS}
+          value={filterBailleur}
+          onChange={e => setFilterBailleur(e.target.value)}
+          aria-label="Filtrer par bailleur"
+        >
           <option value="">Tous les Bailleurs</option>
-          <option value="IDA">IDA (Banque Mondiale)</option>
-          <option value="AFD">AFD</option>
+          <option value="b-ida">IDA (Banque Mondiale)</option>
+          <option value="b-afd">AFD</option>
         </select>
-        <select className={SELECT_CLASS}>
+
+        <select
+          className={SELECT_CLASS}
+          value={filterCategorie}
+          onChange={e => setFilterCategorie(e.target.value)}
+          aria-label="Filtrer par catégorie"
+        >
           <option value="">Toutes les Catégories</option>
           <option value="TRAVAUX">Travaux</option>
           <option value="BIENS">Biens</option>
-          <option value="SERVICES">Services</option>
+          <option value="SERVICES_CONSULTANTS">Services Consultants</option>
+          <option value="SERVICES_NON_CONSULTANTS">Services Non Consultants</option>
         </select>
-        <select className={SELECT_CLASS}>
+
+        <select
+          className={SELECT_CLASS}
+          value={filterStatut}
+          onChange={e => setFilterStatut(e.target.value)}
+          aria-label="Filtrer par statut"
+        >
           <option value="">Tous les Statuts</option>
-          <option value="PLANIFIE">Planifié</option>
-          <option value="EN_COURS">En cours de passation</option>
-          <option value="SIGNE">Contrat Signé</option>
+          <option value="PLANIFICATION">Planification</option>
+          <option value="PASSATION">En cours de passation</option>
+          <option value="SIGNE">Contrat Signé / Exécution</option>
+          <option value="CLOTURE">Clôturé</option>
+          <option value="ANNULE">Annulé</option>
         </select>
+
+        {(filterBailleur || filterCategorie || filterStatut) && (
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+            onClick={() => { setFilterBailleur(''); setFilterCategorie(''); setFilterStatut(''); }}
+          >
+            Réinitialiser
+          </button>
+        )}
 
         <div className="flex-1" />
 
         <div className="text-xs text-muted-foreground font-medium">
-          {lignes.length} Ligne(s) de marché
+          {filteredLignes.length} / {lignes.length} Ligne(s)
         </div>
       </div>
 
@@ -89,14 +133,16 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
           </thead>
 
           <tbody>
-            {lignes.length === 0 ? (
+            {filteredLignes.length === 0 ? (
               <tr>
                 <td colSpan={15} className="px-10 py-10 text-center text-muted-foreground text-sm">
-                  Aucune ligne de marché pour cette version.
+                  {lignes.length === 0
+                    ? 'Aucune ligne de marché pour cette version.'
+                    : 'Aucune ligne ne correspond aux filtres sélectionnés.'}
                 </td>
               </tr>
             ) : (
-              lignes.map(ligne => (
+              filteredLignes.map(ligne => (
                 <PPMMatrixRow
                   key={ligne.id}
                   ligne={ligne}
@@ -109,4 +155,25 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
       </div>
     </div>
   )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers filtre statut
+// ─────────────────────────────────────────────────────────────────────────────
+
+function matchStatutGroupe(statut: string, groupe: string): boolean {
+  switch (groupe) {
+    case 'PLANIFICATION':
+      return statut === 'PLANIFIE' || statut === 'DAO_EN_PREPARATION';
+    case 'PASSATION':
+      return ['DAO_LANCE', 'OFFRES_RECUES', 'EVALUATION', 'ANO_EN_ATTENTE', 'ANO_OBTENU', 'ATTRIBUE'].includes(statut);
+    case 'SIGNE':
+      return statut === 'CONTRAT_SIGNE' || statut === 'EXECUTION';
+    case 'CLOTURE':
+      return statut === 'CLOTURE';
+    case 'ANNULE':
+      return statut === 'ANNULE';
+    default:
+      return true;
+  }
 }

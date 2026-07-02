@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Download, TrendingUp, TrendingDown, BarChart3, Check } from 'lucide-react';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -9,7 +9,25 @@ import {
 } from 'recharts';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Data
+// Mock EVM snapshot
+// Remplacé par les données de l'API quand le backend sera connecté.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MOCK_EVM = {
+  vp:  11.2,
+  va:   9.4,
+  cr:  10.3,
+  ipc:  0.91,
+  ipd:  0.79,
+  bac: 24.6,
+  eac: 27.0,
+  etc: 16.7,
+  vac: -2.4,
+  tcpi: 1.17,
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Static chart data (tendance mensuelle)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const S_CURVE = [
@@ -30,28 +48,25 @@ const INDEX_TREND = [
   { mois: 'Jun', ipc: 0.91, ipd: 0.79 },
 ];
 
-interface EvmRow {
-  label: string;
-  def: string;
-  val: string;
-  variant: 'secondary' | 'warning' | 'destructive' | 'success';
-  statut: string;
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+type EvmVariant = 'secondary' | 'warning' | 'destructive' | 'success';
+
+function signedM(v: number): string {
+  return `${v >= 0 ? '' : '−'}$${Math.abs(v).toFixed(1)}M`;
 }
 
-const EVM_ROWS: EvmRow[] = [
-  { label: 'Valeur Planifiée (VP)',  def: 'Budgeted cost of work scheduled',  val: '$11.2M',  variant: 'secondary',   statut: 'Référence'   },
-  { label: 'Valeur Acquise (VA)',    def: 'Budgeted cost of work performed',   val: '$9.4M',   variant: 'warning',     statut: 'Conforme'    },
-  { label: 'Coût Réel (CR)',         def: 'Actual cost of work performed',     val: '$10.3M',  variant: 'warning',     statut: 'Conforme'    },
-  { label: 'Écart de Coût (CV)',     def: 'VA − CR',                           val: '−$0.9M',  variant: 'warning',     statut: 'Défavorable' },
-  { label: 'Écart de Délai (SV)',    def: 'VA − VP',                           val: '−$1.8M',  variant: 'destructive', statut: 'Défavorable' },
-  { label: 'IPC (CPI)',              def: 'VA / CR',                           val: '0.91',    variant: 'warning',     statut: '>0.9 Attention' },
-  { label: 'IPD (SPI)',              def: 'VA / VP',                           val: '0.79',    variant: 'destructive', statut: '<0.8 Critique' },
-  { label: 'BAC',                    def: "Budget à l'achèvement",             val: '$24.6M',  variant: 'secondary',   statut: 'Référence'   },
-  { label: 'EAC',                    def: "Estimation à l'achèvement",         val: '$27.0M',  variant: 'destructive', statut: 'Dépassement' },
-  { label: 'ETC',                    def: 'Coût restant estimé',               val: '$16.7M',  variant: 'warning',     statut: 'Attention'   },
-  { label: 'VAC',                    def: "Variation à l'achèvement",          val: '−$2.4M',  variant: 'destructive', statut: 'Défavorable' },
-  { label: 'TCPI',                   def: 'To-Complete Performance Index',     val: '1.17',    variant: 'destructive', statut: 'Difficile'   },
-];
+function getPerformanceScore(cpi: number, spi: number): string {
+  const avg = (cpi + spi) / 2;
+  if (avg >= 1.00) return 'A';
+  if (avg >= 0.95) return 'B+';
+  if (avg >= 0.90) return 'B';
+  if (avg >= 0.85) return 'B−';
+  if (avg >= 0.80) return 'C';
+  return 'D';
+}
 
 const tooltipStyle = {
   backgroundColor: 'hsl(var(--card))',
@@ -62,28 +77,56 @@ const tooltipStyle = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Export
+// Component
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function TabEVM() {
   const [exported, setExported] = useState(false);
 
+  // Données sources — remplacer `evm` par les données de l'hook useEvm() quand disponibles
+  const evm = MOCK_EVM;
+
+  // KPIs calculés
+  const kpis = useMemo(() => ({
+    ipc:   evm.ipc,
+    ipd:   evm.ipd,
+    eac:   evm.eac,
+    score: getPerformanceScore(evm.ipc, evm.ipd),
+  }), [evm.ipc, evm.ipd, evm.eac]);
+
+  // Tableau des indicateurs — calculé depuis les données sources
+  const evmRows = useMemo<Array<{ label: string; def: string; val: string; variant: EvmVariant; statut: string }>>(() => {
+    const cv = evm.va - evm.cr;
+    const sv = evm.va - evm.vp;
+    return [
+      { label: 'Valeur Planifiée (VP)',  def: 'Budgeted cost of work scheduled',  val: `$${evm.vp}M`,       variant: 'secondary',   statut: 'Référence'   },
+      { label: 'Valeur Acquise (VA)',    def: 'Budgeted cost of work performed',   val: `$${evm.va}M`,       variant: 'warning',     statut: 'Conforme'    },
+      { label: 'Coût Réel (CR)',         def: 'Actual cost of work performed',     val: `$${evm.cr}M`,       variant: 'warning',     statut: 'Conforme'    },
+      { label: 'Écart de Coût (CV)',     def: 'VA − CR',                           val: signedM(cv),         variant: cv >= 0 ? 'success' : 'warning',  statut: cv >= 0 ? 'Favorable' : 'Défavorable' },
+      { label: 'Écart de Délai (SV)',    def: 'VA − VP',                           val: signedM(sv),         variant: sv >= 0 ? 'success' : 'destructive', statut: sv >= 0 ? 'Favorable' : 'Défavorable' },
+      { label: 'IPC (CPI)',              def: 'VA / CR',                           val: evm.ipc.toFixed(2),  variant: evm.ipc >= 1 ? 'success' : evm.ipc >= 0.9 ? 'warning' : 'destructive', statut: evm.ipc >= 1 ? 'Conforme' : evm.ipc >= 0.9 ? '>0.9 Attention' : '<0.9 Critique' },
+      { label: 'IPD (SPI)',              def: 'VA / VP',                           val: evm.ipd.toFixed(2),  variant: evm.ipd >= 1 ? 'success' : evm.ipd >= 0.9 ? 'warning' : 'destructive', statut: evm.ipd >= 1 ? 'Conforme' : evm.ipd >= 0.9 ? '>0.9 Attention' : '<0.9 Critique' },
+      { label: 'BAC',                    def: "Budget à l'achèvement",             val: `$${evm.bac}M`,      variant: 'secondary',   statut: 'Référence'   },
+      { label: 'EAC',                    def: "Estimation à l'achèvement",         val: `$${evm.eac}M`,      variant: evm.eac > evm.bac ? 'destructive' : 'success', statut: evm.eac > evm.bac ? 'Dépassement' : 'Conforme' },
+      { label: 'ETC',                    def: 'Coût restant estimé',               val: `$${evm.etc}M`,      variant: 'warning',     statut: 'Attention'   },
+      { label: 'VAC',                    def: "Variation à l'achèvement",          val: signedM(evm.vac),    variant: evm.vac >= 0 ? 'success' : 'destructive', statut: evm.vac >= 0 ? 'Favorable' : 'Défavorable' },
+      { label: 'TCPI',                   def: 'To-Complete Performance Index',     val: evm.tcpi.toFixed(2), variant: evm.tcpi <= 1 ? 'success' : evm.tcpi <= 1.1 ? 'warning' : 'destructive', statut: evm.tcpi <= 1 ? 'Réalisable' : evm.tcpi <= 1.1 ? 'Difficile' : 'Très difficile' },
+    ];
+  }, [evm]);
+
   function handleExport() {
     const rows = [
       ['Indicateur', 'Définition', 'Valeur', 'Statut'],
-      ...EVM_ROWS.map(r => [r.label, r.def, r.val, r.statut]),
+      ...evmRows.map(r => [r.label, r.def, r.val, r.statut]),
     ];
     const csv = '﻿' + rows
       .map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(';'))
       .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
     a.download = `rapport-evm-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
     setExported(true);
     setTimeout(() => setExported(false), 2000);
@@ -113,30 +156,30 @@ export default function TabEVM() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           title="IPC Global"
-          value="0.91"
+          value={kpis.ipc.toFixed(2)}
           icon={<TrendingUp className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="warning"
-          description="Léger dépassement de coût"
+          iconVariant={kpis.ipc >= 1 ? 'success' : kpis.ipc >= 0.9 ? 'warning' : 'destructive'}
+          description={kpis.ipc >= 1 ? 'Coûts maîtrisés' : kpis.ipc >= 0.9 ? 'Léger dépassement' : 'Dépassement critique'}
         />
         <StatCard
           title="IPD Global"
-          value="0.79"
+          value={kpis.ipd.toFixed(2)}
           icon={<TrendingDown className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="destructive"
-          description="En retard sur le planning"
+          iconVariant={kpis.ipd >= 1 ? 'success' : kpis.ipd >= 0.9 ? 'warning' : 'destructive'}
+          description={kpis.ipd >= 1 ? 'Planning respecté' : kpis.ipd >= 0.9 ? 'Léger retard' : 'En retard sur le planning'}
         />
         <StatCard
           title="EAC"
-          value="$27.0M"
+          value={`$${kpis.eac}M`}
           icon={<BarChart3 className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="destructive"
-          description="vs $24.6M (Budget initial)"
+          iconVariant={kpis.eac > evm.bac ? 'destructive' : 'success'}
+          description={`vs $${evm.bac}M (Budget initial)`}
         />
         <StatCard
           title="Score de performance"
-          value="B−"
+          value={kpis.score}
           icon={<TrendingUp className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="warning"
+          iconVariant={kpis.ipc >= 1 && kpis.ipd >= 1 ? 'success' : kpis.ipc >= 0.9 && kpis.ipd >= 0.8 ? 'warning' : 'destructive'}
           description="IPC/IPD combinés"
         />
       </div>
@@ -170,11 +213,11 @@ export default function TabEVM() {
                   <stop offset="95%" stopColor="hsl(var(--warning))" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} unit="M" />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [`${v}M USD`, undefined]} />
-              <Legend iconType="circle" iconSize={8} formatter={(v: any) => <span className="text-[11px] text-muted-foreground">{v}</span>} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} unit="M" />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}M USD`, undefined]} />
+              <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span className="text-[11px] text-muted-foreground">{v}</span>} />
               <Area type="monotone" dataKey="vp" name="VP Planifiée" stroke="hsl(var(--muted-foreground))" fill="url(#gradVP)" strokeWidth={2} strokeDasharray="4 2" dot={false} />
               <Area type="monotone" dataKey="va" name="VA Acquise"   stroke="hsl(var(--primary))"          fill="url(#gradVA)"  strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--primary))' }} />
               <Area type="monotone" dataKey="cr" name="CR Réel"      stroke="hsl(var(--warning))"          fill="url(#gradCR)"  strokeWidth={2} dot={false} />
@@ -197,10 +240,10 @@ export default function TabEVM() {
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={INDEX_TREND} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <YAxis domain={[0.7, 1.1]} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toFixed(2), undefined]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <YAxis domain={[0.7, 1.1]} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [Number(v).toFixed(2), undefined]} />
                 <Line
                   type="monotone" dataKey="ipc" name="IPC"
                   stroke="hsl(var(--warning))" strokeWidth={2.5}
@@ -224,10 +267,10 @@ export default function TabEVM() {
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={INDEX_TREND} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <YAxis domain={[0.6, 1.1]} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toFixed(2), undefined]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <YAxis domain={[0.6, 1.1]} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [Number(v).toFixed(2), undefined]} />
                 <Line
                   type="monotone" dataKey="ipd" name="IPD"
                   stroke="hsl(var(--destructive))" strokeWidth={2.5}
@@ -257,7 +300,7 @@ export default function TabEVM() {
               </tr>
             </thead>
             <tbody>
-              {EVM_ROWS.map((row) => (
+              {evmRows.map((row) => (
                 <tr key={row.label} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
                   <td className="px-4 py-2.5 font-semibold text-foreground text-sm">{row.label}</td>
                   <td className="px-4 py-2.5 text-muted-foreground text-xs hidden sm:table-cell">{row.def}</td>

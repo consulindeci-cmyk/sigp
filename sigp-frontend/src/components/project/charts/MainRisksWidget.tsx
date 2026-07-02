@@ -1,4 +1,4 @@
-﻿import WidgetWrapper from '../../common/WidgetWrapper';
+import WidgetWrapper from '../../common/WidgetWrapper';
 import { MainRisk, WidgetState } from '../../../types/dashboard';
 
 interface Props {
@@ -9,11 +9,16 @@ interface Props {
 export default function MainRisksWidget({ data, state = 'success' }: Props) {
   return (
     <WidgetWrapper title="Risques Majeurs Actifs" state={state}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div className="flex flex-col gap-2">
         {data.map(risk => (
-          <div key={risk.id} style={{ fontSize: '12px', display: 'flex', gap: '8px' }}>
-            <span style={{ color: risk.level === 'high' ? 'var(--red)' : 'var(--amber)' }}>●</span>
-            <span>{risk.description}</span>
+          <div key={risk.id} className="flex items-start gap-2 text-xs">
+            <span
+              className={risk.level === 'high' ? 'text-destructive' : 'text-warning'}
+              aria-hidden="true"
+            >
+              ●
+            </span>
+            <span className="text-foreground leading-snug">{risk.description}</span>
           </div>
         ))}
       </div>

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Wallet, TrendingUp, Clock, AlertTriangle, Plus, Eye, Edit, Trash2, X } from 'lucide-react';
+import { Wallet, TrendingUp, Clock, AlertTriangle, Plus, Eye, Edit, Trash2, X, Download } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
@@ -23,12 +23,37 @@ import {
 } from '@/components/ui/overlays/Modal';
 import {
   mockDisbursementRecords,
-  mockDisbursementKPIs,
   mockDisbursementChart,
   type DisbursementRecord,
   type DisbursementStatus,
   type DisbursementDevise,
 } from '@/mocks/disbursementMocks';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV Export
+// ─────────────────────────────────────────────────────────────────────────────
+
+function exportCsv(records: DisbursementRecord[]) {
+  const HEADERS = [
+    'Référence', 'Bailleur', 'Convention', 'Tranche', 'Statut', 'Devise',
+    'Montant Prévu', 'Montant Reçu', 'Solde',
+    'Date Prévue', 'Date Réception',
+  ];
+  const rows = records.map(r => [
+    r.reference, r.bailleur, r.convention, r.tranche, r.statut, r.devise,
+    r.montantPrevu, r.montantRecu, r.solde,
+    r.datePrevue, r.dateReception ?? '',
+  ]);
+  const content = '﻿' + [HEADERS, ...rows]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+    .join('\n');
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `decaissements-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -405,13 +430,13 @@ function buildDisbursementColumns(
   onView:   (r: DisbursementRecord) => void,
   onEdit:   (r: DisbursementRecord) => void,
   onDelete: (id: string) => void,
-): ColumnDef<DisbursementRecord, any>[] {
+): ColumnDef<DisbursementRecord, unknown>[] {
   return [
     {
       id: 'identification',
       accessorKey: 'reference',
       header: 'Référence & Bailleur',
-      meta: { isSticky: true } as any,
+      meta: { isSticky: true } as Record<string, unknown>,
       cell: ({ row }) => {
         const { reference, bailleur, convention, tranche } = row.original;
         return (
@@ -434,7 +459,7 @@ function buildDisbursementColumns(
     {
       accessorKey: 'montantPrevu',
       header: 'Montant prévu',
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ row }) => (
         <span className="font-mono text-[12px] text-muted-foreground">
           {formatMontant(row.original.montantPrevu, row.original.devise)}
@@ -444,7 +469,7 @@ function buildDisbursementColumns(
     {
       accessorKey: 'montantRecu',
       header: 'Montant reçu',
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ row }) => (
         <span className={`font-mono text-[12px] font-semibold ${row.original.montantRecu > 0 ? 'text-success' : 'text-muted-foreground'}`}>
           {formatMontant(row.original.montantRecu, row.original.devise)}
@@ -454,7 +479,7 @@ function buildDisbursementColumns(
     {
       accessorKey: 'solde',
       header: 'Solde',
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ row }) => {
         const { solde, devise } = row.original;
         return (
@@ -482,7 +507,7 @@ function buildDisbursementColumns(
     {
       accessorKey: 'datePrevue',
       header: 'Date prévue',
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
         <span className="font-mono text-[12px] text-muted-foreground">{formatDate(getValue() as string)}</span>
       ),
@@ -490,7 +515,7 @@ function buildDisbursementColumns(
     {
       accessorKey: 'dateReception',
       header: 'Réception',
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
         <span className="font-mono text-[12px] text-muted-foreground">{formatDate(getValue() as string | null)}</span>
       ),
@@ -498,7 +523,7 @@ function buildDisbursementColumns(
     {
       accessorKey: 'devise',
       header: 'Devise',
-      meta: { align: 'center' } as any,
+      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
         <span className="font-mono text-[11px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
           {getValue() as string}
@@ -508,7 +533,7 @@ function buildDisbursementColumns(
     {
       id: 'actions',
       enableHiding: false,
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ row }) => (
         <div className="flex items-center gap-1 justify-end">
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}>
@@ -585,14 +610,25 @@ export default function ProjectDisbursementTab() {
   }
 
   // Dynamic KPIs
-  const totalPrevu = records.reduce((s, r) => s + r.montantPrevu, 0);
-  const totalRecu  = records.reduce((s, r) => s + r.montantRecu, 0);
-  const tauxDec    = totalPrevu > 0 ? Math.round((totalRecu / totalPrevu) * 100) : 0;
-  const enAttente  = records.filter(r => r.statut === 'En attente').length;
-  const enRetard   = records.filter(r => r.statut === 'En retard').length;
-  const recu       = records.filter(r => r.statut === 'Reçu').length;
+  const { tauxDec, enAttente, enRetard, recu } = useMemo(() => {
+    const totalPrevu = records.reduce((s, r) => s + r.montantPrevu, 0);
+    const totalRecu  = records.reduce((s, r) => s + r.montantRecu, 0);
+    return {
+      tauxDec:   totalPrevu > 0 ? Math.round((totalRecu / totalPrevu) * 100) : 0,
+      enAttente: records.filter(r => r.statut === 'En attente').length,
+      enRetard:  records.filter(r => r.statut === 'En retard').length,
+      recu:      records.filter(r => r.statut === 'Reçu').length,
+    };
+  }, [records]);
 
-  const columns = buildDisbursementColumns(openView, openEdit, openDeleteModal);
+  const openViewCb   = useCallback(openView,   []);
+  const openEditCb   = useCallback(openEdit,   []);
+  const openDeleteCb = useCallback(openDeleteModal, []);
+
+  const columns = useMemo(
+    () => buildDisbursementColumns(openViewCb, openEditCb, openDeleteCb),
+    [openViewCb, openEditCb, openDeleteCb]
+  );
 
   return (
     <section aria-label="Suivi des Décaissements" className="flex flex-col gap-6">
@@ -600,18 +636,18 @@ export default function ProjectDisbursementTab() {
       {/* KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Montant Total Prévu"
-          value={mockDisbursementKPIs.montantTotalPrevu}
+          title="Total Tranches"
+          value={records.length}
           icon={<TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />}
           iconVariant="primary"
-          description="Toutes tranches confondues"
+          description={`${recu} tranche${recu > 1 ? 's' : ''} reçue${recu > 1 ? 's' : ''}`}
         />
         <StatCard
-          title="Montant Reçu"
-          value={mockDisbursementKPIs.montantTotalRecu}
+          title="Taux de décaissement"
+          value={`${tauxDec}%`}
           icon={<Wallet className="h-4 w-4 text-success" aria-hidden="true" />}
           iconVariant="success"
-          trend={{ value: tauxDec, label: 'taux de décaissement', isPositive: true, unit: '%' }}
+          description="Reçu / Prévu (multi-devises)"
         />
         <StatCard
           title="En Attente"
@@ -655,8 +691,8 @@ export default function ProjectDisbursementTab() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [`${v}M USD éq.`, undefined]} />
-                <Legend iconType="circle" iconSize={8} formatter={(v: any) => <span className="text-[11px] text-muted-foreground">{v}</span>} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}M USD éq.`, undefined]} />
+                <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span className="text-[11px] text-muted-foreground">{v}</span>} />
                 <Area type="monotone" dataKey="prevu" name="Prévu" stroke={CHART_COLORS.prevu} fill="url(#gradPrevu)" strokeWidth={2} dot={false} />
                 <Area type="monotone" dataKey="recu"  name="Reçu"  stroke={CHART_COLORS.recu}  fill="url(#gradRecu)"  strokeWidth={2} dot={false} />
               </AreaChart>
@@ -669,13 +705,19 @@ export default function ProjectDisbursementTab() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Registre des décaissements ({records.length})</CardTitle>
-          <Button
-            variant="default" size="sm" aria-label="Ajouter un décaissement"
-            onClick={() => { setSelectedRecord(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-          >
-            <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-            Ajouter
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" aria-label="Exporter CSV" onClick={() => exportCsv(records)}>
+              <Download className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              CSV
+            </Button>
+            <Button
+              variant="default" size="sm" aria-label="Ajouter un décaissement"
+              onClick={() => { setSelectedRecord(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
+            >
+              <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              Ajouter
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
