@@ -10,7 +10,7 @@ import type { LigneHistoryEntry } from '@/components/project/budget/views/Budget
 import type { VersionItem } from '@/components/common/workflow/VersionSelector';
 import {
   GitCommit, CheckCircle2, AlertCircle, LayoutGrid,
-  TrendingUp, DollarSign, Loader2, PieChart, Wallet,
+  TrendingUp, Banknote, Loader2, PieChart, Wallet,
   BarChart2, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -695,7 +695,7 @@ export default function BudgetPage() {
         <StatCard
           title="Solde Disponible"
           value={formatMoney(totalDisponible)}
-          icon={<DollarSign className="h-4 w-4 text-info" />}
+          icon={<Banknote className="h-4 w-4 text-info" />}
           iconVariant="info"
         />
       </div>

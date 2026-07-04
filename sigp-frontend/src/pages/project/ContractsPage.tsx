@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Button } from '@/components/ui/forms/Button';
-import { Plus, FileSignature, DollarSign, CheckCircle2, Archive, Download } from 'lucide-react';
+import { Plus, FileSignature, Banknote, CheckCircle2, Archive, Download } from 'lucide-react';
 import { formatMoney } from '@/utils/format';
 import { getContractColumns } from '@/components/project/contracts/views/contractColumns';
 import { contractFilters } from '@/components/project/contracts/views/contractFilters';
@@ -180,7 +180,7 @@ export default function ContractsPage() {
         <StatCard
           title="Montant Engagé (XOF)"
           value={formatMoney(kpis.montantEngage)}
-          icon={<DollarSign className="h-4 w-4" />}
+          icon={<Banknote className="h-4 w-4" />}
           iconVariant="warning"
           description="hors brouillons / résiliés"
         />

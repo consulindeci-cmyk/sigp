@@ -1,4 +1,4 @@
-import { Briefcase, TrendingUp, AlertTriangle, Clock, DollarSign } from 'lucide-react';
+import { Briefcase, TrendingUp, AlertTriangle, Clock, Banknote } from 'lucide-react';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import type { ProjectsKPIs } from '@/mocks/projectsMocks';
 
@@ -40,7 +40,7 @@ export function ProjectKPIs({ kpis }: { kpis: ProjectsKPIs }) {
       <StatCard
         title="Budget Portefeuille"
         value={kpis.budgetPortefeuille}
-        icon={<DollarSign className="h-4 w-4" aria-hidden="true" />}
+        icon={<Banknote className="h-4 w-4" aria-hidden="true" />}
         iconVariant="default"
         description={`${kpis.clotured} projet(s) clôturé(s)`}
       />

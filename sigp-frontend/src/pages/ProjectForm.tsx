@@ -22,7 +22,7 @@ export default function ProjectForm() {
   const createProject = useCreateProject();
 
   const [formData, setFormData] = useState<Partial<CreateProjectFormData>>({
-    devise: 'USD',
+    devise: 'XOF',
     statut: 'PREPARATION',
   });
 
@@ -43,7 +43,7 @@ export default function ProjectForm() {
         date_debut: formData.date_debut ?? '',
         date_fin: formData.date_fin ?? '',
         budget_total: formData.budget_total ?? '0',
-        devise: formData.devise ?? 'USD',
+        devise: formData.devise ?? 'XOF',
         statut: formData.statut ?? 'PREPARATION',
       });
       navigate(`/projects/${newProject.id}`);
@@ -282,7 +282,7 @@ export default function ProjectForm() {
                       <label className={LABEL_CLASS}>Devise *</label>
                       <select
                         className={FIELD_CLASS} required
-                        value={formData.devise ?? 'USD'} onChange={(e) => update('devise', e.target.value)}
+                        value={formData.devise ?? 'XOF'} onChange={(e) => update('devise', e.target.value)}
                       >
                         <option value="USD">USD ($)</option>
                         <option value="EUR">EUR (€)</option>

@@ -8,6 +8,8 @@ import { formatMoney } from '@/utils/format';
 import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
 import { PPMFormSlideOver } from '@/components/project/ppm/forms/PPMFormSlideOver';
+import { WorkflowTab } from '@/components/project/ppm/tabs/WorkflowTab';
+import { AnalyticsTab } from '@/components/project/ppm/tabs/AnalyticsTab';
 import { LayoutGrid, GitCommit, TrendingUp, Download, Plus, Loader2, Package } from 'lucide-react';
 import { PPMLigne } from '@/types';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -196,15 +198,11 @@ export default function PPMPage() {
             )}
 
             {activeTab === 'WORKFLOW' && (
-              <div className="bg-card border border-dashed border-border rounded-lg p-8 text-center">
-                <p className="text-sm text-muted-foreground">[Étape 4 : Workflow d'Approbation à venir]</p>
-              </div>
+              <WorkflowTab versions={versions} activeVersion={activeVersion} />
             )}
 
             {activeTab === 'BI' && (
-              <div className="bg-card border border-dashed border-border rounded-lg p-8 text-center">
-                <p className="text-sm text-muted-foreground">[Étape 5 : Analytics PPM à venir]</p>
-              </div>
+              <AnalyticsTab lignes={lignes} activeVersion={activeVersion} />
             )}
           </>
         )}

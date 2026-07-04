@@ -14,8 +14,8 @@ export const mockPortfolioKPIs: PortfolioKPI = {
   projetsActifs: 31,
   projetsTermines: 7,
   projetsEnRetard: 4,
-  budgetGlobal: '$284.6M',
-  budgetDecaisse: '$176.2M',
+  budgetGlobal: '284,6 M FCFA',
+  budgetDecaisse: '176,2 M FCFA',
   tauxDecaissement: '61.9%',
   contratsActifs: 118,
   contratsEnApprobation: 23,
@@ -85,12 +85,12 @@ export const mockFundingDistribution: DistributionDataPoint[] = [
 // MOCK: BUDGET BY BAILLEUR
 // ==========================================
 export const mockBudgetByBailleur: BudgetBailleur[] = [
-  { label: 'Banque Mondiale', value: '$96.4M', percent: 80, color: 'primary' },
-  { label: 'Union Européenne', value: '$71.2M', percent: 60, color: 'primary' },
-  { label: 'USAID', value: '$48.9M', percent: 40, color: 'primary' },
-  { label: 'AFD', value: '$33.6M', percent: 30, color: 'primary' },
-  { label: 'PNUD', value: '$21.1M', percent: 20, color: 'primary' },
-  { label: 'Autres bailleurs', value: '$13.4M', percent: 15, color: 'default' },
+  { label: 'Banque Mondiale', value: '96,4 M FCFA', percent: 80, color: 'primary' },
+  { label: 'Union Européenne', value: '71,2 M FCFA', percent: 60, color: 'primary' },
+  { label: 'USAID', value: '48,9 M FCFA', percent: 40, color: 'primary' },
+  { label: 'AFD', value: '33,6 M FCFA', percent: 30, color: 'primary' },
+  { label: 'PNUD', value: '21,1 M FCFA', percent: 20, color: 'primary' },
+  { label: 'Autres bailleurs', value: '13,4 M FCFA', percent: 15, color: 'default' },
 ];
 
 // ==========================================
@@ -152,7 +152,7 @@ export const mockMilestones: Milestone[] = [
 export const mockEvents: ProjectEvent[] = [
   { id: 'e1', date: "Aujourd'hui", type: 'alert', description: 'Risque de change passé en statut Critique — PROJ-014.' },
   { id: 'e2', date: 'Hier', type: 'validation', description: "Le TDR pour le marché solaire a été validé par l'AFD." },
-  { id: 'e3', date: 'Il y a 3 jours', type: 'payment', description: 'Décaissement de 1.2M$ reçu sur le compte spécial — PROJ-009.' },
+  { id: 'e3', date: 'Il y a 3 jours', type: 'payment', description: 'Décaissement de 1,2 M FCFA reçu sur le compte spécial — PROJ-009.' },
   { id: 'e4', date: 'Il y a 5 jours', type: 'milestone', description: 'Jalons phase 1 atteints — PROJ-003 Chaînes de Valeur Agricoles.' },
 ];
 

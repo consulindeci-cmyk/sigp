@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText, Calendar, ListTree, CheckCircle2, AlertCircle,
-  LayoutGrid, TrendingUp, Loader2, Flame, DollarSign, Wallet,
+  LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet,
 } from 'lucide-react';
 import { usePTBA, useWorkflowPTBA } from '@/hooks/usePTBA';
 import { useUIStore } from '@/stores/uiStore';
@@ -376,7 +376,7 @@ export default function PTBAPage() {
               <StatCard
                 title="Engagements"
                 value={formatMoney(totalEngage)}
-                icon={<DollarSign className="h-4 w-4 text-warning" />}
+                icon={<Banknote className="h-4 w-4 text-warning" />}
                 iconVariant="warning"
               />
               <StatCard

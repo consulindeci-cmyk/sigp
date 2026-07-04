@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CalendarDays, User, MapPin, DollarSign } from 'lucide-react';
+import { X, CalendarDays, User, MapPin, Banknote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
@@ -165,7 +165,7 @@ function ProjectViewContent({ project }: { project: Project }) {
       <div className="bg-muted/40 rounded-lg p-4">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            <DollarSign className="h-3 w-3" aria-hidden="true" />
+            <Banknote className="h-3 w-3" aria-hidden="true" />
             Budget total
           </div>
           <span className="font-mono text-[16px] font-bold text-foreground">{project.budgetDisplay}</span>

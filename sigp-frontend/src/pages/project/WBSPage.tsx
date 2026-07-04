@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  LayoutList, TrendingUp, DollarSign, Plus, Loader2,
+  LayoutList, TrendingUp, Banknote, Plus, Loader2,
   AlertCircle, Network, Layers, Trash2,
 } from 'lucide-react';
 import { useWBS, useUpdateWBSOrder } from '@/hooks/useWBS';
@@ -246,7 +246,7 @@ export default function WBSPage() {
         <StatCard
           title="Budget alloué"
           value={formatMoney(kpis.budgetTotal)}
-          icon={<DollarSign className="h-4 w-4 text-warning" />}
+          icon={<Banknote className="h-4 w-4 text-warning" />}
           iconVariant="warning"
           description="Agrégé depuis racines"
         />

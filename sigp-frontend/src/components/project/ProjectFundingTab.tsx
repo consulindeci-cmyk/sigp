@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
-  DollarSign, Users, TrendingUp, Plus, Eye, Edit, Trash2,
+  Banknote, Users, TrendingUp, Plus, Eye, Edit, Trash2,
   X, Download, CheckCircle2, AlertCircle, CalendarDays,
 } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
@@ -819,7 +819,7 @@ export default function ProjectFundingTab() {
         <StatCard
           title="Conventions"
           value={kpis.total}
-          icon={<DollarSign className="h-4 w-4" aria-hidden="true" />}
+          icon={<Banknote className="h-4 w-4" aria-hidden="true" />}
           iconVariant="primary"
           description={`${kpis.actives} active${kpis.actives > 1 ? 's' : ''}`}
         />

@@ -136,7 +136,7 @@ export default function ProjectsPage() {
         endDate: data.endDate ?? '',
         budgetTotal: data.budgetTotal ?? 0,
         devise: data.devise ?? 'USD',
-        budgetDisplay: data.budgetDisplay ?? '$0',
+        budgetDisplay: data.budgetDisplay ?? '0 FCFA',
         status: (data.status ?? 'En préparation') as ProjectStatus,
         profileScore: 0,
         progressScore: 0,

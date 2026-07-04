@@ -33,10 +33,10 @@ interface TabOverviewProps {
 }
 
 const KPI_ITEMS = [
-  { label: 'BAC',        val: '$24.6M', colorClass: 'text-foreground',    target: 'budget' },
-  { label: 'Engagé',    val: '$18.2M', colorClass: 'text-foreground',    target: 'procurement' },
-  { label: 'Décaissé',  val: '$16.9M', colorClass: 'text-success',       target: 'disbursements' },
-  { label: 'Restant',   val: '$7.7M',  colorClass: 'text-muted-foreground', target: 'budget' },
+  { label: 'BAC',        val: '24,6 M FCFA', colorClass: 'text-foreground',    target: 'budget' },
+  { label: 'Engagé',    val: '18,2 M FCFA', colorClass: 'text-foreground',    target: 'procurement' },
+  { label: 'Décaissé',  val: '16,9 M FCFA', colorClass: 'text-success',       target: 'disbursements' },
+  { label: 'Restant',   val: '7,7 M FCFA',  colorClass: 'text-muted-foreground', target: 'budget' },
   { label: 'Physique',  val: '76%',    colorClass: 'text-destructive',   target: 'evm' },
   { label: 'Financière',val: '68.7%',  colorClass: 'text-success',       target: 'disbursements' },
   { label: 'Complétude',val: '35%',    colorClass: 'text-warning',       target: 'overview' },

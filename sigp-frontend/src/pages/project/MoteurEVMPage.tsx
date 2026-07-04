@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx'
 import { useParams } from 'react-router-dom'
 import {
   Calendar, RefreshCw, TrendingUp, TrendingDown, Minus,
-  Database, DollarSign, Target, AlertCircle, Download,
+  Database, Banknote, Target, AlertCircle, Download,
   Plus, List, MessageSquare, History, BarChart2,
 } from 'lucide-react'
 import {
@@ -550,7 +550,7 @@ export default function MoteurEVMPage() {
         <StatCard title="BAC"    value={fmt(bac)}  icon={<Database   className="h-4 w-4" />} iconVariant="primary"     description="Budget achèvement" />
         <StatCard title="PV"     value={fmt(pv)}   icon={<Calendar   className="h-4 w-4" />} iconVariant="default"     description="Valeur planifiée" />
         <StatCard title="EV"     value={fmt(ev)}   icon={<TrendingUp className="h-4 w-4" />} iconVariant="success"     description="Valeur acquise" />
-        <StatCard title="AC"     value={fmt(ac)}   icon={<DollarSign className="h-4 w-4" />} iconVariant="warning"     description="Coût réel" />
+        <StatCard title="AC"     value={fmt(ac)}   icon={<Banknote className="h-4 w-4" />} iconVariant="warning"     description="Coût réel" />
         <StatCard
           title="CPI"
           value={cpi.toFixed(2)}
