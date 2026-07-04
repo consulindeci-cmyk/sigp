@@ -64,7 +64,7 @@ type ViewMode = 'table' | 'grid';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>(mockProjects);
-  const [view, setView] = useState<ViewMode>('table');
+  const [view, setView] = useState<ViewMode>('grid');
 
   // SlideOver
   const [slideOverOpen, setSlideOverOpen] = useState(false);
@@ -90,7 +90,7 @@ export default function ProjectsPage() {
     enRetard:    projects.filter((p) => p.status === 'En retard').length,
     clotured:    projects.filter((p) => p.status === 'Clôturé').length,
     budgetPortefeuille:
-      '$' + (projects.reduce((s, p) => s + p.budgetTotal, 0) / 1_000_000).toFixed(1) + 'M',
+      (projects.reduce((s, p) => s + p.budgetTotal, 0) / 1_000_000).toFixed(1).replace('.', ',') + ' M FCFA',
   }), [projects]);
 
   // Dynamic filter options — update automatically when projects array changes
