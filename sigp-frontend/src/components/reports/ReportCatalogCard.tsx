@@ -15,6 +15,7 @@ export function formatBadgeVariant(f: ReportFormat): 'default' | 'success' | 'in
     case 'XLSX': return 'success';
     case 'CSV':  return 'info';
     case 'DOCX': return 'warning';
+    default:     return 'default';
   }
 }
 
@@ -25,6 +26,7 @@ export function frequencyBadgeVariant(f: ReportFrequency): 'outline' | 'secondar
     case 'Hebdomadaire': return 'info';
     case 'Mensuel':      return 'default';
     case 'Trimestriel':  return 'secondary';
+    default:             return 'outline';
   }
 }
 

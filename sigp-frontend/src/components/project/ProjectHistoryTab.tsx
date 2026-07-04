@@ -225,7 +225,7 @@ export default function ProjectHistoryTab() {
         />
         <StatCard
           title="Modules modifiés"
-          value={new Set(mockHistoryEntries.map((e) => e.module)).size}
+          value={new Set(mockHistoryEntries.map((e: HistoryEntry) => e.module)).size}
           icon={<GitCommit className="h-4 w-4" aria-hidden="true" />}
           iconVariant="default"
           description="Modules distincts impactés"

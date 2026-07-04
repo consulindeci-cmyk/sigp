@@ -931,3 +931,59 @@ table{border-collapse:collapse;width:100%;}
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ===== Dark mode — Design tokens ===== */
+.dark {
+  --background:        222 47% 9%;
+  --foreground:        210 40% 95%;
+
+  --card:              220 35% 13%;
+  --card-foreground:   210 40% 95%;
+
+  --popover:           220 35% 13%;
+  --popover-foreground:210 40% 95%;
+
+  --primary:           213 80% 63%;
+  --primary-foreground:222 47% 9%;
+
+  --secondary:         215 30% 20%;
+  --secondary-foreground:210 40% 90%;
+
+  --muted:             215 30% 16%;
+  --muted-foreground:  215 16% 62%;
+
+  --accent:            213 80% 63%;
+  --accent-foreground: 222 47% 9%;
+
+  --destructive:       0 72% 55%;
+  --destructive-foreground:0 0% 100%;
+
+  --warning:           38 92% 55%;
+  --warning-foreground:48 96% 89%;
+
+  --success:           142 71% 42%;
+  --success-foreground:138 76% 97%;
+
+  --info:              213 80% 63%;
+  --info-foreground:   222 47% 9%;
+
+  --border:            215 30% 20%;
+  --input:             215 30% 20%;
+  --ring:              213 80% 63%;
+
+  --sidebar-background:222 47% 7%;
+  --sidebar-foreground:210 40% 92%;
+  --sidebar-border:    215 30% 13%;
+  --sidebar-accent:    215 30% 15%;
+  --sidebar-accent-foreground:210 40% 92%;
+}
+
+/* ===== Réduction des animations ===== */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration:        0.01ms !important;
+  animation-iteration-count: 1      !important;
+  transition-duration:       0.01ms !important;
+  scroll-behavior:           auto   !important;
+}

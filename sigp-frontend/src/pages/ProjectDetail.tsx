@@ -24,8 +24,8 @@ import ProjectDeliverablesTab from '../components/project/ProjectDeliverablesTab
 import ProjectActivitiesTab from '../components/project/ProjectActivitiesTab';
 import ProjectOperationsJournalTab from '../components/project/ProjectOperationsJournalTab';
 import ProjectHistoryTab from '../components/project/ProjectHistoryTab';
-import ProjectCommentsTab from '../components/project/ProjectCommentsTab';
-import ProjectSettingsTab from '../components/project/ProjectSettingsTab';
+import TabComments from '../components/project/TabComments';
+import TabSettings from '../components/project/TabSettings';
 
 import { mockProjects, type Project } from '@/mocks/projectsMocks';
 
@@ -104,10 +104,10 @@ export default function ProjectDetail() {
           <div className={PAD}><div className={INNER}><ProjectHistoryTab /></div></div>
         )}
         {activeTab === 'comments' && (
-          <div className={PAD}><div className={INNER}><ProjectCommentsTab /></div></div>
+          <div className={PAD}><div className={INNER}><TabComments /></div></div>
         )}
         {activeTab === 'settings' && (
-          <div className={PAD}><div className={INNER}><ProjectSettingsTab /></div></div>
+          <div className={PAD}><div className={INNER}><TabSettings /></div></div>
         )}
       </div>
     </div>

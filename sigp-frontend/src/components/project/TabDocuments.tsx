@@ -1,388 +1,677 @@
-import { useState, useRef, useMemo } from 'react';
-import { Upload, Download, FileText, Trash2, Search, X, Eye } from 'lucide-react';
-import { Button } from '@/components/ui/forms/Button';
-import { Input } from '@/components/ui/forms/Input';
-import { Badge } from '@/components/ui/data-display/Badge';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
-  Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
-  ModalFooter, ModalClose,
+  BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
+import type { ColumnDef } from '@tanstack/react-table';
+import {
+  Files, CheckCircle2, BookOpen, Archive, HardDrive,
+  Download, FileSpreadsheet, Plus, Eye, Pencil, Trash2,
+  Upload, AlertCircle,
+} from 'lucide-react';
+import type { DocumentProjet, TypeFichier, StatutDocument, ConfidentialiteDocument } from '@/types';
+import {
+  MOCK_DOCUMENTS, DOCUMENT_CATEGORIES, TYPE_FICHIER_OPTIONS, STATUT_DOCUMENT_OPTIONS,
+} from '@/mocks/documentsMocks';
+import { DocumentSlideOver } from './documents/DocumentSlideOver';
+import type { DocumentSavePayload } from './documents/DocumentSlideOver';
+import { DataTable }  from '@/components/ui/data-table/DataTable';
+import { StatCard }   from '@/components/ui/data-display/StatCard';
+import { Badge }      from '@/components/ui/data-display/Badge';
+import { Button }     from '@/components/ui/forms/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
+import {
+  Modal, ModalContent, ModalHeader, ModalTitle,
+  ModalDescription, ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-type DocCategory =
-  | 'Contrats'
-  | 'Rapports'
-  | 'TDR'
-  | "Dossiers d'AO"
-  | 'Comptes-rendus'
-  | 'Photos'
-  | 'Études'
-  | "Docs d'Audit";
+const STATUT_LABEL: Record<StatutDocument, string> = {
+  BROUILLON:     'Brouillon',
+  EN_VALIDATION: 'En validation',
+  VALIDE:        'Validé',
+  ARCHIVE:       'Archivé',
+};
 
-interface Doc {
-  id:           string;
-  nom:          string;
-  meta:         string;
-  tag:          DocCategory;
-  size:         string;
+const CONF_LABEL: Record<ConfidentialiteDocument, string> = {
+  PUBLIQUE:       'Publique',
+  INTERNE:        'Interne',
+  CONFIDENTIELLE: 'Confidentielle',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtTaille(ko: number): string {
+  if (ko < 1024)        return `${ko} Ko`;
+  if (ko < 1024 * 1024) return `${(ko / 1024).toFixed(1)} Mo`;
+  return `${(ko / (1024 * 1024)).toFixed(1)} Go`;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock data — representative sample across all 8 categories
-// ─────────────────────────────────────────────────────────────────────────────
-
-const INITIAL_DOCS: Doc[] = [
-  // Contrats (3)
-  { id: 'd1',  nom: 'Contrat_C-014-A_Signé.pdf',              meta: 'Hassan Diallo · 14/05/2026 · 2.4 Mo',            tag: 'Contrats',       size: '2.4 Mo'  },
-  { id: 'd2',  nom: 'Avenant_01_Contrat_C-012.pdf',           meta: 'Moussa Coulibaly · 22/04/2026 · 1.1 Mo',         tag: 'Contrats',       size: '1.1 Mo'  },
-  { id: 'd3',  nom: 'Contrat_C-015_Infrastructure.pdf',       meta: 'Aminata Koné · 10/06/2026 · 3.2 Mo',             tag: 'Contrats',       size: '3.2 Mo'  },
-
-  // Rapports (3)
-  { id: 'd4',  nom: 'Rapport_Avancement_T2_2026.pdf',         meta: 'Équipe Projet · 30/06/2026 · 4.8 Mo',            tag: 'Rapports',       size: '4.8 Mo'  },
-  { id: 'd5',  nom: 'Rapport_Financier_Mai_2026.xlsx',        meta: 'Coordinateur Financier · 05/06/2026 · 890 Ko',   tag: 'Rapports',       size: '890 Ko'  },
-  { id: 'd6',  nom: 'Rapport_Mensuel_Avancement_Juin.docx',   meta: 'Chef de Projet · 28/06/2026 · 2.1 Mo',           tag: 'Rapports',       size: '2.1 Mo'  },
-
-  // TDR (2)
-  { id: 'd7',  nom: 'TDR_Expert_Technique_Eau.pdf',           meta: 'Équipe Passation · 12/03/2026 · 650 Ko',         tag: 'TDR',            size: '650 Ko'  },
-  { id: 'd8',  nom: 'TDR_Consultant_Formation.docx',          meta: 'DRH Projet · 04/04/2026 · 430 Ko',               tag: 'TDR',            size: '430 Ko'  },
-
-  // Dossiers d'AO (2)
-  { id: 'd9',  nom: 'DAO_Travaux_Piste_Rurale.pdf',           meta: 'Équipe Passation · 15/02/2026 · 12.3 Mo',        tag: "Dossiers d'AO", size: '12.3 Mo' },
-  { id: 'd10', nom: 'DAO_Fourniture_Equipements.pdf',         meta: 'Équipe Passation · 01/03/2026 · 8.7 Mo',         tag: "Dossiers d'AO", size: '8.7 Mo'  },
-
-  // Comptes-rendus (2)
-  { id: 'd11', nom: 'CR_Comite_Pilotage_Mars_2026.docx',      meta: 'Secrétaire Général · 31/03/2026 · 345 Ko',       tag: 'Comptes-rendus', size: '345 Ko' },
-  { id: 'd12', nom: 'CR_Reunion_Bailleur_Juin_2026.pdf',      meta: 'Responsable Bailleur · 20/06/2026 · 520 Ko',     tag: 'Comptes-rendus', size: '520 Ko' },
-
-  // Photos (2)
-  { id: 'd13', nom: 'Photos_Chantier_Zone_A_Mai.zip',         meta: 'Superviseur Terrain · 28/05/2026 · 45.2 Mo',     tag: 'Photos',         size: '45.2 Mo'},
-  { id: 'd14', nom: 'Photos_Inauguration_Pont_03.zip',        meta: 'Communication · 10/06/2026 · 38.9 Mo',           tag: 'Photos',         size: '38.9 Mo'},
-
-  // Études (2)
-  { id: 'd15', nom: 'Etude_Impact_Environnemental.pdf',       meta: "Bureau d'Études · 15/01/2026 · 15.7 Mo",         tag: 'Études',         size: '15.7 Mo'},
-  { id: 'd16', nom: 'Etude_Faisabilite_Composante_C.pdf',     meta: 'Consultant Externe · 20/02/2026 · 9.3 Mo',       tag: 'Études',         size: '9.3 Mo' },
-
-  // Docs d'Audit (2)
-  { id: 'd17', nom: 'Rapport_Audit_Financier_2025.pdf',       meta: 'Auditeur Externe · 28/02/2026 · 6.2 Mo',         tag: "Docs d'Audit",  size: '6.2 Mo' },
-  { id: 'd18', nom: 'PV_Inventaire_Equipements.xlsx',         meta: 'Coordinateur Logistique · 15/04/2026 · 1.8 Mo',  tag: "Docs d'Audit",  size: '1.8 Mo' },
-];
-
-const ALL_CATEGORIES: DocCategory[] = [
-  'Contrats', 'Rapports', 'TDR', "Dossiers d'AO",
-  'Comptes-rendus', 'Photos', 'Études', "Docs d'Audit",
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-function extColor(nom: string): string {
-  const ext = nom.split('.').pop()?.toLowerCase() ?? '';
-  if (ext === 'pdf')          return 'text-destructive';
-  if (ext === 'xlsx' || ext === 'xls') return 'text-success';
-  if (ext === 'docx' || ext === 'doc') return 'text-primary';
-  if (ext === 'zip')          return 'text-warning';
-  return 'text-muted-foreground';
+function fmtDate(iso?: string): string {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+  catch { return '—'; }
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024)           return `${bytes} o`;
-  if (bytes < 1024 * 1024)   return `${Math.round(bytes / 1024)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+function statutVariant(s: StatutDocument): 'outline' | 'warning' | 'success' | 'secondary' {
+  if (s === 'VALIDE')        return 'success';
+  if (s === 'EN_VALIDATION') return 'warning';
+  if (s === 'BROUILLON')     return 'outline';
+  return 'secondary';
 }
 
-function downloadDoc(doc: Doc) {
-  const content = `Fichier: ${doc.nom}\nCatégorie: ${doc.tag}\nMeta: ${doc.meta}`;
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = doc.nom;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+function typeVariant(t: TypeFichier): 'destructive' | 'default' | 'success' | 'warning' | 'secondary' | 'outline' {
+  if (t === 'PDF')   return 'destructive';
+  if (t === 'Word')  return 'default';
+  if (t === 'Excel') return 'success';
+  if (t === 'Image') return 'warning';
+  if (t === 'ZIP')   return 'secondary';
+  return 'outline';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main export
-// ─────────────────────────────────────────────────────────────────────────────
+function confVariant(c: ConfidentialiteDocument): 'success' | 'info' | 'destructive' {
+  if (c === 'PUBLIQUE') return 'success';
+  if (c === 'INTERNE')  return 'info';
+  return 'destructive';
+}
+
+function nextDocCode(docs: DocumentProjet[]): string {
+  const max = docs.reduce((m, d) => {
+    const n = parseInt(d.code_document.replace('DOC-', ''), 10);
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  return `DOC-${String(max + 1).padStart(3, '0')}`;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TabDocuments() {
-  const [docs,           setDocs]           = useState<Doc[]>(INITIAL_DOCS);
-  const [searchQuery,    setSearchQuery]    = useState('');
-  const [activeCategory, setActiveCategory] = useState<DocCategory | null>(null);
-  const [docToDelete,    setDocToDelete]    = useState<Doc | null>(null);
-  const [previewDoc,     setPreviewDoc]     = useState<Doc | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [documents, setDocuments] = useState<DocumentProjet[]>(MOCK_DOCUMENTS);
+  const [slideOpen, setSlideOpen] = useState(false);
+  const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
+  const [slideDoc,  setSlideDoc]  = useState<DocumentProjet | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DocumentProjet | null>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
 
-  // ── Category counts (dynamic) ────────────────────────────────────────────
-  const catCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    ALL_CATEGORIES.forEach(c => { counts[c] = 0; });
-    docs.forEach(d => { counts[d.tag] = (counts[d.tag] ?? 0) + 1; });
-    return counts;
-  }, [docs]);
+  // ── KPIs ──────────────────────────────────────────────────────────────────
 
-  // ── Filtered list ─────────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    return docs.filter(d => {
-      const matchCat = activeCategory == null || d.tag === activeCategory;
-      const matchQ   = !q || d.nom.toLowerCase().includes(q) || d.meta.toLowerCase().includes(q);
-      return matchCat && matchQ;
+  const kpis = useMemo(() => {
+    const valides      = documents.filter(d => d.statut === 'VALIDE').length;
+    const brouillons   = documents.filter(d => d.statut === 'BROUILLON').length;
+    const archives     = documents.filter(d => d.statut === 'ARCHIVE').length;
+    const enValidation = documents.filter(d => d.statut === 'EN_VALIDATION').length;
+    const tailleKo     = documents.reduce((s, d) => s + d.taille_ko, 0);
+    return { total: documents.length, valides, brouillons, archives, enValidation, tailleKo };
+  }, [documents]);
+
+  const docsEnValidation = useMemo(
+    () => documents.filter(d => d.statut === 'EN_VALIDATION'),
+    [documents],
+  );
+
+  const currentNextCode = useMemo(() => nextDocCode(documents), [documents]);
+
+  // ── Chart data ─────────────────────────────────────────────────────────────
+
+  const categorieChartData = useMemo(() =>
+    DOCUMENT_CATEGORIES
+      .map(cat => ({ name: cat, Nombre: documents.filter(d => d.categorie === cat).length }))
+      .filter(d => d.Nombre > 0),
+  [documents]);
+
+  const typeChartData = useMemo(() =>
+    TYPE_FICHIER_OPTIONS
+      .map(t => ({ name: t.label, Nombre: documents.filter(d => d.type_fichier === t.value).length }))
+      .filter(d => d.Nombre > 0),
+  [documents]);
+
+  const evolutionData = useMemo(() => {
+    const months: { label: string; Ajoutés: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const dt = new Date();
+      dt.setDate(1);
+      dt.setMonth(dt.getMonth() - i);
+      const mois  = dt.toISOString().slice(0, 7);
+      const label = dt.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+      months.push({ label, Ajoutés: documents.filter(d => d.date_creation.startsWith(mois)).length });
+    }
+    return months;
+  }, [documents]);
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+
+  const auteurOptions = useMemo(() => {
+    const unique = [...new Set(documents.map(d => d.auteur))].sort();
+    return unique.map(a => ({ label: a, value: a }));
+  }, [documents]);
+
+  const tableFilters = useMemo(() => [
+    {
+      id: 'categorie',
+      title: 'Catégorie',
+      options: DOCUMENT_CATEGORIES.map(c => ({ label: c, value: c })),
+    },
+    {
+      id: 'type_fichier',
+      title: 'Type',
+      options: TYPE_FICHIER_OPTIONS.map(o => ({ label: o.label, value: o.value })),
+    },
+    {
+      id: 'statut',
+      title: 'Statut',
+      options: STATUT_DOCUMENT_OPTIONS.map(o => ({ label: o.label, value: o.value })),
+    },
+    {
+      id: 'auteur',
+      title: 'Auteur',
+      options: auteurOptions,
+    },
+  ], [auteurOptions]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleSave = useCallback((payload: DocumentSavePayload, id?: string) => {
+    const now   = new Date().toISOString();
+    const today = now.slice(0, 10);
+    if (id) {
+      setDocuments(prev => prev.map(d =>
+        d.id === id ? { ...d, ...payload, date_modification: today, updatedAt: now } : d,
+      ));
+    } else {
+      setDocuments(prev => {
+        const newDoc: DocumentProjet = {
+          id: `doc-${Date.now()}`,
+          projet_id: 'mock-proj-01',
+          ...payload,
+          date_modification: today,
+          createdAt: now,
+          updatedAt: now,
+        };
+        return [newDoc, ...prev];
+      });
+    }
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteTarget) return;
+    setDocuments(prev => prev.filter(d => d.id !== deleteTarget.id));
+    setDeleteTarget(null);
+  }, [deleteTarget]);
+
+  const handleDuplicate = useCallback((id: string) => {
+    const now   = new Date().toISOString();
+    const today = now.slice(0, 10);
+    setDocuments(prev => {
+      const original = prev.find(d => d.id === id);
+      if (!original) return prev;
+      const copy: DocumentProjet = {
+        ...original,
+        id: `doc-${Date.now()}`,
+        code_document: nextDocCode(prev),
+        titre: `${original.titre} (copie)`,
+        statut: 'BROUILLON',
+        version: '1.0',
+        date_creation:    today,
+        date_modification: today,
+        createdAt: now,
+        updatedAt: now,
+      };
+      return [copy, ...prev];
     });
-  }, [docs, searchQuery, activeCategory]);
+  }, []);
 
-  // ── Upload ────────────────────────────────────────────────────────────────
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  const handleArchive = useCallback((id: string) => {
+    const now   = new Date().toISOString();
+    const today = now.slice(0, 10);
+    setDocuments(prev => prev.map(d =>
+      d.id === id ? {
+        ...d,
+        statut: (d.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE') as StatutDocument,
+        date_modification: today,
+        updatedAt: now,
+      } : d,
+    ));
+  }, []);
+
+  const openNew  = useCallback(() => { setSlideDoc(null);  setSlideMode('new');  setSlideOpen(true); }, []);
+  const openView = useCallback((d: DocumentProjet) => { setSlideDoc(d); setSlideMode('view'); setSlideOpen(true); }, []);
+  const openEdit = useCallback((d: DocumentProjet) => { setSlideDoc(d); setSlideMode('edit'); setSlideOpen(true); }, []);
+
+  // ── Upload simulé ──────────────────────────────────────────────────────────
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const tag: DocCategory = activeCategory ?? 'Rapports';
-    const newDoc: Doc = {
-      id:   `doc-${Date.now()}`,
-      nom:  file.name,
-      meta: `Vous · Maintenant · ${formatFileSize(file.size)}`,
-      tag,
-      size: formatFileSize(file.size),
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    const typeMap: Record<string, TypeFichier> = {
+      pdf: 'PDF', docx: 'Word', doc: 'Word',
+      xlsx: 'Excel', xls: 'Excel',
+      png: 'Image', jpg: 'Image', jpeg: 'Image', gif: 'Image', webp: 'Image',
+      zip: 'ZIP', rar: 'ZIP',
     };
-    setDocs(prev => [newDoc, ...prev]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    const type: TypeFichier    = typeMap[ext] ?? 'Autre';
+    const taille_ko            = Math.max(1, Math.round(file.size / 1024));
+    const now                  = new Date().toISOString();
+    const today                = now.slice(0, 10);
+    setDocuments(prev => {
+      const code = nextDocCode(prev);
+      const newDoc: DocumentProjet = {
+        id: `doc-${Date.now()}`,
+        projet_id: 'mock-proj-01',
+        code_document: code,
+        titre: file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' '),
+        categorie: 'Autre',
+        version: '1.0',
+        auteur: 'Utilisateur',
+        responsable: 'Utilisateur',
+        date_creation: today,
+        date_modification: today,
+        statut: 'BROUILLON',
+        taille_ko,
+        type_fichier: type,
+        mots_cles: [],
+        confidentialite: 'INTERNE',
+        createdAt: now,
+        updatedAt: now,
+      };
+      return [newDoc, ...prev];
+    });
+    if (uploadRef.current) uploadRef.current.value = '';
   }
 
-  function handleDelete() {
-    if (docToDelete) setDocs(prev => prev.filter(d => d.id !== docToDelete.id));
-    setDocToDelete(null);
-  }
+  // ── Exports ────────────────────────────────────────────────────────────────
+
+  const exportCSV = useCallback(() => {
+    const bom     = '﻿';
+    const headers = ['Code', 'Titre', 'Catégorie', 'Type', 'Version', 'Auteur',
+      'Responsable', 'Date création', 'Date modification', 'Statut',
+      'Taille (Ko)', 'Confidentialité', 'Mots-clés'];
+    const rows = documents.map(d => [
+      d.code_document, d.titre, d.categorie, d.type_fichier, d.version,
+      d.auteur, d.responsable, d.date_creation, d.date_modification,
+      STATUT_LABEL[d.statut], String(d.taille_ko), CONF_LABEL[d.confidentialite],
+      d.mots_cles.join('; '),
+    ]);
+    const csv  = bom + [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'documents.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }, [documents]);
+
+  const exportXLSX = useCallback(() => {
+    const headers = ['Code', 'Titre', 'Catégorie', 'Type', 'Version', 'Auteur',
+      'Responsable', 'Date création', 'Date modification', 'Statut',
+      'Taille (Ko)', 'Confidentialité', 'Mots-clés'];
+    const rows = documents.map(d => [
+      d.code_document, d.titre, d.categorie, d.type_fichier, d.version,
+      d.auteur, d.responsable, d.date_creation, d.date_modification,
+      STATUT_LABEL[d.statut], d.taille_ko, CONF_LABEL[d.confidentialite],
+      d.mots_cles.join('; '),
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Documents');
+    XLSX.writeFile(wb, 'documents.xlsx');
+  }, [documents]);
+
+  // ── Column definitions ─────────────────────────────────────────────────────
+
+  const columns = useMemo<ColumnDef<DocumentProjet, unknown>[]>(() => [
+    {
+      accessorKey: 'code_document',
+      header: 'Code',
+      meta: { isSticky: true } as Record<string, unknown>,
+      cell: ({ getValue }) => (
+        <span className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+          {getValue() as string}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'titre',
+      header: 'Titre',
+      cell: ({ row }) => {
+        const { titre, activite_liee, description } = row.original;
+        return (
+          <div className="flex flex-col gap-0.5 min-w-[200px] max-w-[320px]">
+            <span className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2" title={titre}>
+              {titre}
+            </span>
+            {(activite_liee || description) && (
+              <span className="text-[10px] text-muted-foreground truncate">
+                {activite_liee || description}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'categorie',
+      header: 'Catégorie',
+      cell: ({ getValue }) => (
+        <Badge variant="outline" className="text-[10px] whitespace-nowrap">{getValue() as string}</Badge>
+      ),
+    },
+    {
+      accessorKey: 'type_fichier',
+      header: 'Type',
+      cell: ({ getValue }) => {
+        const t = getValue() as TypeFichier;
+        return <Badge variant={typeVariant(t)} className="text-[10px] font-mono whitespace-nowrap">{t}</Badge>;
+      },
+    },
+    {
+      accessorKey: 'auteur',
+      header: 'Auteur',
+      cell: ({ getValue }) => {
+        const name    = getValue() as string;
+        const initials = name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+        return (
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+              {initials}
+            </div>
+            <span className="text-[12px] text-foreground truncate max-w-[110px]">{name}</span>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'date_modification',
+      header: 'Modifié le',
+      meta: { align: 'center' } as Record<string, unknown>,
+      cell: ({ getValue }) => (
+        <span className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+          {fmtDate(getValue() as string)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'statut',
+      header: 'Statut',
+      cell: ({ getValue }) => {
+        const s = getValue() as StatutDocument;
+        return <Badge variant={statutVariant(s)} className="text-[10px] whitespace-nowrap">{STATUT_LABEL[s]}</Badge>;
+      },
+    },
+    {
+      accessorKey: 'confidentialite',
+      header: 'Accès',
+      cell: ({ getValue }) => {
+        const c = getValue() as ConfidentialiteDocument;
+        return <Badge variant={confVariant(c)} className="text-[10px] whitespace-nowrap">{CONF_LABEL[c]}</Badge>;
+      },
+    },
+    {
+      accessorKey: 'taille_ko',
+      header: 'Taille',
+      meta: { align: 'right' } as Record<string, unknown>,
+      cell: ({ getValue }) => (
+        <span className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+          {fmtTaille(getValue() as number)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      enableHiding: false,
+      meta: { align: 'right' } as Record<string, unknown>,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1 justify-end">
+          <Button variant="ghost" size="sm" aria-label="Aperçu" onClick={() => openView(row.original)}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost" size="sm" aria-label="Supprimer"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setDeleteTarget(row.original)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ], [openView, openEdit]);
+
+  // ── JSX ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-4 bg-background">
+    <section aria-label="Gestionnaire de Documents" className="flex flex-col gap-6">
 
-      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      {/* ── En-tête ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
         <div>
-          <h1 className="text-base font-bold text-foreground">Documents du Projet</h1>
+          <h1 className="text-base font-bold text-foreground">Gestionnaire de Documents</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Gestion documentaire — {docs.length} fichier{docs.length > 1 ? 's' : ''}
+            Centralisation et gestion documentaire du projet
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" aria-hidden="true" />
-            <Input
-              type="text"
-              placeholder="Rechercher des documents…"
-              className="pl-8 h-8 text-xs w-52"
-              aria-label="Rechercher des documents"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setSearchQuery('')}
-                aria-label="Effacer la recherche"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <Button
-            variant="default"
-            size="sm"
-            leftIcon={<Upload className="h-3.5 w-3.5" />}
-            className="h-8 text-xs"
-            aria-label="Uploader un document"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Uploader Document
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportCSV}>
+            <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            CSV
           </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="sr-only"
-            aria-hidden="true"
-            tabIndex={-1}
-            onChange={handleFileChange}
-          />
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportXLSX}>
+            <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Excel
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => uploadRef.current?.click()}>
+            <Upload className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Téléverser
+          </Button>
+          <Button size="sm" className="h-8 text-xs" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Nouveau document
+          </Button>
+          <input ref={uploadRef} type="file" className="sr-only" aria-hidden="true" tabIndex={-1} onChange={handleFileUpload} />
         </div>
       </div>
 
-      {/* ── CATÉGORIES ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-        {ALL_CATEGORIES.map(cat => {
-          const isActive = activeCategory === cat;
-          return (
-            <button
-              key={cat}
-              className={`flex flex-col items-center justify-center gap-1 rounded-lg border p-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                isActive
-                  ? 'bg-primary border-primary text-primary-foreground'
-                  : 'bg-card border-border hover:bg-muted/10 hover:border-primary/30 text-foreground'
-              }`}
-              aria-label={`Filtrer par catégorie ${cat} (${catCounts[cat] ?? 0} fichiers)`}
-              aria-pressed={isActive}
-              onClick={() => setActiveCategory(prev => prev === cat ? null : cat)}
-            >
-              <span className={`text-lg font-bold tabular-nums leading-none ${isActive ? '' : 'text-primary'}`}>
-                {catCounts[cat] ?? 0}
-              </span>
-              <span className={`text-[10px] leading-tight mt-0.5 ${isActive ? 'opacity-80' : 'text-muted-foreground'}`}>
-                {cat}
-              </span>
-            </button>
-          );
-        })}
+      {/* ── Alerte EN_VALIDATION ─────────────────────────────────────────── */}
+      {docsEnValidation.length > 0 && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 flex items-start gap-3">
+          <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-semibold text-warning">
+              {docsEnValidation.length} document{docsEnValidation.length > 1 ? 's' : ''} en attente de validation
+            </p>
+            <p className="text-xs text-warning/80 mt-0.5">
+              {docsEnValidation.map(d => d.code_document).join(', ')} — à examiner et valider
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── KPIs ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard
+          title="Total documents"
+          value={kpis.total}
+          icon={<Files className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="primary"
+          description="Dans le registre"
+        />
+        <StatCard
+          title="Validés"
+          value={kpis.valides}
+          icon={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="success"
+          description="Approuvés et publiés"
+        />
+        <StatCard
+          title="Brouillons"
+          value={kpis.brouillons}
+          icon={<BookOpen className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="warning"
+          description="En cours de rédaction"
+        />
+        <StatCard
+          title="Archivés"
+          value={kpis.archives}
+          icon={<Archive className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="default"
+          description="Versions archivées"
+        />
+        <StatCard
+          title="Taille totale"
+          value={fmtTaille(kpis.tailleKo)}
+          icon={<HardDrive className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="info"
+          description="Volume total stocké"
+        />
       </div>
 
-      {/* ── ZONE D'UPLOAD ──────────────────────────────────────────────────── */}
+      {/* ── Zone de téléversement ────────────────────────────────────────── */}
       <button
-        className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-8 text-center bg-muted/5 hover:bg-muted/10 hover:border-primary/40 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        type="button"
+        className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-6 text-center bg-muted/5 hover:bg-muted/10 hover:border-primary/40 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Zone de dépôt — cliquer pour parcourir les fichiers"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => uploadRef.current?.click()}
       >
-        <Upload className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+        <Upload className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
         <p className="text-sm font-medium text-foreground">Glissez et déposez vos fichiers ici</p>
         <p className="text-xs text-muted-foreground">
-          ou cliquez pour parcourir — PDF, Word, Excel, images jusqu'à 50 Mo
-          {activeCategory && <> — sera ajouté dans <strong>{activeCategory}</strong></>}
+          ou cliquez pour parcourir — PDF, Word, Excel, Images, ZIP — ajouté automatiquement comme Brouillon
         </p>
       </button>
 
-      {/* ── LISTE DES DOCUMENTS ─────────────────────────────────────────────── */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border bg-muted/5 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">
-            {activeCategory ? activeCategory : 'Tous les Documents'}
-          </h3>
-          <div className="flex items-center gap-2">
-            {activeCategory && (
-              <button
-                className="text-[11px] text-primary hover:underline focus-visible:outline-none"
-                onClick={() => setActiveCategory(null)}
-              >
-                Tout afficher
-              </button>
-            )}
-            <span className="text-xs text-muted-foreground">{filtered.length} fichier{filtered.length > 1 ? 's' : ''}</span>
-          </div>
-        </div>
+      {/* ── Graphiques ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
-            <FileText className="h-8 w-8 opacity-30" aria-hidden="true" />
-            <p className="text-sm">Aucun document trouvé</p>
-            {searchQuery && (
-              <button className="text-xs text-primary hover:underline" onClick={() => setSearchQuery('')}>
-                Effacer la recherche
-              </button>
-            )}
-          </div>
-        ) : (
-          <div>
-            {filtered.map(doc => (
-              <div
-                key={doc.id}
-                className="flex items-center gap-4 px-4 py-3 hover:bg-muted/10 transition-colors border-b border-border last:border-0"
-              >
-                {/* Icône fichier */}
-                <div className="w-9 h-9 rounded-lg bg-muted/30 flex items-center justify-center shrink-0">
-                  <FileText className={`h-5 w-5 ${extColor(doc.nom)}`} aria-hidden="true" />
-                </div>
+        {/* Répartition par catégorie */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Par catégorie</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={categorieChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 9 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 6, fontSize: 11 }}
+                  formatter={(v) => [`${v}`, 'Documents']}
+                  cursor={{ fill: 'hsl(var(--muted))', opacity: 0.5 }}
+                />
+                <Bar dataKey="Nombre" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
 
-                {/* Nom + méta */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-foreground truncate">{doc.nom}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{doc.meta}</p>
-                </div>
+        {/* Répartition par type */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Par type de fichier</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={typeChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 6, fontSize: 11 }}
+                  formatter={(v) => [`${v}`, 'Documents']}
+                  cursor={{ fill: 'hsl(var(--muted))', opacity: 0.5 }}
+                />
+                <Bar dataKey="Nombre" fill="hsl(var(--secondary-foreground))" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
 
-                {/* Badge catégorie */}
-                <Badge variant="secondary" className="shrink-0 text-[10px] hidden sm:inline-flex">{doc.tag}</Badge>
-
-                {/* Actions */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    className="p-1.5 rounded hover:bg-muted/20 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={`Aperçu de ${doc.nom}`}
-                    onClick={() => setPreviewDoc(doc)}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </button>
-                  <button
-                    className="p-1.5 rounded hover:bg-muted/20 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={`Télécharger ${doc.nom}`}
-                    onClick={() => downloadDoc(doc)}
-                  >
-                    <Download className="h-4 w-4" />
-                  </button>
-                  <button
-                    className="p-1.5 rounded hover:bg-muted/10 text-destructive hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={`Supprimer ${doc.nom}`}
-                    onClick={() => setDocToDelete(doc)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Évolution mensuelle */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Évolution mensuelle</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={evolutionData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 6, fontSize: 11 }}
+                  formatter={(v) => [`${v}`, 'Ajoutés']}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: 'hsl(var(--muted-foreground))' }} />
+                <Line type="monotone" dataKey="Ajoutés" stroke="hsl(var(--primary))" strokeWidth={2}
+                  dot={{ fill: 'hsl(var(--primary))', r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* ── Modal Aperçu ──────────────────────────────────────────────────── */}
-      <Modal open={previewDoc !== null} onOpenChange={o => { if (!o) setPreviewDoc(null); }}>
-        <ModalContent>
-          <ModalHeader>
-            <ModalTitle>Aperçu du document</ModalTitle>
-            <ModalDescription>
-              {previewDoc?.nom ?? ''}
-            </ModalDescription>
-          </ModalHeader>
-          <div className="py-2">
-            <div className="bg-muted/20 rounded-lg p-6 flex flex-col items-center gap-4">
-              <FileText className={`h-16 w-16 ${previewDoc ? extColor(previewDoc.nom) : ''}`} aria-hidden="true" />
-              <div className="text-center">
-                <p className="font-medium text-foreground">{previewDoc?.nom}</p>
-                <p className="text-xs text-muted-foreground mt-1">{previewDoc?.meta}</p>
-                <Badge variant="secondary" className="mt-2 text-[11px]">{previewDoc?.tag}</Badge>
-              </div>
-            </div>
-          </div>
-          <ModalFooter>
-            <ModalClose asChild>
-              <Button variant="outline">Fermer</Button>
-            </ModalClose>
-            <Button variant="default" onClick={() => previewDoc && downloadDoc(previewDoc)}>
-              <Download className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              Télécharger
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      {/* ── DataTable ─────────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Registre des documents</CardTitle>
+          <Button size="sm" className="h-7 text-xs" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+            Ajouter
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={documents}
+            searchKey="titre"
+            searchPlaceholder="Rechercher un document…"
+            filters={tableFilters}
+          />
+        </CardContent>
+      </Card>
 
-      {/* ── Modal Suppression ─────────────────────────────────────────────── */}
-      <Modal open={docToDelete !== null} onOpenChange={o => { if (!o) setDocToDelete(null); }}>
+      {/* ── SlideOver ─────────────────────────────────────────────────────── */}
+      <DocumentSlideOver
+        open={slideOpen}
+        onOpenChange={setSlideOpen}
+        mode={slideMode}
+        document={slideDoc}
+        nextCode={currentNextCode}
+        onSave={handleSave}
+        onDelete={(id) => {
+          const target = documents.find(d => d.id === id);
+          if (target) { setSlideOpen(false); setDeleteTarget(target); }
+        }}
+        onDuplicate={handleDuplicate}
+        onArchive={handleArchive}
+      />
+
+      {/* ── Modal suppression ─────────────────────────────────────────────── */}
+      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <ModalContent>
           <ModalHeader>
-            <ModalTitle>Confirmer la suppression</ModalTitle>
+            <ModalTitle>Supprimer le document</ModalTitle>
             <ModalDescription>
-              Voulez-vous supprimer <strong className="text-foreground">{docToDelete?.nom}</strong> ? Cette action est irréversible.
+              Êtes-vous sûr de vouloir supprimer{' '}
+              <strong>{deleteTarget?.code_document}</strong> —{' '}
+              <em>{deleteTarget?.titre}</em> ? Cette action est irréversible.
             </ModalDescription>
           </ModalHeader>
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDelete}>
-              <Trash2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
               Supprimer
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </div>
+
+    </section>
   );
 }

@@ -1,369 +1,338 @@
-import { useState } from 'react';
-import { ColumnDef } from '@tanstack/react-table';
+import { useCallback, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
-  CheckCircle2, Clock, AlertTriangle, ListChecks,
-  Plus, Eye, Edit, Trash2, X, CalendarDays, User,
+  BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
+import type { ColumnDef } from '@tanstack/react-table';
+import {
+  Package, CheckCircle2, Clock, AlertTriangle, TrendingUp,
+  Download, FileSpreadsheet, Plus, Eye, Pencil, Trash2,
 } from 'lucide-react';
+import type { Livrable, StatutLivrable, PrioriteLivrable } from '@/types';
+import {
+  MOCK_LIVRABLES, STATUT_LIVRABLE_OPTIONS, PRIORITE_LIVRABLE_OPTIONS, LIVRABLE_CATEGORIES,
+} from '@/mocks/deliverablesMocks';
+import { LivrableSlideOver } from '@/components/project/deliverables/LivrableSlideOver';
+import type { LivrableSavePayload } from '@/components/project/deliverables/LivrableSlideOver';
 import { DataTable } from '@/components/ui/data-table/DataTable';
-import { Badge } from '@/components/ui/data-display/Badge';
-import { Button } from '@/components/ui/forms/Button';
-import { Input } from '@/components/ui/forms/Input';
-import { Select } from '@/components/ui/forms/Select';
 import { StatCard } from '@/components/ui/data-display/StatCard';
+import { Badge } from '@/components/ui/data-display/Badge';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
+import { Button } from '@/components/ui/forms/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
-import { cn } from '@/lib/utils';
-import {
-  mockDeliverables,
-  mockDeliverablesKPIs,
-  mockRecentDeliverables,
-  mockUpcomingDeliverablesList,
-  type Deliverable,
-  type DeliverableStatus,
-  type DeliverablePriority,
-} from '@/mocks/deliverablesMocks';
+  Modal, ModalContent, ModalHeader, ModalTitle,
+  ModalDescription, ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
+const STATUT_LABEL: Record<StatutLivrable, string> = {
+  A_FAIRE:  'À faire',
+  EN_COURS: 'En cours',
+  SOUMIS:   'Soumis',
+  VALIDE:   'Validé',
+  REFUSE:   'Refusé',
+  TERMINE:  'Terminé',
+};
+
+const PRIORITE_LABEL: Record<PrioriteLivrable, string> = {
+  FAIBLE:   'Faible',
+  MOYENNE:  'Moyenne',
+  HAUTE:    'Haute',
+  CRITIQUE: 'Critique',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmt(iso?: string): string {
+  if (!iso) return '—';
   try {
-    return new Date(dateStr).toLocaleDateString('fr-FR', {
+    return new Date(iso).toLocaleDateString('fr-FR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
     });
-  } catch {
-    return '—';
-  }
+  } catch { return '—'; }
 }
 
-function formatDateShort(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleDateString('fr-FR', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
+function statutVariant(s: StatutLivrable): 'outline' | 'info' | 'warning' | 'success' | 'destructive' | 'secondary' {
+  if (s === 'VALIDE' || s === 'TERMINE') return 'success';
+  if (s === 'EN_COURS') return 'warning';
+  if (s === 'SOUMIS')   return 'info';
+  if (s === 'REFUSE')   return 'destructive';
+  return 'outline';
 }
 
-function statutVariant(statut: DeliverableStatus): 'success' | 'warning' | 'secondary' | 'destructive' | 'default' {
-  switch (statut) {
-    case 'Validé':       return 'success';
-    case 'En cours':     return 'warning';
-    case 'Non démarré':  return 'secondary';
-    case 'En retard':    return 'destructive';
-    case 'Abandonné':    return 'default';
-  }
+function prioriteVariant(p: PrioriteLivrable): 'destructive' | 'default' | 'warning' | 'secondary' {
+  if (p === 'CRITIQUE') return 'destructive';
+  if (p === 'HAUTE')    return 'default';
+  if (p === 'MOYENNE')  return 'warning';
+  return 'secondary';
 }
 
-function prioriteVariant(priorite: DeliverablePriority): 'destructive' | 'default' | 'warning' | 'secondary' {
-  switch (priorite) {
-    case 'Critique': return 'destructive';
-    case 'Haute':    return 'default';
-    case 'Moyenne':  return 'warning';
-    case 'Faible':   return 'secondary';
-  }
-}
-
-function avancementColor(pct: number): 'success' | 'warning' | 'destructive' | 'primary' {
+function avancementColor(pct: number): 'success' | 'primary' | 'warning' | 'destructive' {
   if (pct === 100) return 'success';
   if (pct >= 60)   return 'primary';
   if (pct >= 20)   return 'warning';
   return 'destructive';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Timeline simplifiée
-// ─────────────────────────────────────────────────────────────────────────────
-
-function DeliverableTimeline({ items }: { items: Deliverable[] }) {
-  return (
-    <ul role="list" className="flex flex-col">
-      {items.map((item, idx) => {
-        const isLast = idx === items.length - 1;
-        const dotColor = item.statut === 'En retard' ? 'bg-destructive' : item.statut === 'En cours' ? 'bg-primary' : 'bg-muted-foreground';
-        return (
-          <li key={item.id} className="flex gap-3">
-            {/* Timeline indicator */}
-            <div className="flex flex-col items-center shrink-0">
-              <div className={cn('h-2.5 w-2.5 rounded-full mt-1.5 shrink-0', dotColor)} aria-hidden="true" />
-              {!isLast && <div className="w-px flex-1 bg-border mt-1" aria-hidden="true" />}
-            </div>
-            {/* Content */}
-            <div className={cn('flex flex-col gap-0.5 pb-4 min-w-0', isLast && 'pb-0')}>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-mono text-[11px] text-muted-foreground shrink-0">
-                  {formatDateShort(item.datePrevue)}
-                </span>
-                <Badge variant={statutVariant(item.statut)} className="text-[10px] shrink-0">{item.statut}</Badge>
-                <Badge variant={prioriteVariant(item.priorite)} className="text-[10px] shrink-0">{item.priorite}</Badge>
-              </div>
-              <p className="text-[13px] font-medium text-foreground leading-snug">{item.nom}</p>
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <User className="h-3 w-3 shrink-0" aria-hidden="true" />
-                {item.responsable}
-              </div>
-              {item.avancement > 0 && item.avancement < 100 && (
-                <div className="mt-1">
-                  <ProgressBar
-                    value={item.avancement}
-                    size="xs"
-                    color={avancementColor(item.avancement)}
-                    showLabel
-                    aria-label={`Avancement ${item.avancement}%`}
-                  />
-                </div>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
+function nextCode(livrables: Livrable[]): string {
+  const max = livrables.reduce((m, l) => {
+    const n = parseInt(l.code_livrable.replace('LIV-', ''), 10);
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  return `LIV-${String(max + 1).padStart(3, '0')}`;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Livrables récents card
-// ─────────────────────────────────────────────────────────────────────────────
-
-function RecentDeliverablesCard({ items }: { items: Deliverable[] }) {
-  return (
-    <ul role="list" className="flex flex-col divide-y divide-border">
-      {items.map((item) => (
-        <li key={item.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-          <div className="h-8 w-8 rounded-full bg-success/10 text-success flex items-center justify-center shrink-0 mt-0.5">
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium text-foreground leading-snug line-clamp-2">{item.nom}</p>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <Badge variant="outline" className="text-[10px]">{item.categorie}</Badge>
-              <span className="text-[11px] text-muted-foreground">
-                {item.dateReelle ? formatDateShort(item.dateReelle) : '—'}
-              </span>
-            </div>
-          </div>
-          <Badge variant="success" className="text-[10px] shrink-0 mt-0.5">Validé</Badge>
-        </li>
-      ))}
-    </ul>
-  );
+function isDone(s: StatutLivrable) {
+  return s === 'VALIDE' || s === 'TERMINE';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SlideOver — Voir / Ajouter / Modifier
-// ─────────────────────────────────────────────────────────────────────────────
-
-type SlideOverMode = 'view' | 'edit' | 'new';
-
-function DeliverableSlideOver({
-  open, onOpenChange, deliverable, mode,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  deliverable: Deliverable | null;
-  mode: SlideOverMode;
-}) {
-  const titles: Record<SlideOverMode, string> = {
-    view: 'Détails du livrable',
-    edit: 'Modifier le livrable',
-    new:  'Nouveau livrable',
-  };
-  const readOnly = mode === 'view';
-
-  return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
-
-        <SlideOverBody>
-          {readOnly && deliverable ? (
-            <div className="flex flex-col gap-5">
-              {/* Header */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-start gap-2 flex-wrap">
-                  <Badge variant={statutVariant(deliverable.statut)} className="text-[11px]">
-                    {deliverable.statut}
-                  </Badge>
-                  <Badge variant={prioriteVariant(deliverable.priorite)} className="text-[11px]">
-                    {deliverable.priorite}
-                  </Badge>
-                  <Badge variant="outline" className="text-[11px]">{deliverable.categorie}</Badge>
-                </div>
-                <h3 className="text-[15px] font-semibold text-foreground leading-snug">{deliverable.nom}</h3>
-                <p className="text-[12px] text-muted-foreground leading-relaxed">{deliverable.description}</p>
-              </div>
-
-              {/* Avancement */}
-              <div className="bg-muted/40 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Avancement</p>
-                  <span className="font-mono text-[14px] font-bold text-foreground">{deliverable.avancement}%</span>
-                </div>
-                <ProgressBar
-                  value={deliverable.avancement}
-                  size="md"
-                  color={avancementColor(deliverable.avancement)}
-                  aria-label={`Avancement ${deliverable.avancement}%`}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border pt-4">
-                <div className="sm:col-span-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Composante</p>
-                  <p className="text-[12px] text-muted-foreground">{deliverable.composante}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Responsable</p>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
-                      {deliverable.initialesResponsable}
-                    </div>
-                    <span className="text-[13px] text-foreground">{deliverable.responsable}</span>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date prévue</p>
-                  <p className="font-mono text-[13px] text-foreground">{formatDate(deliverable.datePrevue)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date réelle</p>
-                  <p className="font-mono text-[13px] text-foreground">{formatDate(deliverable.dateReelle)}</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-nom">Nom du livrable</label>
-                <Input id="del-nom" defaultValue={deliverable?.nom ?? ''} placeholder="Nom du livrable" />
-              </div>
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-desc">Description</label>
-                <Input id="del-desc" defaultValue={deliverable?.description ?? ''} placeholder="Description" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-resp">Responsable</label>
-                <Input id="del-resp" defaultValue={deliverable?.responsable ?? ''} placeholder="Nom du responsable" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-avancement">Avancement (%)</label>
-                <Input id="del-avancement" type="number" min={0} max={100} defaultValue={deliverable?.avancement ?? 0} placeholder="0" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-categorie">Catégorie</label>
-                <Select id="del-categorie" defaultValue={deliverable?.categorie ?? ''}>
-                  <option value="">Sélectionner</option>
-                  <option value="Infrastructure">Infrastructure</option>
-                  <option value="Formation">Formation</option>
-                  <option value="Rapport">Rapport</option>
-                  <option value="Étude">Étude</option>
-                  <option value="Équipement">Équipement</option>
-                  <option value="Système">Système</option>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-priorite">Priorité</label>
-                <Select id="del-priorite" defaultValue={deliverable?.priorite ?? 'Moyenne'}>
-                  <option value="Critique">Critique</option>
-                  <option value="Haute">Haute</option>
-                  <option value="Moyenne">Moyenne</option>
-                  <option value="Faible">Faible</option>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-statut">Statut</label>
-                <Select id="del-statut" defaultValue={deliverable?.statut ?? 'Non démarré'}>
-                  <option value="Non démarré">Non démarré</option>
-                  <option value="En cours">En cours</option>
-                  <option value="Validé">Validé</option>
-                  <option value="En retard">En retard</option>
-                  <option value="Abandonné">Abandonné</option>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-datep">Date prévue</label>
-                <Input id="del-datep" type="date" defaultValue={deliverable?.datePrevue ?? ''} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-dater">Date réelle</label>
-                <Input id="del-dater" type="date" defaultValue={deliverable?.dateReelle ?? ''} />
-              </div>
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="del-composante">Composante</label>
-                <Input id="del-composante" defaultValue={deliverable?.composante ?? ''} placeholder="Composante du projet" />
-              </div>
-            </div>
-          )}
-        </SlideOverBody>
-
-        <SlideOverFooter>
-          <SlideOverClose asChild>
-            <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
-          {!readOnly && (
-            <SlideOverClose asChild>
-              <Button variant="default">{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
-            </SlideOverClose>
-          )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
-  );
+function isInProgress(s: StatutLivrable) {
+  return s === 'EN_COURS' || s === 'SOUMIS';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Column definitions
-// ─────────────────────────────────────────────────────────────────────────────
+function isLate(l: Livrable, today: string): boolean {
+  return l.date_prevue < today && !['VALIDE', 'TERMINE', 'REFUSE'].includes(l.statut);
+}
 
-function buildDeliverableColumns(
-  onView: (d: Deliverable) => void,
-  onEdit: (d: Deliverable) => void,
-  onDelete: (id: string) => void,
-): ColumnDef<Deliverable, any>[] {
-  return [
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function ProjectDeliverablesTab() {
+  const [livrables, setLivrables] = useState<Livrable[]>(MOCK_LIVRABLES);
+  const [slideOpen, setSlideOpen] = useState(false);
+  const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
+  const [slideLivrable, setSlideLivrable] = useState<Livrable | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Livrable | null>(null);
+
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+
+  const kpis = useMemo(() => {
+    const termine = livrables.filter(l => isDone(l.statut)).length;
+    const enCours = livrables.filter(l => isInProgress(l.statut)).length;
+    const enRetard = livrables.filter(l => isLate(l, today)).length;
+    const tauxAchevement = livrables.length > 0
+      ? Math.round((termine / livrables.length) * 100)
+      : 0;
+    return { total: livrables.length, termine, enCours, enRetard, tauxAchevement };
+  }, [livrables, today]);
+
+  const livrablesenRetard = useMemo(
+    () => livrables.filter(l => isLate(l, today)),
+    [livrables, today],
+  );
+
+  // ── Chart data ─────────────────────────────────────────────────────────────
+
+  const statutChartData = useMemo(() =>
+    STATUT_LIVRABLE_OPTIONS.map(o => ({
+      name: o.label,
+      Nombre: livrables.filter(l => l.statut === o.value).length,
+    })).filter(d => d.Nombre > 0),
+  [livrables]);
+
+  const categorieChartData = useMemo(() =>
+    LIVRABLE_CATEGORIES
+      .map(cat => ({ name: cat, Nombre: livrables.filter(l => l.categorie === cat).length }))
+      .filter(d => d.Nombre > 0),
+  [livrables]);
+
+  const evolutionData = useMemo(() => {
+    const months: { label: string; mois: string; Terminés: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const mois = d.toISOString().slice(0, 7);
+      const label = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+      const count = livrables.filter(l =>
+        isDone(l.statut) && l.date_reelle?.startsWith(mois),
+      ).length;
+      months.push({ label, mois, Terminés: count });
+    }
+    return months;
+  }, [livrables]);
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+
+  const responsableOptions = useMemo(() => {
+    const unique = [...new Set(livrables.map(l => l.responsable))].sort();
+    return unique.map(r => ({ label: r, value: r }));
+  }, [livrables]);
+
+  const currentNextCode = useMemo(() => nextCode(livrables), [livrables]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleSave = useCallback((payload: LivrableSavePayload, id?: string) => {
+    const now = new Date().toISOString();
+    if (id) {
+      setLivrables(prev => prev.map(l =>
+        l.id === id ? { ...l, ...payload, updatedAt: now } : l,
+      ));
+    } else {
+      const newLiv: Livrable = {
+        id: `lv-${Date.now()}`,
+        projet_id: 'mock-proj-01',
+        ...payload,
+        createdAt: now,
+        updatedAt: now,
+      };
+      setLivrables(prev => [...prev, newLiv]);
+    }
+  }, []);
+
+  const handleDeleteRequest = useCallback((livrable: Livrable) => {
+    setDeleteTarget(livrable);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteTarget) return;
+    setLivrables(prev => prev.filter(l => l.id !== deleteTarget.id));
+    setDeleteTarget(null);
+  }, [deleteTarget]);
+
+  const openNew = useCallback(() => {
+    setSlideLivrable(null);
+    setSlideMode('new');
+    setSlideOpen(true);
+  }, []);
+
+  const openView = useCallback((l: Livrable) => {
+    setSlideLivrable(l);
+    setSlideMode('view');
+    setSlideOpen(true);
+  }, []);
+
+  const openEdit = useCallback((l: Livrable) => {
+    setSlideLivrable(l);
+    setSlideMode('edit');
+    setSlideOpen(true);
+  }, []);
+
+  // ── Exports ────────────────────────────────────────────────────────────────
+
+  const exportCSV = useCallback(() => {
+    const bom = '﻿';
+    const headers = ['Code', 'Nom', 'Catégorie', 'Composante', 'Responsable',
+      'Date prévue', 'Date réelle', 'Avancement (%)', 'Statut', 'Priorité'];
+    const rows = livrables.map(l => [
+      l.code_livrable, l.nom, l.categorie, l.composante ?? '', l.responsable,
+      l.date_prevue, l.date_reelle ?? '', String(l.avancement),
+      STATUT_LABEL[l.statut], PRIORITE_LABEL[l.priorite],
+    ]);
+    const csv = bom + [headers, ...rows]
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'livrables.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }, [livrables]);
+
+  const exportXLSX = useCallback(() => {
+    const headers = ['Code', 'Nom', 'Catégorie', 'Composante', 'Responsable',
+      'Date prévue', 'Date réelle', 'Avancement (%)', 'Statut', 'Priorité'];
+    const rows = livrables.map(l => [
+      l.code_livrable, l.nom, l.categorie, l.composante ?? '', l.responsable,
+      l.date_prevue, l.date_reelle ?? '', l.avancement,
+      STATUT_LABEL[l.statut], PRIORITE_LABEL[l.priorite],
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Livrables');
+    XLSX.writeFile(wb, 'livrables.xlsx');
+  }, [livrables]);
+
+  // ── Column definitions ─────────────────────────────────────────────────────
+
+  const columns = useMemo<ColumnDef<Livrable, unknown>[]>(() => [
     {
-      id: 'nom',
+      accessorKey: 'code_livrable',
+      header: 'Code',
+      meta: { isSticky: true } as Record<string, unknown>,
+      cell: ({ getValue }) => (
+        <span className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+          {getValue() as string}
+        </span>
+      ),
+    },
+    {
       accessorKey: 'nom',
       header: 'Livrable',
-      meta: { isSticky: true } as any,
       cell: ({ row }) => {
-        const { nom, composante, categorie } = row.original;
+        const { nom, composante } = row.original;
         return (
           <div className="flex flex-col gap-0.5 min-w-[200px] max-w-[300px]">
-            <span className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2" title={nom}>{nom}</span>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Badge variant="outline" className="text-[10px]">{categorie}</Badge>
+            <span className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2" title={nom}>
+              {nom}
+            </span>
+            {composante && (
               <span className="text-[10px] text-muted-foreground truncate">{composante}</span>
-            </div>
+            )}
           </div>
         );
       },
     },
     {
+      accessorKey: 'categorie',
+      header: 'Catégorie',
+      cell: ({ getValue }) => (
+        <Badge variant="outline" className="text-[10px] whitespace-nowrap">
+          {getValue() as string}
+        </Badge>
+      ),
+    },
+    {
       accessorKey: 'responsable',
       header: 'Responsable',
-      cell: ({ row }) => {
-        const { initialesResponsable, responsable } = row.original;
+      cell: ({ getValue }) => {
+        const name = getValue() as string;
+        const initials = name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
         return (
           <div className="flex items-center gap-2">
             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
-              {initialesResponsable}
+              {initials}
             </div>
-            <span className="text-[12px] text-foreground truncate">{responsable}</span>
+            <span className="text-[12px] text-foreground truncate max-w-[120px]">{name}</span>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'date_prevue',
+      header: 'Date prévue',
+      meta: { align: 'center' } as Record<string, unknown>,
+      cell: ({ row }) => {
+        const late = isLate(row.original, today);
+        return (
+          <span className={`font-mono text-[11px] ${late ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+            {fmt(row.original.date_prevue)}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: 'date_reelle',
+      header: 'Date réelle',
+      meta: { align: 'center' } as Record<string, unknown>,
+      cell: ({ getValue }) => (
+        <span className="font-mono text-[11px] text-muted-foreground">{fmt(getValue() as string | undefined)}</span>
+      ),
+    },
+    {
+      accessorKey: 'avancement',
+      header: 'Avancement',
+      cell: ({ getValue }) => {
+        const pct = getValue() as number;
+        return (
+          <div className="flex flex-col gap-1 min-w-[80px]">
+            <span className="font-mono text-[11px] font-semibold text-foreground">{pct}%</span>
+            <ProgressBar value={pct} size="xs" color={avancementColor(pct)} />
           </div>
         );
       },
@@ -372,237 +341,332 @@ function buildDeliverableColumns(
       accessorKey: 'statut',
       header: 'Statut',
       cell: ({ getValue }) => {
-        const s = getValue() as DeliverableStatus;
-        return <Badge variant={statutVariant(s)} className="text-[11px] w-max">{s}</Badge>;
+        const s = getValue() as StatutLivrable;
+        return (
+          <Badge variant={statutVariant(s)} className="text-[10px] whitespace-nowrap">
+            {STATUT_LABEL[s]}
+          </Badge>
+        );
       },
     },
     {
       accessorKey: 'priorite',
       header: 'Priorité',
       cell: ({ getValue }) => {
-        const p = getValue() as DeliverablePriority;
-        return <Badge variant={prioriteVariant(p)} className="text-[11px] w-max">{p}</Badge>;
-      },
-    },
-    {
-      accessorKey: 'avancement',
-      header: 'Avancement',
-      cell: ({ getValue }) => {
-        const pct = getValue() as number;
+        const p = getValue() as PrioriteLivrable;
         return (
-          <div className="flex flex-col gap-1 min-w-[90px]">
-            <span className="font-mono text-[11px] font-semibold text-foreground">{pct}%</span>
-            <ProgressBar value={pct} size="xs" color={avancementColor(pct)} aria-label={`Avancement ${pct}%`} />
-          </div>
+          <Badge variant={prioriteVariant(p)} className="text-[10px] whitespace-nowrap">
+            {PRIORITE_LABEL[p]}
+          </Badge>
         );
       },
     },
     {
-      accessorKey: 'datePrevue',
-      header: 'Date prévue',
-      meta: { align: 'center' } as any,
-      cell: ({ getValue }) => (
-        <div className="flex items-center gap-1 text-[12px] text-muted-foreground">
-          <CalendarDays className="h-3 w-3 shrink-0" aria-hidden="true" />
-          {formatDate(getValue() as string)}
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'dateReelle',
-      header: 'Date réelle',
-      meta: { align: 'center' } as any,
-      cell: ({ getValue }) => (
-        <span className="font-mono text-[12px] text-muted-foreground">{formatDate(getValue() as string | null)}</span>
-      ),
-    },
-    {
       id: 'actions',
       enableHiding: false,
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ row }) => (
         <div className="flex items-center gap-1 justify-end">
-          <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}>
+          <Button variant="ghost" size="sm" aria-label="Voir" onClick={() => openView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
-            <Edit className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
+            <Pencil className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(row.original.id)}
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => handleDeleteRequest(row.original)}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       ),
     },
-  ];
-}
+  ], [today, openView, openEdit, handleDeleteRequest]);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main export
-// ─────────────────────────────────────────────────────────────────────────────
+  // ── Filters config ─────────────────────────────────────────────────────────
 
-export default function ProjectDeliverablesTab() {
-  const [deliverables, setDeliverables] = useState<Deliverable[]>(mockDeliverables);
-  const [slideOverOpen, setSlideOverOpen] = useState(false);
-  const [slideOverMode, setSlideOverMode] = useState<SlideOverMode>('new');
-  const [selectedDeliverable, setSelectedDeliverable] = useState<Deliverable | null>(null);
+  const filters = useMemo(() => [
+    {
+      id: 'statut',
+      title: 'Statut',
+      options: STATUT_LIVRABLE_OPTIONS.map(o => ({ label: o.label, value: o.value })),
+    },
+    {
+      id: 'responsable',
+      title: 'Responsable',
+      options: responsableOptions,
+    },
+    {
+      id: 'categorie',
+      title: 'Catégorie',
+      options: LIVRABLE_CATEGORIES.map(c => ({ label: c, value: c })),
+    },
+    {
+      id: 'priorite',
+      title: 'Priorité',
+      options: PRIORITE_LIVRABLE_OPTIONS.map(o => ({ label: o.label, value: o.value })),
+    },
+  ], [responsableOptions]);
 
-  const columns = buildDeliverableColumns(
-    (d) => { setSelectedDeliverable(d); setSlideOverMode('view'); setSlideOverOpen(true); },
-    (d) => { setSelectedDeliverable(d); setSlideOverMode('edit'); setSlideOverOpen(true); },
-    (id) => setDeliverables((prev) => prev.filter((d) => d.id !== id)),
-  );
+  // ── JSX ────────────────────────────────────────────────────────────────────
 
   return (
     <section aria-label="Registre des Livrables" className="flex flex-col gap-6">
 
-      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      {/* ── En-tête ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
         <div>
           <h1 className="text-base font-bold text-foreground">Registre des Livrables</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Suivi de la production, validation et livraison des livrables projet</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Suivi de la production, validation et livraison des livrables du projet
+          </p>
         </div>
-        <Button
-          variant="default" size="sm" className="h-8 text-xs"
-          onClick={() => { setSelectedDeliverable(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-          Nouveau livrable
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportCSV}>
+            <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            CSV
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportXLSX}>
+            <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Excel
+          </Button>
+          <Button size="sm" className="h-8 text-xs" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Nouveau livrable
+          </Button>
+        </div>
       </div>
 
-      {/* KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── Alerte livrables en retard ────────────────────────────────────── */}
+      {livrablesenRetard.length > 0 && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-semibold text-destructive">
+              {livrablesenRetard.length} livrable{livrablesenRetard.length > 1 ? 's' : ''} en retard
+            </p>
+            <p className="text-xs text-destructive/80 mt-0.5">
+              {livrablesenRetard.map(l => l.code_livrable).join(', ')} — Date(s) prévue(s) dépassée(s)
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── KPIs ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
-          title="Total Livrables"
-          value={mockDeliverablesKPIs.total}
-          icon={<ListChecks className="h-4 w-4 text-primary" aria-hidden="true" />}
+          title="Total livrables"
+          value={kpis.total}
+          icon={<Package className="h-4 w-4" aria-hidden="true" />}
           iconVariant="primary"
-          description={`Taux global ${mockDeliverablesKPIs.tauxAvancement}%`}
+          description="Dans le registre"
         />
         <StatCard
-          title="Validés"
-          value={mockDeliverablesKPIs.valides}
-          icon={<CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />}
+          title="Terminés"
+          value={kpis.termine}
+          icon={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
           iconVariant="success"
-          description="Complétés et approuvés"
+          description="Validés ou terminés"
         />
         <StatCard
-          title="En Cours"
-          value={mockDeliverablesKPIs.enCours}
-          icon={<Clock className="h-4 w-4 text-warning" aria-hidden="true" />}
+          title="En cours"
+          value={kpis.enCours}
+          icon={<Clock className="h-4 w-4" aria-hidden="true" />}
           iconVariant="warning"
-          description="En développement actif"
+          description="En cours ou soumis"
         />
         <StatCard
-          title="En Retard"
-          value={mockDeliverablesKPIs.enRetard}
-          icon={<AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />}
+          title="En retard"
+          value={kpis.enRetard}
+          icon={<AlertTriangle className="h-4 w-4" aria-hidden="true" />}
           iconVariant="destructive"
-          description="Dépassement de l'échéance"
+          description="Échéance dépassée"
+        />
+        <StatCard
+          title="Taux d'achèvement"
+          value={`${kpis.tauxAchevement}%`}
+          icon={<TrendingUp className="h-4 w-4" aria-hidden="true" />}
+          iconVariant="info"
+          description="Livrables terminés / total"
         />
       </div>
 
-      {/* Timeline + Livrables récents */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ── Graphiques ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Timeline simplifiée */}
+        {/* Répartition par statut */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Prochains livrables</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Répartition par statut</CardTitle>
           </CardHeader>
           <CardContent>
-            {mockUpcomingDeliverablesList.length > 0 ? (
-              <DeliverableTimeline items={mockUpcomingDeliverablesList} />
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">Aucun livrable à venir.</p>
-            )}
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={statutChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+                  axisLine={false} tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+                  axisLine={false} tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'hsl(var(--popover))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 6,
+                    fontSize: 11,
+                  }}
+                  formatter={(v) => [`${v}`, 'Livrables']}
+                  cursor={{ fill: 'hsl(var(--muted))', opacity: 0.5 }}
+                />
+                <Bar dataKey="Nombre" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Livrables récemment validés */}
+        {/* Répartition par catégorie */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Livrables récemment validés</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Répartition par catégorie</CardTitle>
           </CardHeader>
           <CardContent>
-            {mockRecentDeliverables.length > 0 ? (
-              <RecentDeliverablesCard items={mockRecentDeliverables} />
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">Aucun livrable validé.</p>
-            )}
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={categorieChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 9 }}
+                  axisLine={false} tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+                  axisLine={false} tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'hsl(var(--popover))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 6,
+                    fontSize: 11,
+                  }}
+                  formatter={(v) => [`${v}`, 'Livrables']}
+                  cursor={{ fill: 'hsl(var(--muted))', opacity: 0.5 }}
+                />
+                <Bar dataKey="Nombre" fill="hsl(var(--secondary-foreground))" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Évolution mensuelle des terminés */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Évolution mensuelle des terminés</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={evolutionData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+                  axisLine={false} tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+                  axisLine={false} tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'hsl(var(--popover))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 6,
+                    fontSize: 11,
+                  }}
+                  formatter={(v) => [`${v}`, 'Terminés']}
+                />
+                <Legend
+                  wrapperStyle={{ fontSize: 11, color: 'hsl(var(--muted-foreground))' }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Terminés"
+                  stroke="hsl(var(--success))"
+                  strokeWidth={2}
+                  dot={{ fill: 'hsl(var(--success))', r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      {/* DataTable */}
+      {/* ── DataTable ─────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Registre complet des livrables</CardTitle>
-          <Button
-            variant="default" size="sm" aria-label="Ajouter un livrable"
-            onClick={() => { setSelectedDeliverable(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-          >
-            <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+          <CardTitle className="text-base">Registre complet</CardTitle>
+          <Button size="sm" className="h-7 text-xs" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
             Ajouter
           </Button>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
             columns={columns}
-            data={deliverables}
+            data={livrables}
             searchKey="nom"
-            searchPlaceholder="Rechercher un livrable..."
-            filters={[
-              {
-                id: 'statut',
-                title: 'Statut',
-                options: [
-                  { label: 'Validé', value: 'Validé' },
-                  { label: 'En cours', value: 'En cours' },
-                  { label: 'Non démarré', value: 'Non démarré' },
-                  { label: 'En retard', value: 'En retard' },
-                  { label: 'Abandonné', value: 'Abandonné' },
-                ],
-              },
-              {
-                id: 'priorite',
-                title: 'Priorité',
-                options: [
-                  { label: 'Critique', value: 'Critique' },
-                  { label: 'Haute', value: 'Haute' },
-                  { label: 'Moyenne', value: 'Moyenne' },
-                  { label: 'Faible', value: 'Faible' },
-                ],
-              },
-              {
-                id: 'categorie',
-                title: 'Catégorie',
-                options: [
-                  { label: 'Infrastructure', value: 'Infrastructure' },
-                  { label: 'Formation', value: 'Formation' },
-                  { label: 'Rapport', value: 'Rapport' },
-                  { label: 'Étude', value: 'Étude' },
-                  { label: 'Équipement', value: 'Équipement' },
-                  { label: 'Système', value: 'Système' },
-                ],
-              },
-            ]}
+            searchPlaceholder="Rechercher un livrable…"
+            filters={filters}
           />
         </CardContent>
       </Card>
 
-      {/* SlideOver */}
-      <DeliverableSlideOver
-        open={slideOverOpen}
-        onOpenChange={setSlideOverOpen}
-        deliverable={selectedDeliverable}
-        mode={slideOverMode}
+      {/* ── SlideOver ─────────────────────────────────────────────────────── */}
+      <LivrableSlideOver
+        open={slideOpen}
+        onOpenChange={setSlideOpen}
+        mode={slideMode}
+        livrable={slideLivrable}
+        nextCode={currentNextCode}
+        onSave={handleSave}
+        onDelete={(id) => {
+          const target = livrables.find(l => l.id === id);
+          if (target) { setSlideOpen(false); setDeleteTarget(target); }
+        }}
       />
+
+      {/* ── Modal de confirmation de suppression ──────────────────────────── */}
+      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Supprimer le livrable</ModalTitle>
+            <ModalDescription>
+              Êtes-vous sûr de vouloir supprimer{' '}
+              <strong>{deleteTarget?.code_livrable}</strong> —{' '}
+              <em>{deleteTarget?.nom}</em> ? Cette action est irréversible.
+            </ModalDescription>
+          </ModalHeader>
+          <ModalFooter>
+            <ModalClose asChild>
+              <Button variant="outline">Annuler</Button>
+            </ModalClose>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Supprimer
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
     </section>
   );
 }

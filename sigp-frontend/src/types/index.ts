@@ -252,3 +252,232 @@ export interface EvmPeriode {
   pctComplete: number;
   commentaire: string;
 }
+
+// ─── Livrables ────────────────────────────────────────────────────────────────
+
+export type LivrableCategorie =
+  | 'Rapport' | 'Document' | 'Logiciel' | 'Formation'
+  | 'Infrastructure' | 'Étude' | 'Manuel' | 'Audit' | 'Réception' | 'Autre';
+
+export type StatutLivrable = 'A_FAIRE' | 'EN_COURS' | 'SOUMIS' | 'VALIDE' | 'REFUSE' | 'TERMINE';
+
+export type PrioriteLivrable = 'FAIBLE' | 'MOYENNE' | 'HAUTE' | 'CRITIQUE';
+
+export interface Livrable {
+  id: string;
+  projet_id: string;
+  code_livrable: string;
+  nom: string;
+  description?: string;
+  categorie: LivrableCategorie;
+  composante?: string;        // Composante projet (ex. "Composante A")
+  responsable: string;
+  date_prevue: string;        // ISO date
+  date_reelle?: string;       // ISO date — renseignée à la livraison
+  avancement: number;         // 0–100
+  statut: StatutLivrable;
+  priorite: PrioriteLivrable;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Documents ────────────────────────────────────────────────────────────────
+
+export type DocumentCategorie =
+  | 'Contrat' | 'Rapport' | 'TDR' | "Dossier d'AO" | 'Compte-rendu'
+  | 'Étude' | 'Audit' | 'Plan' | 'Procédure' | 'Autre';
+
+export type TypeFichier = 'PDF' | 'Word' | 'Excel' | 'Image' | 'ZIP' | 'Autre';
+
+export type StatutDocument = 'BROUILLON' | 'EN_VALIDATION' | 'VALIDE' | 'ARCHIVE';
+
+export type ConfidentialiteDocument = 'PUBLIQUE' | 'INTERNE' | 'CONFIDENTIELLE';
+
+export interface DocumentProjet {
+  id: string;
+  projet_id: string;
+  code_document: string;
+  titre: string;
+  description?: string;
+  categorie: DocumentCategorie;
+  activite_liee?: string;
+  version: string;
+  auteur: string;
+  responsable: string;
+  date_creation: string;       // ISO date YYYY-MM-DD
+  date_modification: string;   // ISO date YYYY-MM-DD (auto mis à jour à chaque save)
+  statut: StatutDocument;
+  taille_ko: number;           // taille en Ko
+  type_fichier: TypeFichier;
+  mots_cles: string[];
+  confidentialite: ConfidentialiteDocument;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Rapports ─────────────────────────────────────────────────────────────────
+
+export type TypeRapport =
+  | 'MENSUEL' | 'TRIMESTRIEL' | 'ANNUEL'
+  | 'FINANCIER' | 'EVM' | 'RISQUES' | 'PTBA'
+  | 'BAILLEUR' | 'AVANCEMENT' | 'FINAL';
+
+export type StatutRapport = 'GENERE' | 'EN_ATTENTE' | 'VALIDE' | 'ARCHIVE';
+
+export type FormatRapport = 'PDF' | 'Excel' | 'Word';
+
+export interface RapportProjet {
+  id: string;
+  projet_id: string;
+  code_rapport: string;
+  titre: string;
+  description?: string;
+  type: TypeRapport;
+  format: FormatRapport;
+  statut: StatutRapport;
+  periode: string;               // "T1 2026", "Janvier 2026", "Annuel 2025"
+  date_generation: string;       // ISO date YYYY-MM-DD
+  date_telechargement?: string;  // ISO date — dernier téléchargement
+  version: string;
+  auteur: string;
+  taille_ko: number;
+  nb_telechargements: number;
+  commentaires?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Historique (Audit Trail) ─────────────────────────────────────────────────
+
+export type TypeActionHistorique =
+  | 'CREATION' | 'MODIFICATION' | 'SUPPRESSION' | 'VALIDATION' | 'REJET'
+  | 'CONNEXION' | 'DECONNEXION' | 'TELECHARGEMENT' | 'IMPORT' | 'EXPORT'
+  | 'ARCHIVAGE' | 'RESTAURATION';
+
+export type NiveauHistorique = 'INFO' | 'AVERTISSEMENT' | 'CRITIQUE';
+
+export type ModuleHistorique =
+  | 'Projet' | 'PTBA' | 'Activités' | 'Budget' | 'Sources'
+  | 'PPM' | 'Contrats' | 'Décaissements' | 'EVM' | 'Risques'
+  | 'Livrables' | 'Documents' | 'Rapports' | 'Paramètres';
+
+export interface HistoriqueProjet {
+  id: string;
+  projet_id: string;
+  date: string;           // YYYY-MM-DD
+  heure: string;          // HH:MM:SS
+  utilisateur: string;
+  role: string;
+  module: ModuleHistorique;
+  element: string;        // "Risque R-007", "Contrat CTR-002", …
+  action: TypeActionHistorique;
+  description: string;
+  niveau: NiveauHistorique;
+  ip: string;             // IP simulée
+  navigateur: string;     // UA simulé
+  createdAt: string;      // ISO datetime
+}
+
+// ─── Documents globaux (bibliothèque centrale) ────────────────────────────────
+
+export type CategorieGlobalDoc =
+  | 'Administration' | 'Procédures' | 'Politiques' | 'Guides'
+  | 'Manuels' | 'Modèles' | 'Contrats modèles' | 'Références'
+  | 'Documentation technique' | 'Documentation fonctionnelle' | 'Archives';
+
+export type StatutGlobalDoc = 'PUBLIE' | 'BROUILLON' | 'EN_VALIDATION' | 'ARCHIVE' | 'EXPIRE';
+
+export type ConfidentialiteGlobalDoc = 'PUBLIQUE' | 'INTERNE' | 'CONFIDENTIELLE' | 'RESTREINTE';
+
+export interface VersionGlobalDoc {
+  version: string;
+  date: string;
+  auteur: string;
+  changements: string;
+}
+
+export interface DocumentGlobal {
+  id: string;
+  code_document: string;
+  titre: string;
+  description: string;
+  categorie: CategorieGlobalDoc;
+  type: TypeFichier;
+  statut: StatutGlobalDoc;
+  version: string;
+  confidentialite: ConfidentialiteGlobalDoc;
+  auteur: string;
+  service: string;
+  mots_cles: string[];
+  taille_ko: number;
+  nb_telechargements: number;
+  date_creation: string;
+  date_modification: string;
+  date_expiration?: string;
+  nb_commentaires: number;
+  versions: VersionGlobalDoc[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Paramètres ───────────────────────────────────────────────────────────────
+
+export type CategorieParametre =
+  | 'Général' | 'Organisation' | 'Notifications' | 'Validation'
+  | 'Sécurité' | 'Affichage' | 'Archivage';
+
+export type StatutParametre = 'ACTIF' | 'INACTIF' | 'EN_ATTENTE' | 'OBSOLETE';
+
+export interface ConfigurationProjet {
+  id: string;
+  projet_id: string;
+  code_param: string;
+  categorie: CategorieParametre;
+  nom: string;
+  description: string;
+  valeur: string;
+  valeur_defaut: string;
+  type_valeur: 'TEXTE' | 'NOMBRE' | 'BOOLEEN' | 'DATE' | 'LISTE' | 'JSON';
+  requis: boolean;
+  modifiable: boolean;
+  statut: StatutParametre;
+  date_modification: string;
+  modifie_par: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Commentaires ─────────────────────────────────────────────────────────────
+
+export type TypeCommentaire =
+  | 'QUESTION' | 'OBSERVATION' | 'SUGGESTION' | 'ALERTE'
+  | 'DECISION' | 'ACTION' | 'INFORMATION';
+
+export type StatutCommentaire = 'OUVERT' | 'EN_COURS' | 'RESOLU' | 'FERME' | 'EN_ATTENTE';
+
+export type PrioriteCommentaire = 'FAIBLE' | 'NORMALE' | 'HAUTE' | 'URGENTE';
+
+export type ModuleCommentaire =
+  | 'Projet' | 'PTBA' | 'Activité' | 'Budget' | 'Source de financement'
+  | 'Contrat' | 'Décaissement' | 'Risque' | 'Livrable' | 'Document' | 'Rapport';
+
+export interface CommentaireProjet {
+  id: string;
+  projet_id: string;
+  module: ModuleCommentaire;
+  element_id: string;
+  element_nom: string;
+  auteur: string;
+  role: string;
+  message: string;
+  date_creation: string;       // YYYY-MM-DD
+  date_modification: string;   // YYYY-MM-DD
+  statut: StatutCommentaire;
+  priorite: PrioriteCommentaire;
+  parent_id?: string | null;
+  piece_jointe?: string | null;
+  mention?: string | null;
+  lu: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

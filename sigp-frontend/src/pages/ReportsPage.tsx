@@ -69,6 +69,7 @@ function generatedStatusVariant(s: GeneratedStatus): 'success' | 'destructive' |
     case 'Succès':    return 'success';
     case 'Erreur':    return 'destructive';
     case 'En cours':  return 'default';
+    default:          return 'default';
   }
 }
 
