@@ -401,7 +401,7 @@ export default function PTBAPage() {
 
           {/* ── TABS ──────────────────────────────────────────────────────── */}
           <Tabs defaultValue="matrix" className="flex flex-col flex-1 min-h-0 p-4 gap-0">
-            <TabsList className="shrink-0 self-start mb-3 h-auto gap-0.5">
+            <TabsList className="shrink-0 self-start mb-3 h-auto gap-0.5 max-w-full overflow-x-auto flex-nowrap justify-start scrollbar-thin">
               <TabsTrigger value="matrix" className="flex items-center gap-1.5 text-xs sm:text-sm">
                 <LayoutGrid className="h-3.5 w-3.5" />
                 Matrice Financière
