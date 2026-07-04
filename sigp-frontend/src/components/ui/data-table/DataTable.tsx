@@ -75,16 +75,16 @@ export function DataTable<TData, TValue>({
                           align === 'right' && 'text-right',
                           align === 'center' && 'text-center',
                           isStickyLeft && [
-                            'sticky left-0 z-[6]',
+                            'md:sticky md:left-0 md:z-[6]',
                             'bg-muted/95 backdrop-blur-sm',
                             'border-r border-border',
-                            'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]',
+                            'md:shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]',
                           ],
                           isStickyRight && [
-                            'sticky right-0 z-[6]',
+                            'md:sticky md:right-0 md:z-[6]',
                             'bg-muted/95 backdrop-blur-sm',
                             'border-l border-border',
-                            'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]',
+                            'md:shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]',
                           ]
                         )}
                         aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'}
@@ -129,16 +129,16 @@ export function DataTable<TData, TValue>({
                             align === 'right' && 'text-right',
                             align === 'center' && 'text-center',
                             isStickyLeft && [
-                              'sticky left-0 z-[5]',
+                              'md:sticky md:left-0 md:z-[5]',
                               'bg-background group-hover:bg-muted',
                               'border-r border-border',
-                              'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
+                              'md:shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
                             ],
                             isStickyRight && [
-                              'sticky right-0 z-[5]',
+                              'md:sticky md:right-0 md:z-[5]',
                               'bg-background group-hover:bg-muted',
                               'border-l border-border',
-                              'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]',
+                              'md:shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]',
                             ]
                           )}
                         >

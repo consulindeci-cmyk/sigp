@@ -21,7 +21,7 @@ export const BudgetMatrixRow = memo(({
     <tr className="hover:bg-muted/30 transition-colors group">
 
       {/* Sticky first column — WBS */}
-      <td className="px-4 py-2.5 sticky left-0 z-[1] bg-card border-r border-border font-semibold text-foreground whitespace-nowrap">
+      <td className="px-4 py-2.5 md:sticky md:left-0 z-[1] bg-card border-r border-border font-semibold text-foreground whitespace-nowrap">
         <div className="flex flex-col gap-0.5">
           <span>{ligne.wbs_nom || ligne.wbs_id}</span>
           <span className="text-[10px] text-muted-foreground/80">Réf: {ligne.wbs_id}</span>

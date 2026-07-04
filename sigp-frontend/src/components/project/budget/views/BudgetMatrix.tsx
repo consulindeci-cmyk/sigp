@@ -644,7 +644,7 @@ export function BudgetMatrix({
 
           <thead className="sticky top-0 z-10">
             <tr className="bg-primary text-primary-foreground">
-              <th colSpan={4} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 sticky left-0 z-[12] bg-primary">
+              <th colSpan={4} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 md:sticky md:left-0 z-[12] bg-primary">
                 Dimensions Analytiques
               </th>
               <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Budget</th>
@@ -655,7 +655,7 @@ export function BudgetMatrix({
             </tr>
             <tr className="bg-primary/80 text-primary-foreground">
               {[
-                ['Composante (WBS)', 'sticky left-0 z-[12] bg-primary/80 border-r'],
+                ['Composante (WBS)', 'md:sticky md:left-0 z-[12] bg-primary/80 border-r'],
                 ['Bailleur'], ['Catégorie'],
                 ['Compte (PCG)', 'border-r-2'],
                 ['Initial', 'text-right'], ['Révisé', 'text-right border-r-2'],
@@ -698,7 +698,7 @@ export function BudgetMatrix({
           {filteredLignes.length > 0 && (
             <tfoot>
               <tr className="bg-primary/5 border-t-2 border-primary/30 font-bold">
-                <td colSpan={4} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide sticky left-0 z-[1] bg-muted/30 border-r border-border">
+                <td colSpan={4} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide md:sticky md:left-0 z-[1] bg-muted/30 border-r border-border">
                   TOTAL ({filteredLignes.length} ligne{filteredLignes.length > 1 ? 's' : ''})
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">{formatMoney(totals.montant_initial)}</td>

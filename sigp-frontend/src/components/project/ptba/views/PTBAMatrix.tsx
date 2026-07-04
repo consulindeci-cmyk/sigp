@@ -113,7 +113,7 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
     <tr role="row" className="border-b border-border hover:bg-muted/20 transition-colors">
 
       {/* Sticky first column */}
-      <td className="sticky left-0 z-[1] bg-card border-r border-border px-3 py-1.5">
+      <td className="md:sticky md:left-0 z-[1] bg-card border-r border-border px-3 py-1.5">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm">
             <Activity className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -222,7 +222,7 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
       <table className="border-collapse w-full text-xs" role="table">
         <thead className="sticky top-0 z-10 bg-card shadow-sm">
           <tr>
-            <th className="sticky left-0 z-[11] bg-card min-w-[250px] border-r border-border px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
+            <th className="md:sticky md:left-0 z-[11] bg-card min-w-[250px] border-r border-border px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
               Activité &amp; Description
             </th>
             <th className="min-w-[100px] px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
