@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  useNotifications,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+  type NotificationDto,
+  type TypeNotification,
+} from '@/hooks/useNotifications';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import {
@@ -11,8 +18,9 @@ import {
 import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { cn } from '@/lib/utils';
-import { mockProjects } from '@/mocks/projectsMocks';
-import { mockUserProfile } from '@/mocks/settingsMocks';
+import { useCurrentUserProfile } from '@/hooks/useUserProfile';
+import { useProjects } from '@/hooks/useProjects';
+import type { ProjectApiDto } from '@/lib/projectAdapter';
 import { userAvatarStyle } from '@/components/users/userAvatarStyle';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,14 +46,6 @@ interface SearchResult {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const INITIAL_NOTIFS: NotifItem[] = [
-  { id: 'n1', title: 'Alerte budgétaire',  desc: 'PROJ-001 — seuil à 85% atteint',          time: 'Il y a 5 min', read: false, variant: 'destructive' },
-  { id: 'n2', title: 'Rapport approuvé',   desc: 'Rapport mensuel juin 2026 validé',         time: 'Il y a 1h',    read: false, variant: 'success'     },
-  { id: 'n3', title: 'Validation requise', desc: 'Contrat PDES-BM-2024 en attente de vous',  time: 'Il y a 2h',    read: false, variant: 'warning'     },
-  { id: 'n4', title: "Échéance proche",    desc: 'Livrable L-042 dans 48h',                  time: 'Il y a 3h',    read: true,  variant: 'warning'     },
-  { id: 'n5', title: 'Nouvelle mention',   desc: 'Ibrahim S. vous a mentionné',              time: 'Hier',         read: true,  variant: 'info'        },
-];
 
 const PAGE_NAV: Omit<SearchResult, 'id' | 'type'>[] = [
   { title: 'Tableau de bord', subtitle: "Vue d'ensemble et KPIs", route: '/dashboard', icon: LayoutDashboard },
@@ -100,6 +100,8 @@ function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const [query, setQuery]     = useState('');
   const inputRef              = useRef<HTMLInputElement>(null);
   const navigate              = useNavigate();
+  const { data: projectsData } = useProjects();
+  const projectList: ProjectApiDto[] = projectsData?.data ?? [];
 
   useEffect(() => {
     if (open) {
@@ -120,19 +122,18 @@ function GlobalSearch({ open, onClose }: GlobalSearchProps) {
     const q = query.trim().toLowerCase();
     if (!q) return [];
 
-    const projetResults: SearchResult[] = mockProjects
-      .filter(p =>
-        p.name.toLowerCase().includes(q) ||
+    const projetResults: SearchResult[] = projectList
+      .filter((p: ProjectApiDto) =>
+        p.nom.toLowerCase().includes(q) ||
         p.code.toLowerCase().includes(q) ||
-        p.donor.toLowerCase().includes(q) ||
-        p.country.toLowerCase().includes(q),
+        (p.bailleurPrincipal ?? '').toLowerCase().includes(q),
       )
       .slice(0, 6)
-      .map(p => ({
+      .map((p: ProjectApiDto) => ({
         id:       `proj-${p.id}`,
-        type:     'projet',
-        title:    p.name,
-        subtitle: `${p.code} · ${p.donor} · ${p.country}`,
+        type:     'projet' as const,
+        title:    p.nom,
+        subtitle: `${p.code} · ${p.bailleurPrincipal ?? ''}`,
         route:    `/projects/${p.id}`,
         icon:     FolderOpen,
       }));
@@ -145,7 +146,7 @@ function GlobalSearch({ open, onClose }: GlobalSearchProps) {
       .map((pg, i) => ({ ...pg, id: `page-${i}`, type: 'page' as const }));
 
     return [...projetResults, ...pageResults];
-  }, [query]);
+  }, [query, projectList]);
 
   function go(route: string) {
     navigate(route);
@@ -406,9 +407,10 @@ interface UserMenuPanelProps {
 }
 
 function UserMenuPanel({ onClose }: UserMenuPanelProps) {
-  const navigate = useNavigate();
-  const { logout } = useAuthStore();
-  const avatarStyle = userAvatarStyle(mockUserProfile.initiales);
+  const navigate    = useNavigate();
+  const { logout }  = useAuthStore();
+  const profile     = useCurrentUserProfile();
+  const avatarStyle = userAvatarStyle(profile.initiales);
 
   async function handleLogout() {
     onClose();
@@ -430,13 +432,13 @@ function UserMenuPanel({ onClose }: UserMenuPanelProps) {
       {/* User header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
         <div className={cn('h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 select-none', avatarStyle)}>
-          {mockUserProfile.initiales}
+          {profile.initiales}
         </div>
         <div className="flex flex-col min-w-0">
           <p className="text-sm font-semibold text-foreground truncate">
-            {mockUserProfile.prenom} {mockUserProfile.nom}
+            {profile.prenom} {profile.nom}
           </p>
-          <p className="text-[11px] text-muted-foreground truncate">{mockUserProfile.poste}</p>
+          <p className="text-[11px] text-muted-foreground truncate">{profile.roleLabel}</p>
         </div>
       </div>
 
@@ -478,16 +480,62 @@ function UserMenuPanel({ onClose }: UserMenuPanelProps) {
   );
 }
 
+// ─── Notification adapters ────────────────────────────────────────────────────
+
+const TYPE_VARIANT: Record<TypeNotification, NotifVariant> = {
+  RISQUE_CRITIQUE:      'destructive',
+  LIVRABLE_EN_RETARD:   'warning',
+  BUDGET_DEPASSE:       'destructive',
+  EVM_ALERTE_CPI:       'warning',
+  EVM_ALERTE_SPI:       'warning',
+  DOCUMENT_VALIDE:      'success',
+  RAPPORT_PRET:         'success',
+  MENTION_COMMENTAIRE:  'info',
+  PROJET_STATUT_CHANGE: 'info',
+  BUDGET_VALIDE:        'success',
+  CONTRAT_EXPIRE:       'warning',
+  PAIEMENT_DU:          'warning',
+};
+
+function timeAgo(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1)   return "À l'instant";
+  if (mins < 60)  return `Il y a ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)   return `Il y a ${hrs}h`;
+  if (hrs < 48)   return 'Hier';
+  return `Il y a ${Math.floor(hrs / 24)} jours`;
+}
+
+function adaptNotif(dto: NotificationDto): NotifItem {
+  return {
+    id:      dto.id,
+    title:   dto.titre,
+    desc:    dto.message,
+    time:    timeAgo(dto.createdAt),
+    read:    dto.lue,
+    variant: TYPE_VARIANT[dto.type] ?? 'info',
+  };
+}
+
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
 export function Topbar() {
   const location                  = useLocation();
   const { setSidebarOpen }        = useUIStore();
 
-  const [searchOpen, setSearchOpen]     = useState(false);
-  const [notifOpen,  setNotifOpen]      = useState(false);
-  const [userOpen,   setUserOpen]       = useState(false);
-  const [notifs,     setNotifs]         = useState<NotifItem[]>(INITIAL_NOTIFS);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [notifOpen,  setNotifOpen]  = useState(false);
+  const [userOpen,   setUserOpen]   = useState(false);
+  const [notifs,     setNotifs]     = useState<NotifItem[]>([]);
+
+  const { data: apiNotifs }    = useNotifications();
+  const markReadMutation       = useMarkNotificationRead();
+  const markAllMutation        = useMarkAllNotificationsRead();
+
+  useEffect(() => {
+    if (apiNotifs) setNotifs(apiNotifs.map(adaptNotif));
+  }, [apiNotifs]);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef  = useRef<HTMLDivElement>(null);
@@ -525,11 +573,14 @@ export function Topbar() {
   }, []);
 
   function handleMarkAllRead() {
+    const unreadIds = notifs.filter(n => !n.read).map(n => n.id);
     setNotifs(prev => prev.map(n => ({ ...n, read: true })));
+    if (unreadIds.length > 0) markAllMutation.mutate(unreadIds);
   }
 
   function handleMarkRead(id: string) {
     setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    markReadMutation.mutate(id);
   }
 
   // Current page title from location
@@ -538,7 +589,8 @@ export function Topbar() {
     SECTION_TITLE[path] ??
     (path.startsWith('/projects/') ? 'Projets' : 'SIGP');
 
-  const avatarStyle = userAvatarStyle(mockUserProfile.initiales);
+  const currentUser = useCurrentUserProfile();
+  const avatarStyle = userAvatarStyle(currentUser.initiales);
 
   return (
     <>
@@ -658,10 +710,10 @@ export function Topbar() {
                   'h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs border shrink-0 select-none',
                   avatarStyle,
                 )}>
-                  {mockUserProfile.initiales}
+                  {currentUser.initiales}
                 </div>
                 <span className="hidden lg:block text-sm font-medium text-foreground">
-                  {mockUserProfile.prenom}
+                  {currentUser.prenom}
                 </span>
               </button>
 

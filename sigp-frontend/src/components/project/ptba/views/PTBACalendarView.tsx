@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
-import { mockActivities, type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
+import { type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
@@ -21,10 +21,10 @@ const MONTH_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août'
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function getActivitiesForMonth(monthIndex: number, year: number): Activity[] {
+function getActivitiesForMonth(activities: Activity[], monthIndex: number, year: number): Activity[] {
   const monthStart = new Date(year, monthIndex, 1);
   const monthEnd = new Date(year, monthIndex + 1, 0, 23, 59, 59);
-  return mockActivities.filter(act => {
+  return activities.filter(act => {
     const start = new Date(act.dateDebut);
     const end = new Date(act.dateFin);
     return start <= monthEnd && end >= monthStart;
@@ -90,8 +90,8 @@ function ActivityCard({ activity }: { activity: Activity }) {
   );
 }
 
-function MonthCard({ monthIndex, year }: { monthIndex: number; year: number }) {
-  const activities = getActivitiesForMonth(monthIndex, year);
+function MonthCard({ allActivities, monthIndex, year }: { allActivities: Activity[]; monthIndex: number; year: number }) {
+  const activities = getActivitiesForMonth(allActivities, monthIndex, year);
   const visible = activities.slice(0, 3);
   const overflow = activities.length - visible.length;
   const isCurrentMonth =
@@ -138,8 +138,8 @@ function MonthCard({ monthIndex, year }: { monthIndex: number; year: number }) {
 // Summary bar
 // ─────────────────────────────────────────────────────────────────────────────
 
-function YearSummary({ year }: { year: number }) {
-  const monthly = MONTH_NAMES.map((_, i) => getActivitiesForMonth(i, year).length);
+function YearSummary({ allActivities, year }: { allActivities: Activity[]; year: number }) {
+  const monthly = MONTH_NAMES.map((_, i) => getActivitiesForMonth(allActivities, i, year).length);
   const maxCount = Math.max(...monthly, 1);
 
   return (
@@ -170,12 +170,13 @@ function YearSummary({ year }: { year: number }) {
 
 interface PTBACalendarViewProps {
   annee: number;
+  activities?: Activity[];
 }
 
-export function PTBACalendarView({ annee }: PTBACalendarViewProps) {
+export function PTBACalendarView({ annee, activities = [] }: PTBACalendarViewProps) {
   const [viewYear, setViewYear] = useState(annee);
 
-  const totalForYear = mockActivities.filter(act => {
+  const totalForYear = activities.filter(act => {
     const start = new Date(act.dateDebut);
     const end = new Date(act.dateFin);
     return start.getFullYear() <= viewYear && end.getFullYear() >= viewYear;
@@ -238,12 +239,12 @@ export function PTBACalendarView({ annee }: PTBACalendarViewProps) {
         </div>
 
         {/* Summary bar chart */}
-        <YearSummary year={viewYear} />
+        <YearSummary allActivities={activities} year={viewYear} />
 
         {/* 12-month grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {MONTH_NAMES.map((_, idx) => (
-            <MonthCard key={idx} monthIndex={idx} year={viewYear} />
+            <MonthCard key={idx} allActivities={activities} monthIndex={idx} year={viewYear} />
           ))}
         </div>
 

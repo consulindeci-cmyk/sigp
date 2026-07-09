@@ -32,21 +32,30 @@ export default function ProjectForm() {
   const handleNext = () => setStep((s) => Math.min(s + 1, 4));
   const handlePrev = () => setStep((s) => Math.max(s - 1, 1));
 
+  const STATUT_MAP: Record<string, string> = {
+    PREPARATION: 'EN_PREPARATION',
+    ACTIF: 'EN_COURS',
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const newProject = await createProject.mutateAsync({
-        code_projet: formData.code_projet,
-        nom_projet: formData.nom_projet,
+      const rawStatut = formData.statut ?? 'PREPARATION';
+      const statut = STATUT_MAP[rawStatut] ?? rawStatut;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (createProject.mutateAsync as any)({
+        code: formData.code_projet,
+        nom: formData.nom_projet,
         description: formData.description,
-        bailleur_principal: formData.bailleur_principal ?? '',
-        date_debut: formData.date_debut ?? '',
-        date_fin: formData.date_fin ?? '',
-        budget_total: formData.budget_total ?? '0',
+        bailleurPrincipal: formData.bailleur_principal,
+        dateDebut: formData.date_debut || undefined,
+        dateFinPrevue: formData.date_fin || undefined,
+        budgetTotal: parseFloat(String(formData.budget_total ?? 0)) || 0,
         devise: formData.devise ?? 'XOF',
-        statut: formData.statut ?? 'PREPARATION',
+        statut,
       });
-      navigate(`/projects/${newProject.id}`);
+      // Redirect to projects list instead of project detail
+      navigate(`/projects`);
     } catch {
       // error exposed via createProject.isError / createProject.error
     }
@@ -98,7 +107,18 @@ export default function ProjectForm() {
           <div className="bg-card border border-border rounded-lg p-6 sm:p-8">
             {createProject.isError && (
               <div className="mb-4 p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                Une erreur est survenue lors de la création du projet. Veuillez réessayer.
+                <strong>Une erreur est survenue : </strong>
+                {(() => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const errData = (createProject.error as any)?.response?.data;
+                  if (errData?.message) {
+                    if (Array.isArray(errData.message)) {
+                      return errData.message.join(', ');
+                    }
+                    return errData.message;
+                  }
+                  return 'Veuillez vérifier vos informations et réessayer.';
+                })()}
               </div>
             )}
 

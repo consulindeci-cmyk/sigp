@@ -1,4 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import {
+  useDeliverables, useCreateDeliverable, useUpdateDeliverable, useDeleteDeliverable,
+} from '@/hooks/useDeliverables';
+import { useUIStore } from '@/stores/uiStore';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, LineChart, Line,
@@ -11,7 +16,7 @@ import {
 } from 'lucide-react';
 import type { Livrable, StatutLivrable, PrioriteLivrable } from '@/types';
 import {
-  MOCK_LIVRABLES, STATUT_LIVRABLE_OPTIONS, PRIORITE_LIVRABLE_OPTIONS, LIVRABLE_CATEGORIES,
+  STATUT_LIVRABLE_OPTIONS, PRIORITE_LIVRABLE_OPTIONS, LIVRABLE_CATEGORIES,
 } from '@/mocks/deliverablesMocks';
 import { LivrableSlideOver } from '@/components/project/deliverables/LivrableSlideOver';
 import type { LivrableSavePayload } from '@/components/project/deliverables/LivrableSlideOver';
@@ -100,7 +105,21 @@ function isLate(l: Livrable, today: string): boolean {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ProjectDeliverablesTab() {
-  const [livrables, setLivrables] = useState<Livrable[]>(MOCK_LIVRABLES);
+  const { id: urlProjectId }  = useParams<{ id: string }>();
+  const activeProjectId       = useUIStore(s => s.activeProjectId);
+  const projectId             = urlProjectId || activeProjectId || '';
+
+  const { data: apiData, isLoading } = useDeliverables(projectId);
+  const createMutation  = useCreateDeliverable(projectId);
+  const updateMutation  = useUpdateDeliverable(projectId);
+  const deleteMutation  = useDeleteDeliverable(projectId);
+
+  const [livrables, setLivrables] = useState<Livrable[]>([]);
+
+  useEffect(() => {
+    const list = (apiData as { data?: Livrable[] })?.data ?? (Array.isArray(apiData) ? apiData as Livrable[] : []);
+    setLivrables(list);
+  }, [apiData]);
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
   const [slideLivrable, setSlideLivrable] = useState<Livrable | null>(null);
@@ -173,17 +192,19 @@ export default function ProjectDeliverablesTab() {
       setLivrables(prev => prev.map(l =>
         l.id === id ? { ...l, ...payload, updatedAt: now } : l,
       ));
+      updateMutation.mutate({ id, ...payload });
     } else {
       const newLiv: Livrable = {
-        id: `lv-${Date.now()}`,
-        projet_id: 'mock-proj-01',
+        id: `tmp-${Date.now()}`,
+        projet_id: projectId,
         ...payload,
         createdAt: now,
         updatedAt: now,
       };
       setLivrables(prev => [...prev, newLiv]);
+      createMutation.mutate({ projet_id: projectId, ...payload });
     }
-  }, []);
+  }, [projectId, createMutation, updateMutation]);
 
   const handleDeleteRequest = useCallback((livrable: Livrable) => {
     setDeleteTarget(livrable);
@@ -192,8 +213,9 @@ export default function ProjectDeliverablesTab() {
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
     setLivrables(prev => prev.filter(l => l.id !== deleteTarget.id));
+    deleteMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
-  }, [deleteTarget]);
+  }, [deleteTarget, deleteMutation]);
 
   const openNew = useCallback(() => {
     setSlideLivrable(null);
@@ -624,6 +646,7 @@ export default function ProjectDeliverablesTab() {
           <DataTable
             columns={columns}
             data={livrables}
+            isLoading={isLoading}
             searchKey="nom"
             searchPlaceholder="Rechercher un livrable…"
             filters={filters}

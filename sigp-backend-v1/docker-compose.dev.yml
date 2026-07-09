@@ -1,0 +1,99 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: sigp-api-dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run start:dev
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+    env_file: .env.development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sigp-net
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: sigp-db-dev
+    environment:
+      POSTGRES_USER: sigp
+      POSTGRES_PASSWORD: sigp_dev_pass
+      POSTGRES_DB: sigp_dev
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sigp -d sigp_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sigp-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: sigp-redis-dev
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sigp-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: sigp-minio-dev
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-dev:/data
+    networks:
+      - sigp-net
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: sigp-mailhog-dev
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - sigp-net
+
+  adminer:
+    image: adminer:latest
+    container_name: sigp-adminer-dev
+    ports:
+      - "8080:8080"
+    networks:
+      - sigp-net
+
+volumes:
+  pgdata-dev:
+  redis-dev:
+  minio-dev:
+
+networks:
+  sigp-net:
+    driver: bridge

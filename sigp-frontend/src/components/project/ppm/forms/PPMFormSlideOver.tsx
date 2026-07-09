@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
 import { PPMLigne } from '@/types';
-import { budgetValidationService } from '@/services/budgetValidationService';
+import api from '@/lib/axios';
 import { Button } from '@/components/ui/forms/Button';
 
 interface PPMFormSlideOverProps {
@@ -91,13 +91,10 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
 
   // Fetch available budget for UI feedback
   useEffect(() => {
-    if (budgetLigneId) {
-      budgetValidationService.getSoldeDisponible(budgetLigneId).then(solde => {
-        setSoldeDisponible(solde);
-      });
-    } else {
-      setSoldeDisponible(null);
-    }
+    if (!budgetLigneId) { setSoldeDisponible(null); return; }
+    api.get<{ solde_disponible: number }>(`/budget-lignes/${budgetLigneId}/solde`)
+      .then(res => setSoldeDisponible(res.data.solde_disponible))
+      .catch(() => setSoldeDisponible(null));
   }, [budgetLigneId]);
 
   const montantBase = montantDevise * tauxChange;

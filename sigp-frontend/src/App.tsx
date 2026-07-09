@@ -1,16 +1,20 @@
-import { useEffect } from 'react';
+import { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
-import DashboardPage from './pages/DashboardPage';
-import ProjectsPage from './pages/ProjectsPage';
-import ProjectDetail from './pages/ProjectDetail';
-import ProjectForm from './pages/ProjectForm';
-import SettingsPage from './pages/SettingsPage';
-import LoginPage from './pages/LoginPage';
-import UsersPage from './pages/UsersPage';
-import DocumentsPage from './pages/DocumentsPage';
+import { Loader } from './components/ui/feedback/Loader';
 import { usePrefsStore, applyThemeClass } from './stores/prefsStore';
+
+// ─── Lazy loaded pages ────────────────────────────────────────────────────────
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const ProjectsPage  = lazy(() => import('./pages/ProjectsPage'));
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
+const ProjectForm   = lazy(() => import('./pages/ProjectForm'));
+const SettingsPage  = lazy(() => import('./pages/SettingsPage'));
+const LoginPage     = lazy(() => import('./pages/LoginPage'));
+const UsersPage     = lazy(() => import('./pages/UsersPage'));
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
+const ReportsPage   = lazy(() => import('./pages/ReportsPage'));
 
 // ─── Mapping dashboard par défaut → route ────────────────────────────────────
 
@@ -54,26 +58,29 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppShell />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/" element={<Navigate to={homeRoute} replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/projects"  element={<ProjectsPage />} />
-          <Route path="/projects/new" element={<ProjectForm />} />
-          <Route path="/projects/:id" element={<ProjectDetail />} />
-          <Route path="/settings"  element={<SettingsPage />} />
-          <Route path="/users"     element={<UsersPage />} />
-          <Route path="/documents" element={<DocumentsPage />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <Suspense fallback={<Loader fullScreen text="Chargement de l'application..." />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppShell />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/" element={<Navigate to={homeRoute} replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/projects"  element={<ProjectsPage />} />
+            <Route path="/projects/new" element={<ProjectForm />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
+            <Route path="/settings"  element={<SettingsPage />} />
+            <Route path="/users"     element={<UsersPage />} />
+            <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/reports"   element={<ReportsPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

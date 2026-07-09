@@ -1,8 +1,9 @@
 import WidgetWrapper from '../../common/WidgetWrapper';
-import { MainRisk, WidgetState } from '../../../types/dashboard';
+import type { ProjectTopRisk } from '@/hooks/useProjects';
+import { WidgetState } from '../../../types/dashboard';
 
 interface Props {
-  data: MainRisk[];
+  data: ProjectTopRisk[];
   state?: WidgetState;
 }
 
@@ -13,7 +14,7 @@ export default function MainRisksWidget({ data, state = 'success' }: Props) {
         {data.map(risk => (
           <div key={risk.id} className="flex items-start gap-2 text-xs">
             <span
-              className={risk.level === 'high' ? 'text-destructive' : 'text-warning'}
+              className={risk.niveauCriticite === 'CRITIQUE' ? 'text-destructive' : 'text-warning'}
               aria-hidden="true"
             >
               ●

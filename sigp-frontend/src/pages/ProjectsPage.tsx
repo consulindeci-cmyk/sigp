@@ -1,10 +1,13 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDashboard } from '@/hooks/useDashboard';
 import {
   Download, Plus, Eye, Edit, Copy, Archive, Trash2,
   LayoutGrid, List,
 } from 'lucide-react';
+import api from '@/lib/axios';
 import { ContentLayout } from '@/components/layout/ContentLayout';
 import { PageHeader } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/forms/Button';
@@ -24,15 +27,51 @@ import { ProjectCard, statusVariant, progressColor } from '@/components/projects
 import { ActionsMenu, type ActionItem } from '@/components/projects/ActionsMenu';
 import { ProjectSlideOver, type ProjectSlideOverMode } from '@/components/projects/ProjectSlideOver';
 
-// Mock data
+// Types & utilities from mocks (mock data not used — API only)
 import {
-  mockProjects,
   uniqueOptions,
   type Project,
-  type ProjectSector,
-  type ProjectStatus,
   type ProjectsKPIs,
 } from '@/mocks/projectsMocks';
+import { useProjects, projectKeys } from '@/hooks/useProjects';
+import { adaptProjectDto, type ProjectApiDto } from '@/lib/projectAdapter';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Adapter: maps backend ProjectResponseDto → frontend ProjectRow shape
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ProjectRow = Project & { programmeId?: string; rawManagerId?: string | null };
+
+type CreateProjectPayload = {
+  code?: string; nom?: string; description?: string;
+  bailleurPrincipal?: string; secteur?: string; pays?: string;
+  managerId?: string; dateDebut?: string; dateFinPrevue?: string;
+  budgetTotal?: number; devise?: string; statut?: string;
+  programmeId?: string;
+};
+
+function adaptToRow(raw: ProjectApiDto): ProjectRow {
+  return {
+    ...adaptProjectDto(raw),
+    programmeId: raw.programmeId ?? undefined,
+    rawManagerId: raw.managerId,
+  };
+}
+
+function toCreatePayload(data: Partial<Project>): CreateProjectPayload {
+  return {
+    code: data.code,
+    nom: data.name,
+    description: data.description,
+    bailleurPrincipal: data.donor,
+    secteur: data.sector,
+    pays: data.country,
+    dateDebut: data.startDate || undefined,
+    dateFinPrevue: data.endDate || undefined,
+    budgetTotal: data.budgetTotal,
+    devise: data.devise,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Static filter options (status values never change)
@@ -41,7 +80,6 @@ import {
 const STATUS_OPTIONS = [
   { label: 'En bonne voie', value: 'En bonne voie' },
   { label: 'À risque',      value: 'À risque'       },
-  { label: 'En retard',     value: 'En retard'      },
   { label: 'Clôturé',      value: 'Clôturé'        },
   { label: 'En préparation', value: 'En préparation' },
 ];
@@ -63,13 +101,52 @@ function formatDateShort(iso: string): string {
 type ViewMode = 'table' | 'grid';
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>(mockProjects);
+  const qc = useQueryClient();
+
+  // ── API data ──────────────────────────────────────────────────────────────
+  const { data: programmesData } = useQuery({
+    queryKey: ['programmes'],
+    queryFn: async () => {
+      const { data } = await api.get('/programmes');
+      return (data?.data ?? data) as Array<{ id: string }>;
+    },
+  });
+  const defaultProgrammeId: string | undefined = programmesData?.[0]?.id;
+
+  const { data: apiData } = useProjects();
+  const projects = useMemo<ProjectRow[]>(
+    () => (apiData?.data ?? []).map(adaptToRow),
+    [apiData],
+  );
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const createProject = useMutation({
+    mutationFn: async (payload: CreateProjectPayload) => {
+      const { data } = await api.post('/projects', payload);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
+  });
+
+  const updateProject = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: CreateProjectPayload }) => {
+      const { data } = await api.patch(`/projects/${id}`, payload);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
+  });
+
+  const deleteProject = useMutation({
+    mutationFn: async (id: string) => { await api.delete(`/projects/${id}`); },
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
+  });
+
   const [view, setView] = useState<ViewMode>('grid');
 
   // SlideOver
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [slideOverMode, setSlideOverMode] = useState<ProjectSlideOverMode>('view');
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null);
 
   // Delete modal
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -82,16 +159,21 @@ export default function ProjectsPage() {
   // Export modal
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
+  // ── Backend data for KPIs ───────────────────────────────────────────────
+  const { data: dashboardData } = useDashboard();
+
   // ── Dynamic KPIs ──────────────────────────────────────────────────────────
-  const kpis = useMemo<ProjectsKPIs>(() => ({
-    total: projects.length,
-    enBonneVoie: projects.filter((p) => p.status === 'En bonne voie').length,
-    aRisque:     projects.filter((p) => p.status === 'À risque').length,
-    enRetard:    projects.filter((p) => p.status === 'En retard').length,
-    clotured:    projects.filter((p) => p.status === 'Clôturé').length,
-    budgetPortefeuille:
-      (projects.reduce((s, p) => s + p.budgetTotal, 0) / 1_000_000).toFixed(1).replace('.', ',') + ' M FCFA',
-  }), [projects]);
+  const kpis = useMemo<ProjectsKPIs>(() => {
+    const apiD = dashboardData as any;
+    return {
+      total: apiD?.projets?.total ?? 0,
+      enBonneVoie: apiD?.projets?.actifs ?? 0, // Approx for now
+      aRisque: apiD?.risques?.eleves ?? 0, // Using risk high count as proxy for at risk
+      enRetard: apiD?.projets?.suspendus ?? 0,
+      clotured: apiD?.projets?.termines ?? 0,
+      budgetPortefeuille: ((apiD?.finances?.budgetTotal ?? 0) / 1_000_000).toFixed(1).replace('.', ',') + ' M FCFA',
+    };
+  }, [dashboardData]);
 
   // Dynamic filter options — update automatically when projects array changes
   const projectFilters = useMemo<DataTableFilter[]>(() => [
@@ -108,89 +190,73 @@ export default function ProjectsPage() {
     setSlideOverOpen(true);
   }
 
-  function openView(project: Project) {
+  function openView(project: ProjectRow) {
     setSelectedProject(project);
     setSlideOverMode('view');
     setSlideOverOpen(true);
   }
 
-  function openEdit(project: Project) {
+  function openEdit(project: ProjectRow) {
     setSelectedProject(project);
     setSlideOverMode('edit');
     setSlideOverOpen(true);
   }
 
-  function handleSave(data: Partial<Project>) {
-    if (slideOverMode === 'new') {
-      const newProject: Project = {
-        id: `proj-${Date.now()}`,
-        code: data.code ?? '',
-        name: data.name ?? '',
-        description: data.description ?? '',
-        donor: data.donor ?? '',
-        sector: (data.sector ?? 'Infrastructure') as ProjectSector,
-        country: data.country ?? '',
-        manager: data.manager ?? '',
-        initialesManager: data.initialesManager ?? '',
-        startDate: data.startDate ?? '',
-        endDate: data.endDate ?? '',
-        budgetTotal: data.budgetTotal ?? 0,
-        devise: data.devise ?? 'USD',
-        budgetDisplay: data.budgetDisplay ?? '0 FCFA',
-        status: (data.status ?? 'En préparation') as ProjectStatus,
-        profileScore: 0,
-        progressScore: 0,
-        tauxDecaissement: 0,
-        composantes: 0,
-        activites: 0,
-        livrables: 0,
-      };
-      setProjects((prev) => [newProject, ...prev]);
-    } else if (slideOverMode === 'edit' && selectedProject) {
-      setProjects((prev) =>
-        prev.map((p) => p.id === selectedProject.id ? { ...p, ...data } : p)
-      );
+  async function handleSave(data: Partial<Project>) {
+    const payload = toCreatePayload(data);
+    try {
+      if (slideOverMode === 'new') {
+        await createProject.mutateAsync({ ...payload, programmeId: defaultProgrammeId });
+      } else if (slideOverMode === 'edit' && selectedProject) {
+        await updateProject.mutateAsync({ id: selectedProject.id, payload });
+      }
+      setSlideOverOpen(false);
+    } catch {
+      // mutation error displayed via React Query; keep modal open
     }
-    setSlideOverOpen(false);
   }
 
-  function handleDuplicate(project: Project) {
-    const dup: Project = {
-      ...project,
-      id: `dup-${Date.now()}`,
+  function handleDuplicate(project: ProjectRow) {
+    createProject.mutate({
       code: `${project.code}-COPY`,
-      name: `${project.name} (Copie)`,
-      status: 'En préparation',
-      progressScore: 0,
-      tauxDecaissement: 0,
-    };
-    setProjects((prev) => [dup, ...prev]);
+      nom: `${project.name} (Copie)`,
+      description: project.description,
+      bailleurPrincipal: project.donor,
+      secteur: project.sector,
+      pays: project.country,
+      managerId: project.rawManagerId ?? undefined,
+      dateDebut: project.startDate || undefined,
+      dateFinPrevue: project.endDate || undefined,
+      budgetTotal: project.budgetTotal,
+      devise: project.devise,
+      programmeId: project.programmeId,
+    });
   }
 
-  function openArchive(project: Project) {
+  function openArchive(project: ProjectRow) {
     setProjectToArchive(project);
     setArchiveModalOpen(true);
   }
 
   function handleArchiveConfirm() {
     if (!projectToArchive) return;
-    setProjects((prev) =>
-      prev.map((p) => p.id === projectToArchive.id ? { ...p, status: 'Clôturé' as const } : p)
+    updateProject.mutate(
+      { id: projectToArchive.id, payload: { statut: 'CLOTURE' } },
+      { onSuccess: () => { setArchiveModalOpen(false); setProjectToArchive(null); } },
     );
-    setArchiveModalOpen(false);
-    setProjectToArchive(null);
   }
 
-  function openDelete(project: Project) {
+  function openDelete(project: ProjectRow) {
     setProjectToDelete(project);
     setDeleteModalOpen(true);
   }
 
   function handleDeleteConfirm() {
     if (!projectToDelete) return;
-    setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
-    setDeleteModalOpen(false);
-    setProjectToDelete(null);
+    deleteProject.mutate(
+      projectToDelete.id,
+      { onSuccess: () => { setDeleteModalOpen(false); setProjectToDelete(null); } },
+    );
   }
 
   function handleExport() {
@@ -220,7 +286,7 @@ export default function ProjectsPage() {
   }
 
   // ── Row action builder ────────────────────────────────────────────────────
-  function getActions(project: Project): ActionItem[] {
+  function getActions(project: ProjectRow): ActionItem[] {
     return [
       { label: 'Voir',      icon: <Eye     className="h-3.5 w-3.5" />, onClick: () => openView(project) },
       { label: 'Modifier',  icon: <Edit    className="h-3.5 w-3.5" />, onClick: () => openEdit(project) },
@@ -240,11 +306,11 @@ export default function ProjectsPage() {
   }
 
   // ── Columns ───────────────────────────────────────────────────────────────
-  const columns = useMemo<ColumnDef<Project, any>[]>(() => [
+  const columns = useMemo<ColumnDef<ProjectRow, any>[]>(() => [
     {
       accessorKey: 'code',
       header: 'CODE',
-      meta: { isSticky: true } as any,
+      meta: { isSticky: true },
       cell: ({ getValue }) => (
         <span className="font-mono text-[12px] text-muted-foreground">{getValue() as string}</span>
       ),
@@ -307,7 +373,7 @@ export default function ProjectsPage() {
     {
       accessorKey: 'budgetDisplay',
       header: 'BUDGET',
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' },
       cell: ({ getValue }) => (
         <span className="font-mono text-[12px] font-semibold">{getValue() as string}</span>
       ),
@@ -365,7 +431,7 @@ export default function ProjectsPage() {
     {
       id: 'actions',
       enableHiding: false,
-      meta: { align: 'right' } as any,
+      meta: { align: 'right' },
       cell: ({ row }) => (
         <ActionsMenu
           actions={getActions(row.original)}

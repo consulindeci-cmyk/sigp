@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/authStore'
 
 const schema = z.object({
   email: z.string().email('Email invalide').min(1, 'Requis'),
-  mot_de_passe: z.string().min(6, 'Minimum 6 caractères'),
+  password: z.string().min(6, 'Minimum 6 caractères'),
 })
 type FormData = z.infer<typeof schema>
 
@@ -34,7 +34,7 @@ export default function LoginPage() {
     setError, setValue,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { email: '', mot_de_passe: '' },
+    defaultValues: { email: '', password: '' },
   })
 
   useEffect(() => { emailRef.current?.focus() }, [])
@@ -43,7 +43,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: FormData) => {
     try {
-      await login(data.email, data.mot_de_passe)
+      await login(data.email, data.password)
       navigate('/dashboard', { replace: true })
     } catch {
       setError('root', { message: 'Identifiants incorrects ou accès refusé.' })
@@ -56,7 +56,7 @@ export default function LoginPage() {
 
   const fillCredentials = (email: string, pwd: string) => {
     setValue('email', email, { shouldValidate: true })
-    setValue('mot_de_passe', pwd, { shouldValidate: true })
+    setValue('password', pwd, { shouldValidate: true })
   }
 
   return (
@@ -139,13 +139,13 @@ export default function LoginPage() {
               <div className={`
                 flex items-center rounded-xl bg-white border transition-all duration-200
                 focus-within:ring-2 focus-within:ring-[#1d9e75]/20 focus-within:border-[#1d9e75]
-                ${errors.mot_de_passe ? 'border-red-400' : 'border-slate-200 hover:border-slate-300'}
+                ${errors.password ? 'border-red-400' : 'border-slate-200 hover:border-slate-300'}
               `}>
                 <span className="pl-3 pr-2 flex items-center shrink-0">
                   <Lock size={14} className="text-slate-400" />
                 </span>
                 <input
-                  {...register('mot_de_passe')}
+                  {...register('password')}
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   autoComplete="current-password"
@@ -160,9 +160,9 @@ export default function LoginPage() {
                   {showPassword ? 'Masquer' : 'Voir'}
                 </button>
               </div>
-              {errors.mot_de_passe && (
+              {errors.password && (
                 <p className="flex items-center gap-1 text-red-500 text-[11px] font-semibold mt-0.5">
-                  <AlertCircle size={10} /> {errors.mot_de_passe.message}
+                  <AlertCircle size={10} /> {errors.password.message}
                 </p>
               )}
             </div>

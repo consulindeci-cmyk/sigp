@@ -1,85 +1,365 @@
-import { useState, useEffect, useMemo } from 'react';
-import { mockPPMLignes } from '@/mocks/ppmMock';
-import { budgetValidationService } from '@/services/budgetValidationService';
-import type { PPMLigne } from '@/types';
+import { useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '@/lib/axios';
+import type {
+  PPMLigne,
+  CategorieAchat,
+  MethodePassation,
+  StatutLignePPM,
+  TypeRevue,
+} from '@/types';
 
-let localPPMLignes: PPMLigne[] = [...mockPPMLignes];
+// ─── Backend DTO ──────────────────────────────────────────────────────────────
 
-export function usePPM(versionId?: string) {
-  const [lignes, setLignes] = useState<PPMLigne[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export interface PpmMarcheDto {
+  id:                  string;
+  projectId:           string;
+  code:                string;
+  intitule:            string;
+  type:                string; // PpmTypeMarche: FOURNITURES | TRAVAUX | SERVICES | CONSULTANTS
+  statut:              string; // PpmMarcheStatus: EN_PREPARATION | LANCE | SOUMISSION | EVALUATION | ATTRIBUTION | SIGNE | RESILIE | CLOTURE
+  montantEstime:       number | null;
+  montantSigne:        number | null;
+  dateLancementPrevu:  string | null;
+  dateSoumissionPrevu: string | null;
+  dateAttribution:     string | null;
+  dateSignature:       string | null;
+  dateFinPrevue:       string | null;
+  dateFinEffective:    string | null;
+  titulaire:           string | null;
+  notes:               string | null;
+  createdAt:           string;
+  updatedAt:           string;
+}
 
-  const fetchLignes = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      const filtered = localPPMLignes.filter(l => l.ppm_version_id === versionId);
-      setLignes(filtered);
-      setIsLoading(false);
-    }, 400);
+// ─── Extra metadata: fields the backend doesn't have, serialized into `notes` ─
+
+const PPM_META = '__PPM_META__';
+
+interface PPMExtraMeta {
+  methode:               MethodePassation;
+  type_revue:            TypeRevue;
+  wbs_id:                string;
+  budget_ligne_id:       string;
+  bailleur_id:           string;
+  devise_code:           string;
+  taux_change_estime:    number;
+  montant_estime_devise: number;
+  est_lot_unique:        boolean;
+  d_prep_dao_p:          string;
+  d_prep_dao_r:          string;
+  d_lanc_dao_r:          string;
+  d_remise_r:            string;
+  d_eval_p:              string;
+  d_eval_r:              string;
+  d_ano_p:               string;
+  d_ano_r:               string;
+  d_attr_r:              string;
+  d_sign_r:              string;
+  d_dema_r:              string;
+}
+
+function defaultExtra(): PPMExtraMeta {
+  return {
+    methode: 'AOI', type_revue: 'POST',
+    wbs_id: '', budget_ligne_id: '', bailleur_id: '',
+    devise_code: 'XOF', taux_change_estime: 1, montant_estime_devise: 0,
+    est_lot_unique: true,
+    d_prep_dao_p: '', d_prep_dao_r: '', d_lanc_dao_r: '', d_remise_r: '',
+    d_eval_p: '', d_eval_r: '', d_ano_p: '', d_ano_r: '',
+    d_attr_r: '', d_sign_r: '', d_dema_r: '',
   };
+}
 
-  useEffect(() => {
-    fetchLignes();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [versionId]);
+function parseNotes(notes: string | null): PPMExtraMeta {
+  if (!notes?.startsWith(`${PPM_META}:`)) return defaultExtra();
+  try { return { ...defaultExtra(), ...JSON.parse(notes.slice(PPM_META.length + 1)) }; }
+  catch { return defaultExtra(); }
+}
 
-  const addLigne = async (
-    nouvelleLigne: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>
-  ) => {
-    if (!versionId) throw new Error('Aucune version PPM active');
+function serializeNotes(extra: PPMExtraMeta): string {
+  return `${PPM_META}:${JSON.stringify(extra)}`;
+}
 
-    const validation = await budgetValidationService.checkBudgetAvailability(
-      nouvelleLigne.budget_ligne_id,
-      nouvelleLigne.montant_estime_base
-    );
-    if (!validation.isAvailable) throw new Error(validation.message);
+// ─── Enum mappings ────────────────────────────────────────────────────────────
 
-    const ligne: PPMLigne = {
-      ...nouvelleLigne,
-      id: `ppm-l${Date.now()}`,
-      ppm_version_id: versionId,
-      statut: 'PLANIFIE',
-      version_hash: `hash-${Date.now()}`,
-    };
+function typeToCategorie(type: string): CategorieAchat {
+  switch (type) {
+    case 'FOURNITURES': return 'BIENS';
+    case 'TRAVAUX':     return 'TRAVAUX';
+    case 'CONSULTANTS': return 'SERVICES_CONSULTANTS';
+    default:            return 'SERVICES_NON_CONSULTANTS';
+  }
+}
 
-    localPPMLignes = [...localPPMLignes, ligne];
-    fetchLignes();
-    return ligne;
+function categorieToType(cat: CategorieAchat): string {
+  switch (cat) {
+    case 'BIENS':                return 'FOURNITURES';
+    case 'TRAVAUX':              return 'TRAVAUX';
+    case 'SERVICES_CONSULTANTS': return 'CONSULTANTS';
+    default:                     return 'SERVICES';
+  }
+}
+
+function beStatutToFe(s: string): StatutLignePPM {
+  switch (s) {
+    case 'EN_PREPARATION': return 'PLANIFIE';
+    case 'LANCE':          return 'DAO_LANCE';
+    case 'SOUMISSION':     return 'OFFRES_RECUES';
+    case 'EVALUATION':     return 'EVALUATION';
+    case 'ATTRIBUTION':    return 'ATTRIBUE';
+    case 'SIGNE':          return 'CONTRAT_SIGNE';
+    case 'RESILIE':        return 'ANNULE';
+    case 'CLOTURE':        return 'CLOTURE';
+    default:               return 'PLANIFIE';
+  }
+}
+
+function feStatutToBe(s: StatutLignePPM): string {
+  switch (s) {
+    case 'DAO_LANCE':                    return 'LANCE';
+    case 'OFFRES_RECUES':                return 'SOUMISSION';
+    case 'EVALUATION':
+    case 'ANO_EN_ATTENTE':
+    case 'ANO_OBTENU':                   return 'EVALUATION';
+    case 'ATTRIBUE':                     return 'ATTRIBUTION';
+    case 'CONTRAT_SIGNE':
+    case 'EXECUTION':                    return 'SIGNE';
+    case 'CLOTURE':                      return 'CLOTURE';
+    case 'ANNULE':                       return 'RESILIE';
+    default:                             return 'EN_PREPARATION';
+  }
+}
+
+function d(val: string | Date | null | undefined): string {
+  if (!val) return '';
+  const s = typeof val === 'string' ? val : (val as Date).toISOString();
+  return s.slice(0, 10);
+}
+
+// ─── Adapters ─────────────────────────────────────────────────────────────────
+
+function adaptMarche(dto: PpmMarcheDto, versionId: string): PPMLigne {
+  const x = parseNotes(dto.notes);
+  const base = dto.montantEstime ?? 0;
+  return {
+    id:                   dto.id,
+    ppm_version_id:       versionId,
+    wbs_id:               x.wbs_id,
+    budget_ligne_id:      x.budget_ligne_id,
+    bailleur_id:          x.bailleur_id,
+    reference_marche:     dto.code,
+    description:          dto.intitule,
+    categorie:            typeToCategorie(dto.type),
+    methode:              x.methode,
+    type_revue:           x.type_revue,
+    montant_estime_devise: x.montant_estime_devise || base,
+    devise_code:          x.devise_code,
+    taux_change_estime:   x.taux_change_estime,
+    montant_estime_base:  base,
+    est_lot_unique:       x.est_lot_unique,
+    dates_cles: {
+      preparation_dao_prevue:       x.d_prep_dao_p,
+      preparation_dao_reelle:       x.d_prep_dao_r || undefined,
+      lancement_dao_prevue:         d(dto.dateLancementPrevu),
+      lancement_dao_reelle:         x.d_lanc_dao_r || undefined,
+      remise_offres_prevue:         d(dto.dateSoumissionPrevu),
+      remise_offres_reelle:         x.d_remise_r || undefined,
+      ouverture_evaluation_prevue:  x.d_eval_p,
+      ouverture_evaluation_reelle:  x.d_eval_r || undefined,
+      avis_non_objection_prevue:    x.d_ano_p || undefined,
+      avis_non_objection_reelle:    x.d_ano_r || undefined,
+      attribution_prevue:           d(dto.dateAttribution),
+      attribution_reelle:           x.d_attr_r || undefined,
+      signature_contrat_prevue:     d(dto.dateSignature),
+      signature_contrat_reelle:     x.d_sign_r || undefined,
+      demarrage_prevue:             d(dto.dateFinPrevue),
+      demarrage_reelle:             x.d_dema_r || undefined,
+    },
+    statut:       beStatutToFe(dto.statut),
+    version_hash: dto.updatedAt,
   };
+}
 
-  const updateLigne = async (id: string, updates: Partial<PPMLigne>) => {
-    const existing = localPPMLignes.find(l => l.id === id);
-    if (!existing) throw new Error('Ligne introuvable');
+type LigneInput = Omit<PPMLigne, 'id' | 'version_hash' | 'ppm_version_id'>;
 
-    const newBudgetLigneId = updates.budget_ligne_id ?? existing.budget_ligne_id;
-    const newMontant =
-      updates.montant_estime_base !== undefined ? updates.montant_estime_base : existing.montant_estime_base;
-
-    const validation = await budgetValidationService.checkBudgetAvailability(newBudgetLigneId, newMontant);
-    if (!validation.isAvailable) throw new Error(validation.message);
-
-    localPPMLignes = localPPMLignes.map(l =>
-      l.id === id ? { ...l, ...updates, version_hash: `hash-${Date.now()}` } : l
-    );
-    fetchLignes();
+function ligneToCreatePayload(projectId: string, l: LigneInput) {
+  const extra: PPMExtraMeta = {
+    methode:               l.methode,
+    type_revue:            l.type_revue,
+    wbs_id:                l.wbs_id,
+    budget_ligne_id:       l.budget_ligne_id,
+    bailleur_id:           l.bailleur_id,
+    devise_code:           l.devise_code,
+    taux_change_estime:    l.taux_change_estime,
+    montant_estime_devise: l.montant_estime_devise,
+    est_lot_unique:        l.est_lot_unique,
+    d_prep_dao_p: l.dates_cles.preparation_dao_prevue      || '',
+    d_prep_dao_r: l.dates_cles.preparation_dao_reelle      || '',
+    d_lanc_dao_r: l.dates_cles.lancement_dao_reelle        || '',
+    d_remise_r:   l.dates_cles.remise_offres_reelle        || '',
+    d_eval_p:     l.dates_cles.ouverture_evaluation_prevue || '',
+    d_eval_r:     l.dates_cles.ouverture_evaluation_reelle || '',
+    d_ano_p:      l.dates_cles.avis_non_objection_prevue   || '',
+    d_ano_r:      l.dates_cles.avis_non_objection_reelle   || '',
+    d_attr_r:     l.dates_cles.attribution_reelle          || '',
+    d_sign_r:     l.dates_cles.signature_contrat_reelle    || '',
+    d_dema_r:     l.dates_cles.demarrage_reelle            || '',
   };
-
-  const deleteLigne = async (id: string) => {
-    localPPMLignes = localPPMLignes.filter(l => l.id !== id);
-    fetchLignes();
+  return {
+    projectId,
+    code:                 l.reference_marche,
+    intitule:             l.description,
+    type:                 categorieToType(l.categorie),
+    statut:               l.statut ? feStatutToBe(l.statut as StatutLignePPM) : undefined,
+    montantEstime:        l.montant_estime_base || undefined,
+    dateLancementPrevu:   l.dates_cles.lancement_dao_prevue    || undefined,
+    dateSoumissionPrevu:  l.dates_cles.remise_offres_prevue    || undefined,
+    dateAttribution:      l.dates_cles.attribution_prevue      || undefined,
+    dateSignature:        l.dates_cles.signature_contrat_prevue || undefined,
+    dateFinPrevue:        l.dates_cles.demarrage_prevue        || undefined,
+    notes:                serializeNotes(extra),
   };
+}
+
+function ligneToUpdatePayload(l: Partial<PPMLigne>, existing: PPMLigne) {
+  const merged = { ...existing, ...l };
+  const extra: PPMExtraMeta = {
+    methode:               merged.methode,
+    type_revue:            merged.type_revue,
+    wbs_id:                merged.wbs_id,
+    budget_ligne_id:       merged.budget_ligne_id,
+    bailleur_id:           merged.bailleur_id,
+    devise_code:           merged.devise_code,
+    taux_change_estime:    merged.taux_change_estime,
+    montant_estime_devise: merged.montant_estime_devise,
+    est_lot_unique:        merged.est_lot_unique,
+    d_prep_dao_p: merged.dates_cles.preparation_dao_prevue      || '',
+    d_prep_dao_r: merged.dates_cles.preparation_dao_reelle      || '',
+    d_lanc_dao_r: merged.dates_cles.lancement_dao_reelle        || '',
+    d_remise_r:   merged.dates_cles.remise_offres_reelle        || '',
+    d_eval_p:     merged.dates_cles.ouverture_evaluation_prevue || '',
+    d_eval_r:     merged.dates_cles.ouverture_evaluation_reelle || '',
+    d_ano_p:      merged.dates_cles.avis_non_objection_prevue   || '',
+    d_ano_r:      merged.dates_cles.avis_non_objection_reelle   || '',
+    d_attr_r:     merged.dates_cles.attribution_reelle          || '',
+    d_sign_r:     merged.dates_cles.signature_contrat_reelle    || '',
+    d_dema_r:     merged.dates_cles.demarrage_reelle            || '',
+  };
+  return {
+    code:                 merged.reference_marche,
+    intitule:             merged.description,
+    type:                 categorieToType(merged.categorie),
+    statut:               merged.statut ? feStatutToBe(merged.statut as StatutLignePPM) : undefined,
+    montantEstime:        merged.montant_estime_base || undefined,
+    dateLancementPrevu:   merged.dates_cles.lancement_dao_prevue    || undefined,
+    dateSoumissionPrevu:  merged.dates_cles.remise_offres_prevue    || undefined,
+    dateAttribution:      merged.dates_cles.attribution_prevue      || undefined,
+    dateSignature:        merged.dates_cles.signature_contrat_prevue || undefined,
+    dateFinPrevue:        merged.dates_cles.demarrage_prevue        || undefined,
+    notes:                serializeNotes(extra),
+  };
+}
+
+function extractList(data: unknown): PpmMarcheDto[] {
+  if (Array.isArray(data)) return data as PpmMarcheDto[];
+  if (data && typeof data === 'object') {
+    const d = (data as Record<string, unknown>).data;
+    if (Array.isArray(d)) return d as PpmMarcheDto[];
+  }
+  return [];
+}
+
+// ─── Query keys ───────────────────────────────────────────────────────────────
+
+export const ppmKeys = {
+  list:   (projectId: string) => ['ppm', projectId] as const,
+  marche: (id: string)        => ['ppm-marche', id] as const,
+};
+
+// Shared queryFn used by both usePPM and usePPMVersions (same queryKey → deduped)
+export async function fetchPpmMarcheList(projectId: string): Promise<PpmMarcheDto[]> {
+  const { data } = await api.get('/ppm', { params: { projectId, limit: 100 } });
+  return extractList(data);
+}
+
+// ─── usePPM ───────────────────────────────────────────────────────────────────
+
+export function usePPM(projectId: string, versionId?: string) {
+  const qc = useQueryClient();
+  const syntheticVersionId = versionId || `${projectId}-ppm-v1`;
+
+  const query = useQuery({
+    queryKey: ppmKeys.list(projectId),
+    queryFn: () => fetchPpmMarcheList(projectId),
+    enabled: !!projectId,
+  });
+
+  const dtos: PpmMarcheDto[] = query.data ?? [];
+
+  const lignes = useMemo(
+    () => dtos.map(dto => adaptMarche(dto, syntheticVersionId)),
+    [dtos, syntheticVersionId],
+  );
 
   const totalEstimeBase = useMemo(
-    () => lignes.reduce((acc, l) => acc + l.montant_estime_base, 0),
-    [lignes]
+    () => lignes.reduce((s, l) => s + l.montant_estime_base, 0),
+    [lignes],
   );
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+
+  const addMutation = useMutation({
+    mutationFn: async (payload: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => {
+      const body = ligneToCreatePayload(projectId, payload as LigneInput);
+      const { data } = await api.post('/ppm', body);
+      return data as PpmMarcheDto;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ppmKeys.list(projectId) }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<PPMLigne> }) => {
+      const cachedDtos = qc.getQueryData<PpmMarcheDto[]>(ppmKeys.list(projectId)) ?? [];
+      const existingDto = cachedDtos.find(d => d.id === id);
+      const existingLigne = existingDto ? adaptMarche(existingDto, syntheticVersionId) : null;
+      const body = existingLigne
+        ? ligneToUpdatePayload(updates, existingLigne)
+        : ligneToUpdatePayload(updates, updates as PPMLigne);
+      const { data } = await api.patch(`/ppm/${id}`, body);
+      return data as PpmMarcheDto;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ppmKeys.list(projectId) }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/ppm/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ppmKeys.list(projectId) }),
+  });
+
+  // ── Stable async wrappers (same interface as the old hook) ────────────────
+
+  const addLigne = async (
+    payload: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>,
+  ) => addMutation.mutateAsync(payload);
+
+  const updateLigne = async (id: string, updates: Partial<PPMLigne>) =>
+    updateMutation.mutateAsync({ id, updates });
+
+  const deleteLigne = async (id: string) => deleteMutation.mutateAsync(id);
 
   return {
     lignes,
-    isLoading,
+    isLoading:  query.isLoading,
     totalEstimeBase,
     addLigne,
     updateLigne,
     deleteLigne,
+    error:      query.error,
+    isAdding:   addMutation.isPending,
+    isUpdating: updateMutation.isPending,
+    isDeleting: deleteMutation.isPending,
   };
 }

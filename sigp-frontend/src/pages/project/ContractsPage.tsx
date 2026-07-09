@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -10,7 +10,7 @@ import { formatMoney } from '@/utils/format';
 import { getContractColumns } from '@/components/project/contracts/views/contractColumns';
 import { contractFilters } from '@/components/project/contracts/views/contractFilters';
 import { ContractSlideOver } from '@/components/project/contracts/forms/ContractSlideOver';
-import { mockContracts } from '@/mocks/contractsMock';
+import { useContracts, useCreateContract, useUpdateContract, useDeleteContract } from '@/hooks/useContracts';
 import type { Contract } from '@/types/contract';
 import * as XLSX from 'xlsx';
 
@@ -74,7 +74,17 @@ export default function ContractsPage() {
   const { activeProjectId } = useUIStore();
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  const [contracts, setContracts] = useState<Contract[]>(mockContracts);
+  const { data: contractsData, isLoading: isLoadingContracts } = useContracts(resolvedProjectId);
+  const createMutation = useCreateContract(resolvedProjectId);
+  const updateMutation = useUpdateContract(resolvedProjectId);
+  const deleteMutation = useDeleteContract(resolvedProjectId);
+
+  const [contracts, setContracts] = useState<Contract[]>([]);
+
+  useEffect(() => {
+    if (contractsData) setContracts(contractsData);
+  }, [contractsData]);
+
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'view' | 'edit' | 'new'>('view');
   const [selected, setSelected] = useState<Contract | null>(null);
@@ -106,6 +116,7 @@ export default function ContractsPage() {
         version_hash: `hash-${Date.now()}`,
       };
       setContracts(prev => [newC, ...prev]);
+      createMutation.mutate(data);
     } else if (selected) {
       setContracts(prev =>
         prev.map(c => c.id === selected.id
@@ -113,11 +124,13 @@ export default function ContractsPage() {
           : c
         )
       );
+      updateMutation.mutate({ id: selected.id, data });
     }
   };
 
   const handleDelete = (id: string) => {
     setContracts(prev => prev.filter(c => c.id !== id));
+    deleteMutation.mutate(id);
   };
 
   const kpis = useMemo(() => {
@@ -205,7 +218,7 @@ export default function ContractsPage() {
         <DataTable
           columns={columns}
           data={contracts}
-          isLoading={false}
+          isLoading={isLoadingContracts}
           isError={false}
           searchKey="identification"
           searchPlaceholder="Rechercher (Réf, Objet, Titulaire)..."

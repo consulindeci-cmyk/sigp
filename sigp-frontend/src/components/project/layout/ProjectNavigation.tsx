@@ -1,5 +1,17 @@
 import { cn } from '@/lib/utils';
 
+interface ProjectSummary {
+  nombreActivites?: number;
+  activitesTerminees?: number;
+  activitesEnRetard?: number;
+  nombreLivrables?: number;
+  livrablesTermines?: number;
+  risquesCritiques?: number;
+  nombreContrats?: number;
+  contratsActifs?: number;
+  tauxDecaissement?: number;
+}
+
 interface NavItem {
   id: string;
   label: string;
@@ -16,60 +28,102 @@ interface NavGroup {
 interface ProjectNavigationProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  summary?: ProjectSummary;
 }
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: "Aperçu & Cadrage",
-    weight: "30%",
-    items: [
-      { id: "overview",    label: "Informations Générales", status: "success",     meta: "+5%"          },
-      { id: "governance",  label: "Gouvernance",             status: "warning",     meta: "3 acteurs"    },
-      { id: "logframe",    label: "Cadre Logique",           status: "destructive", meta: "0 obj."       },
-      { id: "wbs",         label: "Structure (WBS)",         status: "warning",     meta: "4 comp."      },
-    ],
-  },
-  {
-    title: "Planification & Opérations",
-    weight: "20%",
-    items: [
-      { id: "ptba",        label: "PTBA",                    status: "destructive", meta: "0 tâches"     },
-      { id: "activities",  label: "Activités",               status: "destructive", meta: "0/0"          },
-      { id: "journal",     label: "Journal des Opérations",  status: "warning",     meta: "2 entrées"    },
-    ],
-  },
-  {
-    title: "Budget & Finances",
-    weight: "20%",
-    items: [
-      { id: "budget",        label: "Budget",                    status: "success",     meta: "Défini"        },
-      { id: "funding",       label: "Sources de financement",    status: "success",     meta: "100%"          },
-      { id: "ppm",           label: "Plan de Passation (PPM)",   status: "warning",     meta: "Planification" },
-      { id: "contracts",     label: "Gestion des Contrats",      status: "warning",     meta: "En cours"      },
-      { id: "disbursements", label: "Décaissements",             status: "warning",     meta: "68.7%"         },
-    ],
-  },
-  {
-    title: "Suivi & Contrôle",
-    weight: "20%",
-    items: [
-      { id: "evm",          label: "Indicateurs EVM",     status: "warning",     meta: "SPI 0.79"    },
-      { id: "risks",        label: "Risques & Alertes",   status: "destructive", meta: "3 critiques" },
-      { id: "deliverables", label: "Livrables",           status: "destructive", meta: "0 val."      },
-    ],
-  },
-  {
-    title: "Documentation & Annexes",
-    weight: "10%",
-    items: [
-      { id: "pdocuments", label: "Documents",          status: "warning",  meta: "4 fiches" },
-      { id: "reports",    label: "Rapports",           status: "destructive", meta: "0 rap." },
-      { id: "history",    label: "Historique & Logs",  status: "success",  meta: "À jour"   },
-      { id: "comments",   label: "Commentaires",       status: "success",  meta: "2 com."   },
-      { id: "settings",   label: "Paramètres Projet",  status: "success",  meta: ""         },
-    ],
-  },
-];
+function buildGroups(s?: ProjectSummary): NavGroup[] {
+  const acts = s?.nombreActivites ?? 0;
+  const actsOk = s?.activitesTerminees ?? 0;
+  const actsLate = s?.activitesEnRetard ?? 0;
+  const livs = s?.nombreLivrables ?? 0;
+  const livsOk = s?.livrablesTermines ?? 0;
+  const risks = s?.risquesCritiques ?? 0;
+  const contracts = s?.contratsActifs ?? 0;
+  const taux = s?.tauxDecaissement ?? 0;
+
+  return [
+    {
+      title: "Aperçu & Cadrage",
+      weight: "30%",
+      items: [
+        { id: "overview",    label: "Informations Générales", status: "success",                                     meta: ""              },
+        { id: "governance",  label: "Gouvernance",             status: "warning",                                     meta: ""              },
+        { id: "logframe",    label: "Cadre Logique",           status: "default",                                     meta: ""              },
+        { id: "wbs",         label: "Structure (WBS)",         status: "default",                                     meta: ""              },
+      ],
+    },
+    {
+      title: "Planification & Opérations",
+      weight: "20%",
+      items: [
+        {
+          id: "ptba",
+          label: "PTBA",
+          status: acts === 0 ? "default" : actsLate > 0 ? "destructive" : "success",
+          meta: acts > 0 ? `${actsOk}/${acts}` : "0 tâches",
+        },
+        {
+          id: "activities",
+          label: "Activités",
+          status: acts === 0 ? "default" : actsLate > 0 ? "destructive" : "warning",
+          meta: actsLate > 0 ? `${actsLate} retard` : `${actsOk}/${acts}`,
+        },
+        { id: "journal",     label: "Journal des Opérations",  status: "warning",  meta: ""              },
+      ],
+    },
+    {
+      title: "Budget & Finances",
+      weight: "20%",
+      items: [
+        { id: "budget",        label: "Budget",                    status: "success",                                         meta: taux > 0 ? `${taux.toFixed(0)}%` : "" },
+        { id: "funding",       label: "Sources de financement",    status: "success",                                         meta: ""              },
+        { id: "ppm",           label: "Plan de Passation (PPM)",   status: "warning",                                         meta: ""              },
+        {
+          id: "contracts",
+          label: "Gestion des Contrats",
+          status: contracts > 0 ? "success" : "default",
+          meta: contracts > 0 ? `${contracts} actif${contracts > 1 ? 's' : ''}` : "",
+        },
+        {
+          id: "disbursements",
+          label: "Décaissements",
+          status: taux >= 60 ? "success" : taux > 0 ? "warning" : "default",
+          meta: taux > 0 ? `${taux.toFixed(1)}%` : "",
+        },
+      ],
+    },
+    {
+      title: "Suivi & Contrôle",
+      weight: "20%",
+      items: [
+        { id: "evm",          label: "Indicateurs EVM",     status: "warning",                                                   meta: ""                                 },
+        {
+          id: "risks",
+          label: "Risques & Alertes",
+          status: risks > 0 ? "destructive" : "success",
+          meta: risks > 0 ? `${risks} crit.` : "OK",
+        },
+        {
+          id: "deliverables",
+          label: "Livrables",
+          status: livs === 0 ? "default" : livsOk === livs ? "success" : livsOk > 0 ? "warning" : "destructive",
+          meta: livs > 0 ? `${livsOk}/${livs} val.` : "0 val.",
+        },
+      ],
+    },
+    {
+      title: "Documentation & Annexes",
+      weight: "10%",
+      items: [
+        { id: "pdocuments", label: "Documents",          status: "warning",     meta: "" },
+        { id: "reports",    label: "Rapports",           status: "destructive", meta: "" },
+        { id: "history",    label: "Historique & Logs",  status: "success",     meta: "" },
+        { id: "comments",   label: "Commentaires",       status: "success",     meta: "" },
+        { id: "settings",   label: "Paramètres Projet",  status: "success",     meta: "" },
+      ],
+    },
+  ];
+}
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -80,13 +134,15 @@ function getStatusColor(status: string) {
   }
 }
 
-export default function ProjectNavigation({ activeTab, setActiveTab }: ProjectNavigationProps) {
+export default function ProjectNavigation({ activeTab, setActiveTab, summary }: ProjectNavigationProps) {
+  const groups = buildGroups(summary);
+
   return (
     <div className="w-full bg-background border border-border rounded-lg shadow-sm overflow-hidden">
       <div className="overflow-x-auto scrollbar-thin">
         <div className="flex divide-x divide-border min-w-max">
 
-          {NAV_GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.title} className="flex flex-col p-3 min-w-[160px] max-w-[210px]">
 
               {/* Group header */}

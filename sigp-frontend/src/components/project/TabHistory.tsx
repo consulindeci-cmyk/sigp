@@ -1,4 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { useHistory } from '@/hooks/useHistory';
+import { useUIStore } from '@/stores/uiStore';
 import * as XLSX from 'xlsx';
 import {
   LineChart, Line, BarChart, Bar,
@@ -11,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { HistoriqueProjet, TypeActionHistorique, NiveauHistorique, ModuleHistorique } from '@/types';
 import {
-  MOCK_HISTORIQUE, ACTION_LABEL, ACTION_OPTIONS, NIVEAU_OPTIONS, MODULES_HISTORIQUE,
+  ACTION_LABEL, ACTION_OPTIONS, NIVEAU_OPTIONS, MODULES_HISTORIQUE,
 } from '@/mocks/historyMocks';
 import { useHistoryStats } from '@/hooks/useHistory';
 import { HistorySlideOver } from './history/HistorySlideOver';
@@ -58,7 +61,17 @@ function actionVariant(a: TypeActionHistorique): 'default' | 'success' | 'destru
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TabHistory() {
-  const [evenements]                = useState<HistoriqueProjet[]>(MOCK_HISTORIQUE);
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const activeProjectId      = useUIStore(s => s.activeProjectId);
+  const projectId            = urlProjectId || activeProjectId || '';
+
+  const { data: apiData } = useHistory(projectId);
+  const [evenements, setEvenements] = useState<HistoriqueProjet[]>([]);
+
+  useEffect(() => {
+    const list = (apiData as { data?: HistoriqueProjet[] })?.data ?? (Array.isArray(apiData) ? apiData as HistoriqueProjet[] : []);
+    setEvenements(list);
+  }, [apiData]);
   const [slideOpen,  setSlideOpen]  = useState(false);
   const [slideEvt,   setSlideEvt]   = useState<HistoriqueProjet | null>(null);
 

@@ -47,8 +47,8 @@ export default function PPMPage() {
   const { activeProjectId } = useUIStore();
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions();
-  const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(activeVersionId);
+  const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions(resolvedProjectId);
+  const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(resolvedProjectId, activeVersionId);
 
   const [activeTab, setActiveTab] = useState<Tab>('MATRIX');
   const [isFormOpen, setIsFormOpen] = useState(false);

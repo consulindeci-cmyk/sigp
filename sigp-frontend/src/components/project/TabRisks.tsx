@@ -1,4 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { useRisks, useCreateRisk, useUpdateRisk, useDeleteRisk } from '@/hooks/useRisks';
+import { useUIStore } from '@/stores/uiStore';
 import type { ColumnDef } from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import {
@@ -11,7 +14,7 @@ import {
 } from 'recharts';
 
 import type { Risque, NiveauRisque } from '@/types';
-import { MOCK_RISQUES, MOCK_RISK_EVOLUTION, RISK_CATEGORIES, STATUT_RISQUE_OPTIONS } from '@/mocks/risksMocks';
+import { RISK_CATEGORIES, STATUT_RISQUE_OPTIONS } from '@/mocks/risksMocks';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { DataTable } from '@/components/ui/data-table/DataTable';
@@ -120,7 +123,21 @@ function doExportXlsx(risques: Risque[]) {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function TabRisks() {
-  const [risques, setRisques] = useState<Risque[]>(MOCK_RISQUES);
+  const { id: urlProjectId }   = useParams<{ id: string }>();
+  const activeProjectId        = useUIStore(s => s.activeProjectId);
+  const projectId              = urlProjectId || activeProjectId || '';
+
+  const { data: apiRisques, isLoading } = useRisks(projectId);
+  const createMutation  = useCreateRisk(projectId);
+  const updateMutation  = useUpdateRisk(projectId);
+  const deleteMutation  = useDeleteRisk(projectId);
+
+  const [risques, setRisques] = useState<Risque[]>([]);
+
+  useEffect(() => {
+    const list = apiRisques?.data ?? (Array.isArray(apiRisques) ? apiRisques : []);
+    if (list.length > 0 || apiRisques) setRisques(list);
+  }, [apiRisques]);
 
   const [slideOpen, setSlideOpen]   = useState(false);
   const [slideMode, setSlideMode]   = useState<'new' | 'edit' | 'view'>('new');
@@ -189,38 +206,43 @@ export default function TabRisks() {
         ...r, ...payload, criticite, niveau_criticite: niveau,
         updatedAt: new Date().toISOString(),
       }));
+      updateMutation.mutate({ id, ...payload, criticite, niveau_criticite: niveau });
     } else {
       const now = new Date().toISOString();
-      const newR: Risque = {
-        id:               `r-${Date.now()}`,
-        projet_id:        'mock-proj-01',
-        code_risque:      nextCode(risques),
-        description:      payload.description,
-        categorie:        payload.categorie,
-        probabilite:      payload.probabilite,
-        impact:           payload.impact,
+      const dto: Partial<Risque> = {
+        projet_id:            projectId,
+        code_risque:          nextCode(risques),
+        description:          payload.description,
+        categorie:            payload.categorie,
+        probabilite:          payload.probabilite,
+        impact:               payload.impact,
         criticite,
-        niveau_criticite: niveau,
-        statut:           payload.statut,
-        responsable:      payload.responsable,
-        plan_mitigation:  payload.plan_mitigation,
+        niveau_criticite:     niveau,
+        statut:               payload.statut,
+        responsable:          payload.responsable,
+        plan_mitigation:      payload.plan_mitigation,
         date_identification:  payload.date_identification,
         date_revision_prevue: payload.date_revision_prevue,
         createdAt: now, updatedAt: now,
       };
-      setRisques(prev => [...prev, newR]);
+      setRisques(prev => [...prev, { ...dto, id: `tmp-${Date.now()}` } as Risque]);
+      createMutation.mutate(dto);
     }
-  }, [risques]);
+  }, [risques, projectId, createMutation, updateMutation]);
 
   const handleDeleteFromSlideOver = useCallback((id: string) => {
     setRisques(prev => prev.filter(r => r.id !== id));
-  }, []);
+    deleteMutation.mutate(id);
+  }, [deleteMutation]);
 
   const confirmDelete = useCallback(() => {
-    if (toDelete) setRisques(prev => prev.filter(r => r.id !== toDelete.id));
+    if (toDelete) {
+      setRisques(prev => prev.filter(r => r.id !== toDelete.id));
+      deleteMutation.mutate(toDelete.id);
+    }
     setDeleteOpen(false);
     setToDelete(null);
-  }, [toDelete]);
+  }, [toDelete, deleteMutation]);
 
   // ── Columns ─────────────────────────────────────────────────────────────
 
@@ -416,7 +438,7 @@ export default function TabRisks() {
           <div className="bg-card border border-border rounded-lg p-5">
             <h3 className="text-sm font-semibold text-foreground mb-4">Évolution du portefeuille de risques</h3>
             <ResponsiveContainer width="100%" height={190}>
-              <AreaChart data={MOCK_RISK_EVOLUTION} margin={{ left: -10, right: 10, top: 4, bottom: 0 }}>
+              <AreaChart data={[]} margin={{ left: -10, right: 10, top: 4, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gcrit" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor="hsl(var(--destructive))" stopOpacity={0.3} />
@@ -490,7 +512,7 @@ export default function TabRisks() {
         <DataTable
           columns={columns}
           data={risques}
-          isLoading={false}
+          isLoading={isLoading}
           searchKey="description"
           searchPlaceholder="Rechercher un risque…"
           filters={[

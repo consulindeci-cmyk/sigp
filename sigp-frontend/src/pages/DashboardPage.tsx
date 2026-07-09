@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useDashboard } from '@/hooks/useDashboard';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer,
@@ -19,24 +20,11 @@ import {
   Flag, Clock, Calendar, TrendingUp,
 } from 'lucide-react';
 import {
-  mockPortfolioKPIs,
-  mockEvmData,
-  mockDisbursements12Months,
-  mockBudgetDistribution,
-  mockFundingDistribution,
   mockBudgetByBailleur,
   mockRisksByCategory,
   mockProjectStatusDistribution,
-  mockBudgetConsumption,
-  mockCriticalActivities,
-  mockMainRisks,
-  mockMilestones,
-  mockEvents,
-  mockRecentActivities,
-  mockUpcomingDeadlines,
-  mockAlerts,
-  mockTimelineItems,
 } from '@/mocks/dashboardMocks';
+import { useNotifications } from '@/hooks/useNotifications';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle,
   ModalDescription, ModalFooter, ModalClose,
@@ -101,6 +89,98 @@ export default function DashboardPage() {
     day: 'numeric', month: 'long', year: 'numeric',
   });
 
+  // ── Backend data ─────────────────────────────────────────────────────────
+  const { data: dashboard } = useDashboard();
+  const { data: notifications } = useNotifications();
+
+  // Derived KPIs — real API data; 0 when backend returns nothing
+  const portfolioKPIs = useMemo(() => {
+    const api = dashboard as any;
+    const budgetTotal    = api?.finances?.budgetTotal    ?? 0;
+    const montantPaye    = api?.finances?.montantPaye    ?? 0;
+    const montantEngage  = api?.finances?.montantEngage  ?? 0;
+    const montantRestant = api?.finances?.montantRestant ?? 0;
+    const formatM = (n: number) =>
+      n >= 1_000_000
+        ? `${(n / 1_000_000).toFixed(1).replace('.', ',')} M FCFA`
+        : `${n.toLocaleString('fr-FR')} FCFA`;
+    const tauxPct = budgetTotal ? ((montantPaye / budgetTotal) * 100).toFixed(1) : '0';
+    return {
+      totalProjets:            api?.projets?.total          ?? 0,
+      projetsActifs:           api?.projets?.actifs         ?? 0,
+      projetsTermines:         api?.projets?.termines       ?? 0,
+      projetsEnRetard:         api?.projets?.suspendus      ?? 0,
+      budgetGlobal:            formatM(budgetTotal),
+      budgetDecaisse:          formatM(montantPaye),
+      tauxDecaissement:        `${tauxPct}%`,
+      contratsActifs:          api?.passation?.marchesTotal   ?? 0,
+      contratsEnApprobation:   api?.passation?.marchesEnCours ?? 0,
+      risquesCritiques:        api?.risques?.critiques        ?? 0,
+      risquesCritiquesProgram: api?.risques?.total            ?? 0,
+      nombreBailleurs:         0,
+      // Finance detail for budget consumption widget
+      _budgetTotal:    budgetTotal,
+      _montantEngage:  montantEngage,
+      _montantPaye:    montantPaye,
+      _montantRestant: montantRestant,
+    };
+  }, [dashboard]);
+
+  // Derived budget consumption widget
+  const budgetConsumption = useMemo(() => {
+    const t = portfolioKPIs._budgetTotal;
+    return {
+      total:            Math.round(t / 1_000_000 * 10) / 10,
+      engaged:          Math.round(portfolioKPIs._montantEngage / 1_000_000 * 10) / 10,
+      disbursed:        Math.round(portfolioKPIs._montantPaye / 1_000_000 * 10) / 10,
+      remaining:        Math.round(portfolioKPIs._montantRestant / 1_000_000 * 10) / 10,
+      percentEngaged:   t ? Math.round(portfolioKPIs._montantEngage / t * 100) : 0,
+      percentDisbursed: t ? Math.round(portfolioKPIs._montantPaye / t * 100)   : 0,
+    };
+  }, [portfolioKPIs]);
+
+  // Alerts derived from notifications backend
+  const alerts = useMemo(() => {
+    if (!notifications?.length) return [];
+    const CRITICAL_TYPES = new Set([
+      'RISQUE_CRITIQUE', 'BUDGET_DEPASSE', 'EVM_ALERTE_CPI',
+      'EVM_ALERTE_SPI', 'CONTRAT_EXPIRE',
+    ]);
+    return notifications
+      .filter(n => !n.lue)
+      .map(n => ({
+        id:    n.id,
+        type:  CRITICAL_TYPES.has(n.type) ? 'critical' as const : 'warning' as const,
+        title: n.titre,
+        meta:  n.message,
+      }));
+  }, [notifications]);
+
+  // ── Analytics sections from backend ─────────────────────────────────────
+  const dashApi = dashboard as any;
+  const evmData = (dashApi?.evmData ?? []) as { date: string; pv: number; ev: number; ac: number }[];
+  const decaissementsMensuels = (dashApi?.decaissementsMensuels ?? []) as { label: string; value: number }[];
+  const budgetDistribution     = (dashApi?.budgetDistribution     ?? []) as { label: string; value: number }[];
+  const financementDistribution= (dashApi?.financementDistribution?? []) as { label: string; value: number }[];
+  const activitesCritiques     = (dashApi?.activitesCritiques     ?? []) as { id: string; code: string; name: string; status: 'blocked'|'delayed'; delayDays: number }[];
+  const risquesPrincipaux      = (dashApi?.risquesPrincipaux      ?? []) as { id: string; description: string; probability: number; level: 'high'|'medium'|'low' }[];
+  const jalons                 = (dashApi?.jalons                 ?? []) as { id: string; title: string; date: string; status: 'achieved'|'delayed'|'pending' }[];
+  const evenementsRecents      = (dashApi?.evenementsRecents      ?? []) as { id: string; description: string; date: string; type: 'alert'|'validation'|'payment'|'milestone' }[];
+  const activitesRecentes      = (dashApi?.activitesRecentes      ?? []) as { id: string; title: string; meta: string; time: string; colorClass: string }[];
+  const echeancesProches       = (dashApi?.echeancesProches       ?? []) as { id: string; title: string; meta: string; time: string; colorClass: string }[];
+  const timelineItems          = (dashApi?.timeline               ?? []) as { id: string; title: string; date: string; project: string; type: 'deadline'|'milestone'|'event' }[];
+
+  // Derived project status distribution
+  const projectStatusDistribution = useMemo(() => {
+    const api = dashboard as any;
+    if (!api?.projets) return mockProjectStatusDistribution;
+    return [
+      { name: 'Actifs',    value: api.projets.actifs,    color: mockProjectStatusDistribution[0]?.color },
+      { name: 'Terminés',  value: api.projets.termines,  color: mockProjectStatusDistribution[1]?.color },
+      { name: 'Suspendus', value: api.projets.suspendus, color: mockProjectStatusDistribution[2]?.color },
+    ];
+  }, [dashboard]);
+
   // ── Panel state ─────────────────────────────────────────────────────────
   const [showDisbReport, setShowDisbReport] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -117,20 +197,20 @@ export default function DashboardPage() {
       [],
       ['INDICATEURS CLÉS', ''],
       ['Indicateur', 'Valeur'],
-      ['Total des projets', String(mockPortfolioKPIs.totalProjets)],
-      ['Projets actifs', String(mockPortfolioKPIs.projetsActifs)],
-      ['Projets terminés', String(mockPortfolioKPIs.projetsTermines)],
-      ['Projets en retard', String(mockPortfolioKPIs.projetsEnRetard)],
-      ['Budget global', mockPortfolioKPIs.budgetGlobal],
-      ['Budget décaissé', mockPortfolioKPIs.budgetDecaisse],
-      ['Taux de décaissement', mockPortfolioKPIs.tauxDecaissement],
-      ['Contrats actifs', String(mockPortfolioKPIs.contratsActifs)],
-      ['Contrats en approbation', String(mockPortfolioKPIs.contratsEnApprobation)],
-      ['Risques critiques', String(mockPortfolioKPIs.risquesCritiques)],
+      ['Total des projets', String(portfolioKPIs.totalProjets)],
+      ['Projets actifs', String(portfolioKPIs.projetsActifs)],
+      ['Projets terminés', String(portfolioKPIs.projetsTermines)],
+      ['Projets suspendus', String(portfolioKPIs.projetsEnRetard)],
+      ['Budget global', portfolioKPIs.budgetGlobal],
+      ['Budget décaissé', portfolioKPIs.budgetDecaisse],
+      ['Taux de décaissement', portfolioKPIs.tauxDecaissement],
+      ['Contrats actifs', String(portfolioKPIs.contratsActifs)],
+      ['Contrats en approbation', String(portfolioKPIs.contratsEnApprobation)],
+      ['Risques critiques', String(portfolioKPIs.risquesCritiques)],
       [],
-      ['DÉCAISSEMENTS MENSUELS (M$)', ''],
-      ['Mois', 'Montant (M$)'],
-      ...mockDisbursements12Months.map(d => [d.label, String(d.value)]),
+      ['DÉCAISSEMENTS MENSUELS (M FCFA)', ''],
+      ['Mois', 'Montant (M FCFA)'],
+      ...decaissementsMensuels.map(d => [d.label, String(d.value)]),
       [],
       ['RÉPARTITION PAR BAILLEUR', ''],
       ['Bailleur', 'Budget', 'Part (%)'],
@@ -156,10 +236,10 @@ export default function DashboardPage() {
 
   // ── Derived KPIs (computed, never hardcoded) ─────────────────────────────
   const pctActifs = Math.round(
-    (mockPortfolioKPIs.projetsActifs / mockPortfolioKPIs.totalProjets) * 100,
+    (portfolioKPIs.projetsActifs / portfolioKPIs.totalProjets) * 100,
   );
   const pctTermines = Math.round(
-    (mockPortfolioKPIs.projetsTermines / mockPortfolioKPIs.totalProjets) * 100,
+    (portfolioKPIs.projetsTermines / portfolioKPIs.totalProjets) * 100,
   );
 
   const headerActions = (
@@ -200,28 +280,28 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <StatCard
             title="Total des Projets"
-            value={mockPortfolioKPIs.totalProjets}
+            value={portfolioKPIs.totalProjets}
             icon={<LayoutGrid className="h-5 w-5 text-primary" aria-hidden="true" />}
             iconVariant="primary"
             trend={{ value: 3, label: 'vs trimestre précédent', isPositive: true }}
           />
           <StatCard
             title="Projets Actifs"
-            value={mockPortfolioKPIs.projetsActifs}
+            value={portfolioKPIs.projetsActifs}
             icon={<Activity className="h-5 w-5 text-success" aria-hidden="true" />}
             iconVariant="success"
             description={`${pctActifs}% du portefeuille`}
           />
           <StatCard
             title="Projets Terminés"
-            value={mockPortfolioKPIs.projetsTermines}
+            value={portfolioKPIs.projetsTermines}
             icon={<CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
             iconVariant="default"
             description={`${pctTermines}% du portefeuille`}
           />
           <StatCard
-            title="Projets en Retard"
-            value={mockPortfolioKPIs.projetsEnRetard}
+            title="Projets Suspendus"
+            value={portfolioKPIs.projetsEnRetard}
             icon={<AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />}
             iconVariant="destructive"
             trend={{ value: 1, label: 'nécessite une attention', isPositive: false }}
@@ -234,31 +314,31 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <StatCard
             title="Budget Global"
-            value={mockPortfolioKPIs.budgetGlobal}
+            value={portfolioKPIs.budgetGlobal}
             icon={<Banknote className="h-5 w-5 text-primary" aria-hidden="true" />}
             iconVariant="primary"
-            description={`réparti sur ${mockPortfolioKPIs.nombreBailleurs} bailleurs`}
+            description={`réparti sur ${portfolioKPIs.nombreBailleurs} bailleurs`}
           />
           <StatCard
             title="Budget Décaissé"
-            value={mockPortfolioKPIs.budgetDecaisse}
+            value={portfolioKPIs.budgetDecaisse}
             icon={<Wallet className="h-5 w-5 text-success" aria-hidden="true" />}
             iconVariant="success"
-            description={`${mockPortfolioKPIs.tauxDecaissement} taux de décaissement`}
+            description={`${portfolioKPIs.tauxDecaissement} taux de décaissement`}
           />
           <StatCard
             title="Contrats de Marchés"
-            value={mockPortfolioKPIs.contratsActifs}
+            value={portfolioKPIs.contratsActifs}
             icon={<FileSignature className="h-5 w-5 text-primary" aria-hidden="true" />}
             iconVariant="primary"
-            description={`${mockPortfolioKPIs.contratsEnApprobation} en circuit d'approbation`}
+            description={`${portfolioKPIs.contratsEnApprobation} en circuit d'approbation`}
           />
           <StatCard
             title="Risques Critiques"
-            value={mockPortfolioKPIs.risquesCritiques}
+            value={portfolioKPIs.risquesCritiques}
             icon={<ShieldAlert className="h-5 w-5 text-destructive" aria-hidden="true" />}
             iconVariant="destructive"
-            description={`sur ${mockPortfolioKPIs.risquesCritiquesProgram}`}
+            description={`sur ${portfolioKPIs.risquesCritiquesProgram}`}
           />
         </div>
       </section>
@@ -272,7 +352,7 @@ export default function DashboardPage() {
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Tendances de Décaissement"
-                subtitle="Décaissements mensuels — 12 derniers mois (M$)"
+                subtitle="Décaissements mensuels — 12 derniers mois (M FCFA)"
                 action={
                   <Button
                     variant="ghost"
@@ -294,7 +374,7 @@ export default function DashboardPage() {
               >
                 <ResponsiveContainer width="99%" height="100%">
                   <AreaChart
-                    data={mockDisbursements12Months}
+                    data={decaissementsMensuels}
                     margin={{ top: 5, right: 8, left: 0, bottom: 5 }}
                   >
                     <defs>
@@ -319,12 +399,12 @@ export default function DashboardPage() {
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(v: any) => [`${v}M$`, 'Décaissé']}
+                      formatter={(v: any) => [`${v} M FCFA`, 'Décaissé']}
                     />
                     <Area
                       type="monotone"
                       dataKey="value"
-                      name="Décaissé (M$)"
+                      name="Décaissé (M FCFA)"
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       fill="url(#disbGrad)"
@@ -354,7 +434,7 @@ export default function DashboardPage() {
                 <ResponsiveContainer width="99%" height="100%">
                   <PieChart>
                     <Pie
-                      data={mockProjectStatusDistribution}
+                      data={projectStatusDistribution}
                       cx="50%"
                       cy="45%"
                       innerRadius={52}
@@ -363,7 +443,7 @@ export default function DashboardPage() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {mockProjectStatusDistribution.map((_entry, i) => (
+                      {projectStatusDistribution.map((_entry: unknown, i: number) => (
                         <Cell key={`status-${i}`} fill={STATUS_COLORS[i % STATUS_COLORS.length]} />
                       ))}
                     </Pie>
@@ -393,10 +473,15 @@ export default function DashboardPage() {
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Performance EVM du Portefeuille"
-                subtitle="PV / EV / AC cumulés — valeurs en K$"
+                subtitle="PV / EV / AC cumulés — valeurs en K FCFA"
               />
             </CardHeader>
             <CardContent>
+              {evmData.length === 0 && (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  Aucun snapshot EVM disponible — créez des snapshots dans les projets.
+                </p>
+              )}
               <div
                 className="h-64 w-full min-w-0"
                 role="img"
@@ -404,7 +489,7 @@ export default function DashboardPage() {
               >
                 <ResponsiveContainer width="99%" height="100%">
                   <LineChart
-                    data={mockEvmData}
+                    data={evmData}
                     margin={{ top: 5, right: 8, left: 0, bottom: 5 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
@@ -423,7 +508,7 @@ export default function DashboardPage() {
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(v: any, name: any) => [`${v}K$`, name]}
+                      formatter={(v: any, name: any) => [`${v} K FCFA`, name]}
                     />
                     <Legend
                       wrapperStyle={{ fontSize: '11px' }}
@@ -476,7 +561,7 @@ export default function DashboardPage() {
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Budget Total</span>
                 <span className="font-bold font-mono text-foreground">
-                  ${mockBudgetConsumption.total}M
+                  {budgetConsumption.total} M FCFA
                 </span>
               </div>
 
@@ -484,15 +569,15 @@ export default function DashboardPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Engagé</span>
                   <span className="font-semibold font-mono text-foreground">
-                    ${mockBudgetConsumption.engaged}M
+                    {budgetConsumption.engaged} M FCFA
                   </span>
                 </div>
                 <ProgressBar
-                  value={mockBudgetConsumption.percentEngaged}
+                  value={budgetConsumption.percentEngaged}
                   color="primary"
                   size="sm"
                   showLabel
-                  aria-label={`Budget engagé : ${mockBudgetConsumption.percentEngaged}%`}
+                  aria-label={`Budget engagé : ${budgetConsumption.percentEngaged}%`}
                 />
               </div>
 
@@ -500,22 +585,22 @@ export default function DashboardPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Décaissé</span>
                   <span className="font-semibold font-mono text-success">
-                    ${mockBudgetConsumption.disbursed}M
+                    {budgetConsumption.disbursed} M FCFA
                   </span>
                 </div>
                 <ProgressBar
-                  value={mockBudgetConsumption.percentDisbursed}
+                  value={budgetConsumption.percentDisbursed}
                   color="success"
                   size="sm"
                   showLabel
-                  aria-label={`Budget décaissé : ${mockBudgetConsumption.percentDisbursed}%`}
+                  aria-label={`Budget décaissé : ${budgetConsumption.percentDisbursed}%`}
                 />
               </div>
 
               <div className="pt-3 border-t border-border flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Solde disponible</span>
                 <span className="font-bold font-mono text-foreground">
-                  ${mockBudgetConsumption.remaining}M
+                  {budgetConsumption.remaining} M FCFA
                 </span>
               </div>
             </CardContent>
@@ -544,7 +629,7 @@ export default function DashboardPage() {
                 <ResponsiveContainer width="99%" height="100%">
                   <PieChart>
                     <Pie
-                      data={mockBudgetDistribution.map((d) => ({
+                      data={budgetDistribution.map((d) => ({
                         name: d.label,
                         value: Math.round(d.value / 100000) / 10,
                       }))}
@@ -556,7 +641,7 @@ export default function DashboardPage() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {mockBudgetDistribution.map((_e, i) => (
+                      {budgetDistribution.map((_e, i) => (
                         <Cell key={`bd-${i}`} fill={BUDGET_DIST_COLORS[i % BUDGET_DIST_COLORS.length]} />
                       ))}
                     </Pie>
@@ -592,7 +677,7 @@ export default function DashboardPage() {
                 <ResponsiveContainer width="99%" height="100%">
                   <PieChart>
                     <Pie
-                      data={mockFundingDistribution.map((d) => ({
+                      data={financementDistribution.map((d) => ({
                         name: d.label,
                         value: Math.round(d.value / 100000) / 10,
                       }))}
@@ -604,7 +689,7 @@ export default function DashboardPage() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {mockFundingDistribution.map((_e, i) => (
+                      {financementDistribution.map((_e, i) => (
                         <Cell key={`fd-${i}`} fill={FUNDING_COLORS[i % FUNDING_COLORS.length]} />
                       ))}
                     </Pie>
@@ -650,7 +735,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-0">
               <ul role="list" className="divide-y divide-border">
-                {mockCriticalActivities.map((activity) => (
+                {activitesCritiques.length === 0 && (
+                  <li className="p-4 text-sm text-muted-foreground">Aucune activité critique.</li>
+                )}
+                {activitesCritiques.map((activity) => (
                   <li
                     key={activity.id}
                     className="flex items-center justify-between gap-3 p-4 hover:bg-muted/50 transition-colors"
@@ -703,7 +791,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-0">
               <ul role="list" className="divide-y divide-border">
-                {mockMainRisks.map((risk) => (
+                {risquesPrincipaux.length === 0 && (
+                  <li className="p-4 text-sm text-muted-foreground">Aucun risque majeur identifié.</li>
+                )}
+                {risquesPrincipaux.map((risk) => (
                   <li
                     key={risk.id}
                     className="flex items-center justify-between gap-3 p-4 hover:bg-muted/50 transition-colors"
@@ -773,7 +864,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-0">
               <ul role="list" className="divide-y divide-border">
-                {mockMilestones.map((milestone) => (
+                {jalons.length === 0 && (
+                  <li className="p-4 text-sm text-muted-foreground">Aucun jalon à venir.</li>
+                )}
+                {jalons.map((milestone) => (
                   <li
                     key={milestone.id}
                     className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
@@ -827,7 +921,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-0">
               <ul role="list" className="divide-y divide-border">
-                {mockEvents.map((event) => (
+                {evenementsRecents.length === 0 && (
+                  <li className="p-4 text-sm text-muted-foreground">Aucun événement récent.</li>
+                )}
+                {evenementsRecents.map((event) => (
                   <li
                     key={event.id}
                     className="flex items-start gap-4 p-4 hover:bg-muted/50 transition-colors"
@@ -891,14 +988,17 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto" tabIndex={0} aria-label="Faites défiler pour voir la ligne de temps">
+              {timelineItems.length === 0 && (
+                <p className="text-sm text-muted-foreground py-2 px-1">Aucun événement dans la ligne de temps.</p>
+              )}
               <div className="flex gap-0 min-w-max pb-2">
-                {mockTimelineItems.map((item, idx) => (
+                {timelineItems.map((item, idx) => (
                   <div
                     key={item.id}
                     className="flex flex-col items-center w-40 sm:w-48 relative"
                   >
                     {/* Connector line */}
-                    {idx < mockTimelineItems.length - 1 && (
+                    {idx < timelineItems.length - 1 && (
                       <div
                         className="absolute top-4 left-[calc(50%+16px)] w-[calc(100%-32px)] h-px bg-border z-0"
                         aria-hidden="true"
@@ -1016,7 +1116,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-0">
               <ul role="list" className="divide-y divide-border">
-                {mockRecentActivities.map((item) => (
+                {activitesRecentes.length === 0 && (
+                  <li className="p-4 text-sm text-muted-foreground">Aucune activité récente.</li>
+                )}
+                {activitesRecentes.map((item) => (
                   <li
                     key={item.id}
                     className="flex items-start gap-4 p-4 hover:bg-muted/50 transition-colors"
@@ -1054,7 +1157,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-0">
               <ul role="list" className="divide-y divide-border">
-                {mockUpcomingDeadlines.map((item) => (
+                {echeancesProches.length === 0 && (
+                  <li className="p-4 text-sm text-muted-foreground">Aucune échéance à venir.</li>
+                )}
+                {echeancesProches.map((item) => (
                   <li
                     key={item.id}
                     className="flex items-start gap-4 p-4 hover:bg-muted/50 transition-colors"
@@ -1100,8 +1206,11 @@ export default function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="p-0">
+            {alerts.length === 0 && (
+              <p className="text-sm text-muted-foreground p-4">Aucune alerte active.</p>
+            )}
             <ul role="list" className="divide-y divide-destructive/10">
-              {mockAlerts.map((item) => (
+              {alerts.map((item) => (
                 <li
                   key={item.id}
                   className="flex items-start gap-4 p-4 hover:bg-muted/50 transition-colors"
@@ -1136,7 +1245,7 @@ export default function DashboardPage() {
       <ModalContent className="max-w-xl">
         <ModalHeader>
           <ModalTitle>Rapport de Décaissement</ModalTitle>
-          <ModalDescription>Décaissements mensuels — 12 derniers mois (M$)</ModalDescription>
+          <ModalDescription>Décaissements mensuels — 12 derniers mois (M FCFA)</ModalDescription>
         </ModalHeader>
         <div className="px-6 pb-2">
           <div className="rounded-lg border border-border overflow-hidden">
@@ -1149,15 +1258,15 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {mockDisbursements12Months.map((d, i) => {
+                {decaissementsMensuels.map((d, i) => {
                   const cumul = Math.round(
-                    mockDisbursements12Months.slice(0, i + 1).reduce((s, x) => s + x.value, 0) * 10
+                    decaissementsMensuels.slice(0, i + 1).reduce((s, x) => s + x.value, 0) * 10
                   ) / 10;
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-2 font-medium text-foreground">{d.label}</td>
-                      <td className="px-4 py-2 text-right font-mono tabular-nums text-foreground">{d.value}M$</td>
-                      <td className="px-4 py-2 text-right font-mono tabular-nums text-muted-foreground">{cumul}M$</td>
+                      <td className="px-4 py-2 text-right font-mono tabular-nums text-foreground">{d.value} M FCFA</td>
+                      <td className="px-4 py-2 text-right font-mono tabular-nums text-muted-foreground">{cumul} M FCFA</td>
                     </tr>
                   );
                 })}
@@ -1166,7 +1275,7 @@ export default function DashboardPage() {
                 <tr>
                   <td className="px-4 py-2 font-bold text-foreground text-sm">Total</td>
                   <td className="px-4 py-2 text-right font-bold font-mono tabular-nums text-foreground">
-                    {Math.round(mockDisbursements12Months.reduce((s, d) => s + d.value, 0) * 10) / 10}M$
+                    {Math.round(decaissementsMensuels.reduce((s, d) => s + d.value, 0) * 10) / 10} M FCFA
                   </td>
                   <td className="px-4 py-2 text-right text-muted-foreground">—</td>
                 </tr>
@@ -1177,21 +1286,21 @@ export default function DashboardPage() {
             <div className="bg-muted/30 rounded-lg p-3 text-center">
               <p className="text-[11px] text-muted-foreground">Moyenne / mois</p>
               <p className="text-base font-bold font-mono text-foreground mt-1">
-                {(Math.round(
-                  (mockDisbursements12Months.reduce((s, d) => s + d.value, 0) / mockDisbursements12Months.length) * 10
-                ) / 10)}M$
+                {decaissementsMensuels.length > 0
+                  ? (Math.round((decaissementsMensuels.reduce((s, d) => s + d.value, 0) / decaissementsMensuels.length) * 10) / 10)
+                  : 0} M FCFA
               </p>
             </div>
             <div className="bg-success/10 rounded-lg p-3 text-center">
               <p className="text-[11px] text-muted-foreground">Pic mensuel</p>
               <p className="text-base font-bold font-mono text-success mt-1">
-                {Math.max(...mockDisbursements12Months.map(d => d.value))}M$
+                {decaissementsMensuels.length > 0 ? Math.max(...decaissementsMensuels.map(d => d.value)) : 0} M FCFA
               </p>
             </div>
             <div className="bg-primary/10 rounded-lg p-3 text-center">
               <p className="text-[11px] text-muted-foreground">Taux global</p>
               <p className="text-base font-bold font-mono text-primary mt-1">
-                {mockPortfolioKPIs.tauxDecaissement}
+                {portfolioKPIs.tauxDecaissement}
               </p>
             </div>
           </div>
@@ -1230,10 +1339,11 @@ export default function DashboardPage() {
         <SlideOverBody className="space-y-6">
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Jalons à venir ({mockMilestones.length})
+              Jalons à venir ({jalons.length})
             </h3>
             <ul className="space-y-2">
-              {mockMilestones.map(m => (
+              {jalons.length === 0 && <li className="text-sm text-muted-foreground px-1">Aucun jalon.</li>}
+              {jalons.map(m => (
                 <li key={m.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border">
                   <div className={`p-1.5 rounded-md shrink-0 ${
                     m.status === 'achieved' ? 'bg-success/10 text-success'
@@ -1259,10 +1369,11 @@ export default function DashboardPage() {
           </div>
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Échéances imminentes ({mockUpcomingDeadlines.length})
+              Échéances imminentes ({echeancesProches.length})
             </h3>
             <ul className="space-y-2">
-              {mockUpcomingDeadlines.map(d => (
+              {echeancesProches.length === 0 && <li className="text-sm text-muted-foreground px-1">Aucune échéance.</li>}
+              {echeancesProches.map(d => (
                 <li key={d.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border">
                   <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${d.colorClass}`} aria-hidden="true" />
                   <div className="flex-1 min-w-0">
@@ -1278,10 +1389,11 @@ export default function DashboardPage() {
           </div>
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Ligne de temps ({mockTimelineItems.length} événements)
+              Ligne de temps ({timelineItems.length} événements)
             </h3>
             <ul className="space-y-2">
-              {mockTimelineItems.map(t => (
+              {timelineItems.length === 0 && <li className="text-sm text-muted-foreground px-1">Aucun événement.</li>}
+              {timelineItems.map(t => (
                 <li key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border">
                   <div className={`p-1.5 rounded-md shrink-0 ${
                     t.type === 'deadline' ? 'bg-warning/10 text-warning'
@@ -1329,10 +1441,11 @@ export default function DashboardPage() {
         </SlideOverHeader>
         <SlideOverBody className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            {mockCriticalActivities.length} activité{mockCriticalActivities.length > 1 ? 's' : ''} nécessitant une intervention immédiate.
+            {activitesCritiques.length} activité{activitesCritiques.length > 1 ? 's' : ''} nécessitant une intervention immédiate.
           </p>
           <ul className="space-y-3">
-            {mockCriticalActivities.map(activity => (
+            {activitesCritiques.length === 0 && <li className="text-sm text-muted-foreground">Aucune activité critique.</li>}
+            {activitesCritiques.map(activity => (
               <li key={activity.id} className="p-4 rounded-lg border border-border bg-card">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
@@ -1366,7 +1479,7 @@ export default function DashboardPage() {
           <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
             <p className="text-xs text-destructive font-semibold">Retard cumulé total</p>
             <p className="text-lg font-bold text-destructive mt-1">
-              {mockCriticalActivities.reduce((s, a) => s + a.delayDays, 0)} jours
+              {activitesCritiques.reduce((s, a) => s + a.delayDays, 0)} jours
             </p>
           </div>
         </SlideOverBody>
@@ -1397,10 +1510,11 @@ export default function DashboardPage() {
         <SlideOverBody className="space-y-6">
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Risques principaux ({mockMainRisks.length})
+              Risques principaux ({risquesPrincipaux.length})
             </h3>
             <ul className="space-y-3">
-              {mockMainRisks.map(risk => (
+              {risquesPrincipaux.length === 0 && <li className="text-sm text-muted-foreground">Aucun risque majeur.</li>}
+              {risquesPrincipaux.map(risk => (
                 <li key={risk.id} className="p-4 rounded-lg border border-border bg-card">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0">
@@ -1476,7 +1590,8 @@ export default function DashboardPage() {
         </SlideOverHeader>
         <SlideOverBody>
           <ul className="divide-y divide-border">
-            {mockRecentActivities.map(item => (
+            {activitesRecentes.length === 0 && <li className="p-4 text-sm text-muted-foreground">Aucune activité récente.</li>}
+            {activitesRecentes.map(item => (
               <li key={item.id} className="flex items-start gap-4 py-4 hover:bg-muted/30 transition-colors rounded px-2">
                 <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${item.colorClass}`} aria-hidden="true" />
                 <div className="flex-1 min-w-0">
@@ -1514,10 +1629,10 @@ export default function DashboardPage() {
         </SlideOverHeader>
         <SlideOverBody className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            {mockAlerts.length} alerte{mockAlerts.length > 1 ? 's' : ''} active{mockAlerts.length > 1 ? 's' : ''} sur le portefeuille.
+            {alerts.length} alerte{alerts.length > 1 ? 's' : ''} active{alerts.length > 1 ? 's' : ''} sur le portefeuille.
           </p>
           <ul className="space-y-3">
-            {mockAlerts.map(item => (
+            {alerts.map(item => (
               <li key={item.id} className={`p-4 rounded-lg border ${
                 item.type === 'critical'
                   ? 'border-destructive/20 bg-destructive/5'
@@ -1573,7 +1688,8 @@ export default function DashboardPage() {
         </SlideOverHeader>
         <SlideOverBody>
           <ul className="divide-y divide-border">
-            {mockUpcomingDeadlines.map(item => (
+            {echeancesProches.length === 0 && <li className="p-4 text-sm text-muted-foreground">Aucune échéance à venir.</li>}
+            {echeancesProches.map(item => (
               <li key={item.id} className="flex items-start gap-4 py-4 hover:bg-muted/30 transition-colors rounded px-2">
                 <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${item.colorClass}`} aria-hidden="true" />
                 <div className="flex-1 min-w-0">

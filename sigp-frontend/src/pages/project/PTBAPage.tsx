@@ -6,7 +6,29 @@ import {
   LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet,
 } from 'lucide-react';
 import { usePTBA, useWorkflowPTBA } from '@/hooks/usePTBA';
+import { useTasks } from '@/hooks/useTasks';
 import { useUIStore } from '@/stores/uiStore';
+import { type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
+import type { Tache } from '@/types';
+
+const STATUT_TO_ACTIVITY: Record<string, ActivityStatus> = {
+  A_FAIRE: 'Non démarré', EN_COURS: 'En cours', TERMINE: 'Terminé',
+  ANNULE: 'Suspendu', EN_ATTENTE: 'Non démarré',
+};
+
+function adaptTache(t: Tache): Activity {
+  const parts = (t.responsable ?? '').split(' ');
+  const initiales = parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : (t.responsable ?? '??').slice(0, 2).toUpperCase();
+  return {
+    id: t.id, code: t.code_tache, libelle: t.description, description: t.description,
+    responsable: t.responsable ?? '—', initialesResponsable: initiales,
+    dateDebut: t.date_debut ?? '', dateFin: t.date_fin ?? '', avancement: t.avancement,
+    priorite: 'Moyenne', statut: STATUT_TO_ACTIVITY[t.statut] ?? 'Non démarré',
+    composante: '', budgetAlloue: parseFloat(t.cout_prevu) || 0,
+  };
+}
 import { formatMoney } from '@/utils/format';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { StatCard } from '@/components/ui/data-display/StatCard';
@@ -230,6 +252,11 @@ export default function PTBAPage() {
   const { data: ptbaResponse, isLoading, error } = usePTBA(resolvedProjectId, annee);
   const workflowMutation = useWorkflowPTBA(resolvedProjectId);
 
+  const { data: tasksData } = useTasks(resolvedProjectId);
+  const activities: Activity[] = ((tasksData as { data?: Tache[] })?.data
+    ?? (Array.isArray(tasksData) ? tasksData as Tache[] : [])
+  ).map(adaptTache);
+
   const [localPtba, setLocalPtba] = useState<PTBA | null>(null);
 
   useEffect(() => {
@@ -257,7 +284,12 @@ export default function PTBAPage() {
     if (action === 'APPROUVER') targetStatus = 'APPROUVE';
     if (action === 'REJETER') targetStatus = 'REJETE';
     setLocalPtba(prev => prev ? { ...prev, statut: targetStatus } : prev);
-    workflowMutation.mutate({ ptbaId: ptba.id, nouveauStatut: targetStatus, commentaire: `Action : ${action}` });
+    workflowMutation.mutate({
+      ptbaId:       ptba.id,
+      nouveauStatut: targetStatus,
+      activityIds:  ptba.lignes?.map(l => l.id) ?? [],
+      commentaire:  `Action : ${action}`,
+    });
   };
 
   // KPIs (réel-time via localPtba)
@@ -428,12 +460,12 @@ export default function PTBAPage() {
 
             {/* Calendar */}
             <TabsContent value="calendar" className="flex-1 min-h-0 overflow-hidden mt-0">
-              <PTBACalendarView annee={annee} />
+              <PTBACalendarView annee={annee} activities={activities} />
             </TabsContent>
 
             {/* Gantt */}
             <TabsContent value="gantt" className="flex-1 min-h-0 overflow-hidden mt-0">
-              <PTBAGanttView annee={annee} />
+              <PTBAGanttView annee={annee} activities={activities} />
             </TabsContent>
 
           </Tabs>

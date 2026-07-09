@@ -1,0 +1,1186 @@
+// SIGP ERP — Prisma Schema V2
+// Source de vérité : Blueprint Backend V2
+// NE PAS modifier la structure sans validation architecturale
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMs
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  COORDINATEUR
+  CHARGE_PROGRAMME
+  FINANCIER
+  AUDITEUR
+  VIEWER
+}
+
+enum ProjectStatus {
+  EN_PREPARATION
+  EN_COURS
+  SUSPENDU
+  CLOTURE
+  ANNULE
+}
+
+enum RoleMembreProjet {
+  CHEF_PROJET
+  COORDINATEUR
+  MEMBRE
+  OBSERVATEUR
+  VALIDATEUR
+}
+
+enum BudgetStatus {
+  BROUILLON
+  SOUMIS
+  APPROUVE
+  REVISE
+  CLOTURE
+}
+
+enum RiskProbability {
+  FAIBLE
+  POSSIBLE
+  PROBABLE
+  QUASI_CERTAIN
+}
+
+enum RiskImpact {
+  FAIBLE
+  MODERE
+  IMPORTANT
+  CRITIQUE
+}
+
+enum RiskStatus {
+  OUVERT
+  EN_COURS
+  RESOLU
+  ACCEPTE
+  FERME
+}
+
+enum LivrableStatus {
+  NON_COMMENCE
+  EN_COURS
+  SOUMIS
+  EN_REVISION
+  VALIDE
+  REJETE
+  EN_RETARD
+}
+
+enum PpmMarcheStatus {
+  EN_PREPARATION
+  LANCE
+  SOUMISSION
+  EVALUATION
+  ATTRIBUTION
+  SIGNE
+  RESILIE
+  CLOTURE
+}
+
+enum PpmTypeMarche {
+  FOURNITURES
+  TRAVAUX
+  SERVICES
+  CONSULTANTS
+}
+
+enum ContractStatus {
+  ACTIF
+  SUSPENDU
+  CLOTURE
+  RESILIE
+}
+
+enum ContractType {
+  MARCHE
+  CONVENTION
+  PROTOCOLE
+  LETTRE_ACCORD
+}
+
+enum DisbursementStatus {
+  PLANIFIE
+  DEMANDE
+  APPROUVE
+  DECAISSE
+  REJETE
+}
+
+enum PtbaStatut {
+  NON_DEMARRE
+  EN_COURS
+  TERMINE
+  ANNULE
+  EN_RETARD
+}
+
+enum DocumentStatus {
+  BROUILLON
+  SOUMIS
+  VALIDE
+  REJETE
+  ARCHIVE
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ReportType {
+  BUDGET
+  EVM
+  RISQUES
+  GLOBAL
+  PTBA
+  EXPORT_EXCEL
+}
+
+enum TypeRapport {
+  MENSUEL
+  TRIMESTRIEL
+  ANNUEL
+  FINANCIER
+  EVM
+  RISQUES
+  PTBA
+  BAILLEUR
+  AVANCEMENT
+  FINAL
+}
+
+enum StatutRapport {
+  GENERE
+  EN_ATTENTE
+  VALIDE
+  ARCHIVE
+}
+
+enum FormatRapport {
+  PDF
+  EXCEL
+  WORD
+}
+
+enum TypeNotification {
+  RISQUE_CRITIQUE
+  LIVRABLE_EN_RETARD
+  BUDGET_DEPASSE
+  EVM_ALERTE_CPI
+  EVM_ALERTE_SPI
+  DOCUMENT_VALIDE
+  RAPPORT_PRET
+  MENTION_COMMENTAIRE
+  PROJET_STATUT_CHANGE
+  BUDGET_VALIDE
+  CONTRAT_EXPIRE
+  PAIEMENT_DU
+  INVITATION_PROJET
+}
+
+enum WbsNodeType {
+  PHASE
+  LOT
+  ACTIVITE
+  LIVRABLE
+}
+
+enum FundingSourceType {
+  BAILLEUR
+  CONTREPARTIE_NATIONALE
+  AUTRE
+}
+
+enum LogframeLevel {
+  OBJECTIF_GLOBAL
+  OBJECTIF_SPECIFIQUE
+  RESULTAT
+  ACTIVITE
+}
+
+enum IndicatorType {
+  IMPACT
+  OUTCOME
+  OUTPUT
+  PROCESS
+}
+
+enum JournalType {
+  RECETTE
+  DEPENSE
+  VIREMENT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  VALIDATE
+  REJECT
+}
+
+enum OrganisationType {
+  MINISTERE
+  INSTITUTION
+  ONG
+  PARTENAIRE
+  COLLECTIVITE
+  AUTRE
+}
+
+enum ProgrammeStatus {
+  EN_PREPARATION
+  EN_COURS
+  SUSPENDU
+  CLOTURE
+  ANNULE
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id                 String    @id @default(uuid()) @db.Uuid
+  nom                String    @db.VarChar(100)
+  prenom             String    @db.VarChar(100)
+  email              String    @unique @db.VarChar(255)
+  mot_de_passe       String    @db.VarChar(255)
+  role               UserRole  @default(VIEWER)
+  actif              Boolean   @default(true)
+  langue_preference  String    @default("fr") @db.VarChar(5)
+  telephone          String?   @db.VarChar(30)
+  avatar_url         String?   @db.VarChar(500)
+  derniere_connexion DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime?
+
+  refresh_tokens      RefreshToken[]
+  project_memberships ProjectMember[]
+  gouvernance_entries Gouvernance[]
+  historique          Historique[]
+  notifications       Notification[]
+  notification_prefs  NotificationPreference?
+  managed_projects    Project[]               @relation("ProjectManager")
+  created_projects    Project[]               @relation("ProjectCreator")
+  comments            Comment[]
+
+  organisation_id String?       @db.Uuid
+  organisation    Organisation? @relation(fields: [organisation_id], references: [id])
+
+  @@index([email])
+  @@index([deleted_at])
+  @@index([organisation_id])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique @db.VarChar(255)
+  family_id  String    @db.Uuid
+  expires_at DateTime
+  revoked_at DateTime?
+  created_at DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([family_id])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOUVERNANCE — Hiérarchie organisationnelle (Blueprint V2)
+// Organisation → Direction → Departement → Unite → Programme → Project
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Organisation {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique @db.VarChar(50)
+  nom         String           @unique @db.VarChar(200)
+  type        OrganisationType @default(AUTRE)
+  description String?          @db.Text
+  email       String?          @db.VarChar(255)
+  telephone   String?          @db.VarChar(30)
+  site_web    String?          @db.VarChar(255)
+  actif       Boolean          @default(true)
+  created_by  String?          @db.Uuid
+  updated_by  String?          @db.Uuid
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+  deleted_at  DateTime?
+
+  directions Direction[]
+  users      User[]
+
+  @@index([actif])
+  @@index([deleted_at])
+  @@map("organisations")
+}
+
+model Direction {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisation_id String    @db.Uuid
+  code            String    @db.VarChar(50)
+  nom             String    @db.VarChar(200)
+  description     String?   @db.Text
+  actif           Boolean   @default(true)
+  created_by      String?   @db.Uuid
+  updated_by      String?   @db.Uuid
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+
+  organisation Organisation  @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+  departements Departement[]
+
+  @@unique([organisation_id, code])
+  @@unique([organisation_id, nom])
+  @@index([organisation_id])
+  @@index([deleted_at])
+  @@map("directions")
+}
+
+model Departement {
+  id           String    @id @default(uuid()) @db.Uuid
+  direction_id String    @db.Uuid
+  code         String    @db.VarChar(50)
+  nom          String    @db.VarChar(200)
+  description  String?   @db.Text
+  actif        Boolean   @default(true)
+  created_by   String?   @db.Uuid
+  updated_by   String?   @db.Uuid
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime?
+
+  direction Direction @relation(fields: [direction_id], references: [id], onDelete: Cascade)
+  unites    Unite[]
+
+  @@unique([direction_id, code])
+  @@unique([direction_id, nom])
+  @@index([direction_id])
+  @@index([deleted_at])
+  @@map("departements")
+}
+
+model Unite {
+  id             String    @id @default(uuid()) @db.Uuid
+  departement_id String    @db.Uuid
+  code           String    @db.VarChar(50)
+  nom            String    @db.VarChar(200)
+  description    String?   @db.Text
+  actif          Boolean   @default(true)
+  created_by     String?   @db.Uuid
+  updated_by     String?   @db.Uuid
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+
+  departement Departement @relation(fields: [departement_id], references: [id], onDelete: Cascade)
+  programmes  Programme[]
+
+  @@unique([departement_id, code])
+  @@unique([departement_id, nom])
+  @@index([departement_id])
+  @@index([deleted_at])
+  @@map("unites")
+}
+
+model Programme {
+  id          String          @id @default(uuid()) @db.Uuid
+  unite_id    String          @db.Uuid
+  code        String          @db.VarChar(50)
+  nom         String          @db.VarChar(200)
+  description String?         @db.Text
+  statut      ProgrammeStatus @default(EN_PREPARATION)
+  actif       Boolean         @default(true)
+  date_debut  DateTime?       @db.Date
+  date_fin    DateTime?       @db.Date
+  created_by  String?         @db.Uuid
+  updated_by  String?         @db.Uuid
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+  deleted_at  DateTime?
+
+  unite    Unite     @relation(fields: [unite_id], references: [id], onDelete: Cascade)
+  projects Project[]
+
+  @@unique([unite_id, code])
+  @@unique([unite_id, nom])
+  @@index([unite_id])
+  @@index([statut])
+  @@index([deleted_at])
+  @@map("programmes")
+}
+
+model Project {
+  id                     String        @id @default(uuid()) @db.Uuid
+  code                   String        @unique @db.VarChar(50)
+  nom                    String        @db.VarChar(255)
+  description            String?       @db.Text
+  statut                 ProjectStatus @default(EN_PREPARATION)
+  date_debut             DateTime?     @db.Date
+  date_fin_prevue        DateTime?     @db.Date
+  date_fin_effective     DateTime?     @db.Date
+  date_cloture_effective DateTime?     @db.Date
+  manager_id             String?       @db.Uuid
+  programme_id           String?       @db.Uuid
+  budget_total           Decimal?      @db.Decimal(18, 2)
+  devise                 String        @default("XOF") @db.VarChar(3)
+  pays                   String?       @db.VarChar(100)
+  secteur                String?       @db.VarChar(100)
+  bailleur_principal     String?       @db.VarChar(255)
+  created_by             String?       @db.Uuid
+  updated_by             String?       @db.Uuid
+  created_at             DateTime      @default(now())
+  updated_at             DateTime      @updatedAt
+  deleted_at             DateTime?
+
+  manager             User?               @relation("ProjectManager", fields: [manager_id], references: [id])
+  creator             User?               @relation("ProjectCreator", fields: [created_by], references: [id])
+  programme           Programme?          @relation(fields: [programme_id], references: [id])
+  members             ProjectMember[]
+  gouvernance         Gouvernance[]
+  logframe_objectives LogframeObjective[]
+  wbs_nodes           WbsNode[]
+  budget_versions     BudgetVersion[]
+  funding_sources     FundingSource[]
+  ppm_marches         PpmMarche[]
+  contracts           Contract[]
+  ptba_activites      PtbaActivite[]
+  risques             Risque[]
+  livrables           Livrable[]
+  evm_snapshots       EvmSnapshot[]
+  documents           DocumentProjet[]
+  rapports_projet     RapportProjet[]
+  reports             Report[]
+  historique          Historique[]
+  notifications       Notification[]
+  comments            Comment[]
+
+  @@index([statut])
+  @@index([manager_id])
+  @@index([programme_id])
+  @@index([programme_id, statut])
+  @@index([deleted_at])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id          String           @id @default(uuid()) @db.Uuid
+  project_id  String           @db.Uuid
+  user_id     String           @db.Uuid
+  role_projet RoleMembreProjet @default(MEMBRE)
+  actif       Boolean          @default(true)
+  date_debut  DateTime?        @db.Date
+  date_fin    DateTime?        @db.Date
+  created_by  String?          @db.Uuid
+  updated_by  String?          @db.Uuid
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+  deleted_at  DateTime?
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([project_id, user_id])
+  @@index([project_id])
+  @@index([user_id])
+  @@index([deleted_at])
+  @@map("project_members")
+}
+
+// Sub-module de ProjectsModule (Blueprint V2)
+model Gouvernance {
+  id           String    @id @default(uuid()) @db.Uuid
+  project_id   String    @db.Uuid
+  nom          String    @db.VarChar(200)
+  role         String    @db.VarChar(100)
+  organisation String?   @db.VarChar(200)
+  email        String?   @db.VarChar(255)
+  telephone    String?   @db.VarChar(30)
+  user_id      String?   @db.Uuid
+  created_by   String?   @db.Uuid
+  updated_by   String?   @db.Uuid
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime?
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [user_id], references: [id])
+
+  @@index([project_id])
+  @@map("gouvernance")
+}
+
+model LogframeObjective {
+  id          String        @id @default(uuid()) @db.Uuid
+  project_id  String        @db.Uuid
+  niveau      LogframeLevel
+  code        String        @db.VarChar(20)
+  libelle     String        @db.Text
+  description String?       @db.Text
+  parent_id   String?       @db.Uuid
+  ordre       Int           @default(0)
+  actif       Boolean       @default(true)
+  created_by  String?       @db.Uuid
+  updated_by  String?       @db.Uuid
+  created_at  DateTime      @default(now())
+  updated_at  DateTime      @updatedAt
+  deleted_at  DateTime?
+
+  project    Project             @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  parent     LogframeObjective?  @relation("LogframeHierarchy", fields: [parent_id], references: [id])
+  children   LogframeObjective[] @relation("LogframeHierarchy")
+  indicators LogframeIndicator[]
+  wbs_nodes  WbsNode[]
+
+  @@index([project_id])
+  @@index([deleted_at])
+  @@map("logframe_objectives")
+}
+
+model LogframeIndicator {
+  id                  String        @id @default(uuid()) @db.Uuid
+  objective_id        String        @db.Uuid
+  code                String        @db.VarChar(30)
+  libelle             String        @db.Text
+  type                IndicatorType @default(OUTPUT)
+  unite               String?       @db.VarChar(50)
+  valeur_baseline     Decimal?      @db.Decimal(18, 4)
+  valeur_cible        Decimal?      @db.Decimal(18, 4)
+  valeur_actuelle     Decimal?      @db.Decimal(18, 4)
+  source_verification String?       @db.Text
+  periodicite         String?       @db.VarChar(50)
+  actif               Boolean       @default(true)
+  created_by          String?       @db.Uuid
+  updated_by          String?       @db.Uuid
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
+  deleted_at          DateTime?
+
+  objective      LogframeObjective @relation(fields: [objective_id], references: [id], onDelete: Cascade)
+  ptba_activites PtbaActivite[]
+
+  @@index([objective_id])
+  @@index([deleted_at])
+  @@map("logframe_indicators")
+}
+
+model WbsNode {
+  id             String      @id @default(uuid()) @db.Uuid
+  project_id     String      @db.Uuid
+  parent_id      String?     @db.Uuid
+  objective_id   String?     @db.Uuid
+  code           String      @db.VarChar(30)
+  libelle        String      @db.VarChar(500)
+  type           WbsNodeType
+  ordre          Int         @default(0)
+  niveau         Int         @default(1)
+  responsable_id String?     @db.Uuid
+  actif          Boolean     @default(true)
+  date_debut     DateTime?   @db.Date
+  date_fin       DateTime?   @db.Date
+  created_by     String?     @db.Uuid
+  updated_by     String?     @db.Uuid
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+  deleted_at     DateTime?
+
+  project        Project            @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  parent         WbsNode?           @relation("WbsHierarchy", fields: [parent_id], references: [id])
+  children       WbsNode[]          @relation("WbsHierarchy")
+  objective      LogframeObjective? @relation(fields: [objective_id], references: [id])
+  risques        Risque[]
+  livrables      Livrable[]
+  ptba_activites PtbaActivite[]
+
+  @@index([project_id])
+  @@index([objective_id])
+  @@index([deleted_at])
+  @@map("wbs_nodes")
+}
+
+model BudgetVersion {
+  id            String       @id @default(uuid()) @db.Uuid
+  project_id    String       @db.Uuid
+  version       Int          @default(1)
+  nom           String       @db.VarChar(100)
+  statut        BudgetStatus @default(BROUILLON)
+  montant_total Decimal      @default(0) @db.Decimal(18, 2)
+  approuve_par  String?      @db.Uuid
+  approuve_le   DateTime?
+  notes         String?      @db.Text
+  created_by    String?      @db.Uuid
+  updated_by    String?      @db.Uuid
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+  deleted_at    DateTime?
+
+  project       Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  lignes        BudgetLigne[]
+  disbursements Disbursement[]
+
+  @@unique([project_id, version])
+  @@index([deleted_at])
+  @@map("budget_versions")
+}
+
+model BudgetLigne {
+  id             String    @id @default(uuid()) @db.Uuid
+  version_id     String    @db.Uuid
+  parent_id      String?   @db.Uuid
+  code_ligne     String    @db.VarChar(30)
+  libelle        String    @db.VarChar(500)
+  categorie      String?   @db.VarChar(100)
+  montant_prevu  Decimal   @default(0) @db.Decimal(18, 2)
+  montant_engage Decimal   @default(0) @db.Decimal(18, 2)
+  montant_paye   Decimal   @default(0) @db.Decimal(18, 2)
+  ordre          Int       @default(0)
+  created_by     String?   @db.Uuid
+  updated_by     String?   @db.Uuid
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+
+  version       BudgetVersion      @relation(fields: [version_id], references: [id], onDelete: Cascade)
+  parent        BudgetLigne?       @relation("BudgetHierarchy", fields: [parent_id], references: [id])
+  children      BudgetLigne[]      @relation("BudgetHierarchy")
+  journal_ops   JournalOperation[]
+  disbursements Disbursement[]
+
+  @@unique([version_id, code_ligne])
+  @@index([version_id])
+  @@index([deleted_at])
+  @@map("budget_lignes")
+}
+
+// Sub-module de BudgetModule (Blueprint V2)
+model JournalOperation {
+  id              String      @id @default(uuid()) @db.Uuid
+  budget_ligne_id String      @db.Uuid
+  type            JournalType
+  montant         Decimal     @db.Decimal(18, 2)
+  date_operation  DateTime    @db.Date
+  reference       String?     @db.VarChar(100)
+  description     String?     @db.Text
+  piece_jointe_id String?     @db.Uuid
+  created_by      String?     @db.Uuid
+  updated_by      String?     @db.Uuid
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+  deleted_at      DateTime?
+
+  budget_ligne BudgetLigne @relation(fields: [budget_ligne_id], references: [id])
+
+  @@index([budget_ligne_id])
+  @@index([deleted_at])
+  @@map("journal_operations")
+}
+
+model FundingSource {
+  id          String            @id @default(uuid()) @db.Uuid
+  project_id  String            @db.Uuid
+  nom         String            @db.VarChar(255)
+  type        FundingSourceType @default(BAILLEUR)
+  montant     Decimal           @db.Decimal(18, 2)
+  pourcentage Decimal?          @db.Decimal(5, 2)
+  devise      String            @default("XOF") @db.VarChar(3)
+  date_accord DateTime?         @db.Date
+  date_expiry DateTime?         @db.Date
+  contact     String?           @db.VarChar(200)
+  notes       String?           @db.Text
+  created_by  String?           @db.Uuid
+  updated_by  String?           @db.Uuid
+  created_at  DateTime          @default(now())
+  updated_at  DateTime          @updatedAt
+  deleted_at  DateTime?
+
+  project       Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  disbursements Disbursement[]
+
+  @@index([project_id])
+  @@index([deleted_at])
+  @@map("funding_sources")
+}
+
+model PpmMarche {
+  id                    String          @id @default(uuid()) @db.Uuid
+  project_id            String          @db.Uuid
+  code                  String          @db.VarChar(50)
+  intitule              String          @db.VarChar(500)
+  type                  PpmTypeMarche
+  statut                PpmMarcheStatus @default(EN_PREPARATION)
+  montant_estime        Decimal?        @db.Decimal(18, 2)
+  montant_signe         Decimal?        @db.Decimal(18, 2)
+  date_lancement_prevu  DateTime?       @db.Date
+  date_soumission_prevu DateTime?       @db.Date
+  date_attribution      DateTime?       @db.Date
+  date_signature        DateTime?       @db.Date
+  date_fin_prevue       DateTime?       @db.Date
+  date_fin_effective    DateTime?       @db.Date
+  titulaire             String?         @db.VarChar(255)
+  notes                 String?         @db.Text
+  created_by            String?         @db.Uuid
+  updated_by            String?         @db.Uuid
+  created_at            DateTime        @default(now())
+  updated_at            DateTime        @updatedAt
+  deleted_at            DateTime?
+
+  project   Project    @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  etapes    PpmEtape[]
+  contracts Contract[]
+
+  @@unique([project_id, code])
+  @@index([project_id])
+  @@index([deleted_at])
+  @@map("ppm_marches")
+}
+
+model PpmEtape {
+  id          String    @id @default(uuid()) @db.Uuid
+  marche_id   String    @db.Uuid
+  libelle     String    @db.VarChar(200)
+  ordre       Int
+  date_prevue DateTime? @db.Date
+  date_reelle DateTime? @db.Date
+  complete    Boolean   @default(false)
+  notes       String?   @db.Text
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  marche PpmMarche @relation(fields: [marche_id], references: [id], onDelete: Cascade)
+
+  @@map("ppm_etapes")
+}
+
+model Contract {
+  id             String         @id @default(uuid()) @db.Uuid
+  project_id     String         @db.Uuid
+  marche_id      String?        @db.Uuid
+  numero         String         @db.VarChar(100)
+  intitule       String         @db.VarChar(500)
+  type           ContractType   @default(MARCHE)
+  statut         ContractStatus @default(ACTIF)
+  titulaire      String         @db.VarChar(255)
+  montant        Decimal        @db.Decimal(18, 2)
+  devise         String         @default("XOF") @db.VarChar(3)
+  date_signature DateTime?      @db.Date
+  date_debut     DateTime?      @db.Date
+  date_fin       DateTime?      @db.Date
+  notes          String?        @db.Text
+  created_by     String?        @db.Uuid
+  updated_by     String?        @db.Uuid
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
+  deleted_at     DateTime?
+
+  project       Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  marche        PpmMarche?     @relation(fields: [marche_id], references: [id])
+  disbursements Disbursement[]
+
+  @@index([project_id])
+  @@index([project_id, statut])
+  @@index([deleted_at])
+  @@map("contracts")
+}
+
+model Disbursement {
+  id                String             @id @default(uuid()) @db.Uuid
+  budget_version_id String?            @db.Uuid
+  budget_ligne_id   String?            @db.Uuid
+  contract_id       String?            @db.Uuid
+  funding_source_id String?            @db.Uuid
+  statut            DisbursementStatus @default(PLANIFIE)
+  montant           Decimal            @db.Decimal(18, 2)
+  date_prevue       DateTime?          @db.Date
+  date_reelle       DateTime?          @db.Date
+  reference         String?            @db.VarChar(100)
+  description       String?            @db.Text
+  created_by        String?            @db.Uuid
+  updated_by        String?            @db.Uuid
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @updatedAt
+  deleted_at        DateTime?
+
+  budget_version BudgetVersion? @relation(fields: [budget_version_id], references: [id])
+  budget_ligne   BudgetLigne?   @relation(fields: [budget_ligne_id], references: [id])
+  contract       Contract?      @relation(fields: [contract_id], references: [id])
+  funding_source FundingSource? @relation(fields: [funding_source_id], references: [id])
+
+  @@index([budget_version_id])
+  @@index([budget_ligne_id])
+  @@index([deleted_at])
+  @@map("disbursements")
+}
+
+// ActivitiesModule fusionné dans PTBAModule (Blueprint V2)
+model PtbaActivite {
+  id                String     @id @default(uuid()) @db.Uuid
+  project_id        String     @db.Uuid
+  wbs_id            String?    @db.Uuid
+  logframe_ref_id   String?    @db.Uuid
+  code              String     @db.VarChar(50)
+  libelle           String     @db.VarChar(500)
+  description       String?    @db.Text
+  statut            PtbaStatut @default(NON_DEMARRE)
+  annee             Int
+  trimestre         Int
+  date_debut_prevue DateTime?  @db.Date
+  date_fin_prevue   DateTime?  @db.Date
+  date_debut_reelle DateTime?  @db.Date
+  date_fin_reelle   DateTime?  @db.Date
+  montant_prevu     Decimal?   @db.Decimal(18, 2)
+  montant_realise   Decimal?   @db.Decimal(18, 2)
+  taux_realisation  Decimal?   @db.Decimal(5, 2)
+  responsable_id    String?    @db.Uuid
+  created_by        String?    @db.Uuid
+  updated_by        String?    @db.Uuid
+  created_at        DateTime   @default(now())
+  updated_at        DateTime   @updatedAt
+  deleted_at        DateTime?
+
+  project            Project            @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  wbs_node           WbsNode?           @relation(fields: [wbs_id], references: [id])
+  logframe_indicator LogframeIndicator? @relation(fields: [logframe_ref_id], references: [id])
+
+  @@index([project_id, annee, trimestre])
+  @@map("ptba_activites")
+}
+
+model Risque {
+  id               String          @id @default(uuid()) @db.Uuid
+  project_id       String          @db.Uuid
+  wbs_id           String?         @db.Uuid
+  code             String?         @db.VarChar(20)
+  description      String          @db.Text
+  categorie        String?         @db.VarChar(100)
+  probabilite      RiskProbability
+  impact           RiskImpact
+  niveau_criticite String          @db.VarChar(20)
+  statut           RiskStatus      @default(OUVERT)
+  strategie        String?         @db.Text
+  plan_action      String?         @db.Text
+  responsable_id   String?         @db.Uuid
+  date_detection   DateTime?       @db.Date
+  date_echeance    DateTime?       @db.Date
+  created_by       String?         @db.Uuid
+  updated_by       String?         @db.Uuid
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+  deleted_at       DateTime?
+
+  project  Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  wbs_node WbsNode? @relation(fields: [wbs_id], references: [id])
+
+  @@index([project_id, statut])
+  @@index([deleted_at])
+  @@map("risques")
+}
+
+model Livrable {
+  id              String         @id @default(uuid()) @db.Uuid
+  project_id      String         @db.Uuid
+  wbs_id          String?        @db.Uuid
+  code            String?        @db.VarChar(20)
+  nom             String         @db.VarChar(300)
+  description     String?        @db.Text
+  statut          LivrableStatus @default(NON_COMMENCE)
+  date_prevue     DateTime?      @db.Date
+  date_soumission DateTime?      @db.Date
+  date_validation DateTime?      @db.Date
+  responsable_id  String?        @db.Uuid
+  validateur_id   String?        @db.Uuid
+  notes           String?        @db.Text
+  created_by      String?        @db.Uuid
+  updated_by      String?        @db.Uuid
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  deleted_at      DateTime?
+
+  project   Project          @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  wbs_node  WbsNode?         @relation(fields: [wbs_id], references: [id])
+  documents DocumentProjet[]
+
+  @@index([project_id, statut])
+  @@index([deleted_at])
+  @@map("livrables")
+}
+
+// Toutes les colonnes calculées stockées (pas de GENERATED — incompatible Prisma)
+model EvmSnapshot {
+  id             String   @id @default(uuid()) @db.Uuid
+  project_id     String   @db.Uuid
+  periode        String   @db.VarChar(7)
+  pv             Decimal  @db.Decimal(18, 2)
+  ev             Decimal  @db.Decimal(18, 2)
+  ac             Decimal  @db.Decimal(18, 2)
+  bac            Decimal  @db.Decimal(18, 2)
+  eac            Decimal  @db.Decimal(18, 2)
+  cv             Decimal  @db.Decimal(18, 2)
+  sv             Decimal  @db.Decimal(18, 2)
+  cpi            Decimal  @db.Decimal(8, 4)
+  spi            Decimal  @db.Decimal(8, 4)
+  vac            Decimal  @db.Decimal(18, 2)
+  auto_generated Boolean  @default(false)
+  notes          String?  @db.Text
+  created_by     String?  @db.Uuid
+  created_at     DateTime @default(now())
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@unique([project_id, periode])
+  @@index([project_id, periode])
+  @@map("evm_snapshots")
+}
+
+model Upload {
+  id            String    @id @default(uuid()) @db.Uuid
+  original_name String    @db.VarChar(500)
+  stored_name   String    @db.VarChar(500)
+  mime_type     String    @db.VarChar(100)
+  detected_type String?   @db.VarChar(100)
+  size_bytes    BigInt
+  sha256        String?   @db.VarChar(64)
+  bucket        String    @db.VarChar(100)
+  key           String    @db.VarChar(500)
+  scanned_at    DateTime?
+  scan_clean    Boolean?
+  uploaded_by   String?   @db.Uuid
+  created_at    DateTime  @default(now())
+
+  @@map("uploads")
+}
+
+model DocumentProjet {
+  id          String         @id @default(uuid()) @db.Uuid
+  project_id  String         @db.Uuid
+  livrable_id String?        @db.Uuid
+  titre       String         @db.VarChar(300)
+  description String?        @db.Text
+  statut      DocumentStatus @default(BROUILLON)
+  created_by  String?        @db.Uuid
+  updated_by  String?        @db.Uuid
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+  deleted_at  DateTime?
+
+  project  Project                 @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  livrable Livrable?               @relation(fields: [livrable_id], references: [id])
+  versions DocumentProjetVersion[]
+
+  @@index([project_id])
+  @@index([deleted_at])
+  @@map("documents_projet")
+}
+
+model RapportProjet {
+  id                  String        @id @default(uuid()) @db.Uuid
+  project_id          String        @db.Uuid
+  code_rapport        String        @db.VarChar(20)
+  titre               String        @db.VarChar(300)
+  description         String?       @db.Text
+  type                TypeRapport
+  format              FormatRapport
+  statut              StatutRapport @default(GENERE)
+  periode             String        @db.VarChar(50)
+  date_generation     DateTime      @db.Date
+  date_telechargement DateTime?     @db.Date
+  version             String        @db.VarChar(20)
+  auteur              String        @db.VarChar(200)
+  taille_ko           Int           @default(0)
+  nb_telechargements  Int           @default(0)
+  commentaires        String?       @db.Text
+  created_by          String?       @db.Uuid
+  updated_by          String?       @db.Uuid
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
+  deleted_at          DateTime?
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([project_id, statut])
+  @@index([deleted_at])
+  @@map("rapports_projet")
+}
+
+model DocumentProjetVersion {
+  id             String   @id @default(uuid()) @db.Uuid
+  document_id    String   @db.Uuid
+  numero_version Int      @default(1)
+  upload_id      String   @db.Uuid
+  notes          String?  @db.Text
+  created_by     String?  @db.Uuid
+  created_at     DateTime @default(now())
+
+  document DocumentProjet @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@unique([document_id, numero_version])
+  @@map("document_projet_versions")
+}
+
+model DocumentGlobal {
+  id          String         @id @default(uuid()) @db.Uuid
+  titre       String         @db.VarChar(300)
+  description String?        @db.Text
+  categorie   String?        @db.VarChar(100)
+  statut      DocumentStatus @default(BROUILLON)
+  created_by  String?        @db.Uuid
+  updated_by  String?        @db.Uuid
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+  deleted_at  DateTime?
+
+  versions DocumentGlobalVersion[]
+
+  @@map("documents_globaux")
+}
+
+model DocumentGlobalVersion {
+  id             String   @id @default(uuid()) @db.Uuid
+  document_id    String   @db.Uuid
+  numero_version Int      @default(1)
+  upload_id      String   @db.Uuid
+  date_version   DateTime @db.Date
+  notes          String?  @db.Text
+  created_by     String?  @db.Uuid
+  created_at     DateTime @default(now())
+
+  document DocumentGlobal @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@unique([document_id, numero_version])
+  @@map("document_global_versions")
+}
+
+model Report {
+  id           String       @id @default(uuid()) @db.Uuid
+  project_id   String?      @db.Uuid
+  type         ReportType
+  statut       ReportStatus @default(PENDING)
+  parametres   Json?
+  fichier_url  String?      @db.VarChar(500)
+  erreur       String?      @db.Text
+  requested_by String?      @db.Uuid
+  started_at   DateTime?
+  completed_at DateTime?
+  created_at   DateTime     @default(now())
+
+  project Project? @relation(fields: [project_id], references: [id])
+
+  @@index([project_id, statut])
+  @@map("reports")
+}
+
+// Pas de partitioning — incompatible Prisma. Index + retention 24 mois via cron
+model Historique {
+  id                String      @id @default(uuid()) @db.Uuid
+  project_id        String?     @db.Uuid
+  user_id           String?     @db.Uuid
+  action            AuditAction
+  table_cible       String      @db.VarChar(100)
+  enregistrement_id String?     @db.VarChar(36)
+  avant             Json?
+  apres             Json?
+  ip_address        String?     @db.VarChar(45)
+  user_agent        String?     @db.Text
+  created_at        DateTime    @default(now())
+
+  project Project? @relation(fields: [project_id], references: [id])
+  user    User?    @relation(fields: [user_id], references: [id])
+
+  @@index([project_id])
+  @@index([user_id])
+  @@index([created_at])
+  @@map("historique")
+}
+
+model Notification {
+  id         String           @id @default(uuid()) @db.Uuid
+  user_id    String           @db.Uuid
+  project_id String?          @db.Uuid
+  type       TypeNotification
+  titre      String           @db.VarChar(200)
+  message    String           @db.Text
+  lue        Boolean          @default(false)
+  data       Json?
+  expires_at DateTime?
+  created_by String?          @db.Uuid
+  updated_by String?          @db.Uuid
+  created_at DateTime         @default(now())
+  updated_at DateTime         @updatedAt
+  deleted_at DateTime?
+
+  user    User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [project_id], references: [id])
+
+  @@index([user_id, lue])
+  @@index([expires_at])
+  @@index([deleted_at])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id                    String  @id @default(uuid()) @db.Uuid
+  user_id               String  @unique @db.Uuid
+  email_risque_critique Boolean @default(true)
+  email_livrable_retard Boolean @default(true)
+  email_budget_depasse  Boolean @default(true)
+  email_rapport_pret    Boolean @default(true)
+  email_mention         Boolean @default(true)
+  in_app_all            Boolean @default(true)
+  frequence_digest      String  @default("daily") @db.VarChar(20)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model Comment {
+  id           String    @id @default(uuid()) @db.Uuid
+  project_id   String    @db.Uuid
+  user_id      String    @db.Uuid
+  parent_id    String?   @db.Uuid
+  module       String?   @db.VarChar(100)
+  element_id   String?   @db.VarChar(100)
+  element_nom  String?   @db.VarChar(500)
+  message      String    @db.Text
+  statut       String    @default("OUVERT") @db.VarChar(50)
+  priorite     String    @default("NORMALE") @db.VarChar(50)
+  piece_jointe String?   @db.VarChar(500)
+  mention      String?   @db.VarChar(500)
+  lu           Boolean   @default(false)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime?
+
+  project Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [user_id], references: [id])
+  parent  Comment?  @relation("CommentReplies", fields: [parent_id], references: [id])
+  replies Comment[] @relation("CommentReplies")
+
+  @@index([project_id])
+  @@index([user_id])
+  @@map("comments")
+}

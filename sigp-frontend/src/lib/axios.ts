@@ -2,7 +2,7 @@ import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
   headers: { 'Content-Type': 'application/json' },
   timeout: 60000,
   withCredentials: true,
@@ -55,19 +55,18 @@ api.interceptors.response.use(
       isRefreshing = true
 
       try {
-        // Envoi du refresh_token via le body
-        const refresh_token = useAuthStore.getState().refreshToken
+        const refreshToken = useAuthStore.getState().refreshToken
         const { data } = await axios.post(
           `${api.defaults.baseURL}/auth/refresh`,
-          { refresh_token },
+          { refreshToken },
           { withCredentials: true }
         )
-        
-        // Sauvegarder les nouveaux tokens
-        useAuthStore.getState().setTokens(data.access_token, data.refresh_token)
-        
-        processQueue(null, data.access_token)
-        originalRequest.headers.Authorization = `Bearer ${data.access_token}`
+
+        const tokens = data.data ?? data
+        useAuthStore.getState().setTokens(tokens.accessToken, tokens.refreshToken)
+
+        processQueue(null, tokens.accessToken)
+        originalRequest.headers.Authorization = `Bearer ${tokens.accessToken}`
         return api(originalRequest)
       } catch (err) {
         processQueue(err, null)

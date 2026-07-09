@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   Clock, Eye, X, Download, CheckCircle2, AlertTriangle,
@@ -14,11 +15,36 @@ import {
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import { cn } from '@/lib/utils';
-import {
-  mockOperationLogs,
-  type OperationLog,
-  type LogLevel,
-} from '@/mocks/operationsJournalMocks';
+import { type OperationLog, type LogLevel } from '@/mocks/operationsJournalMocks';
+import { useJournal, type JournalOperation } from '@/hooks/useJournal';
+import { useUIStore } from '@/stores/uiStore';
+
+function adaptJournalOp(op: JournalOperation): OperationLog {
+  const statutToNiveau: Record<string, LogLevel> = {
+    TERMINE: 'Succès',
+    ANNULE:  'Erreur',
+    EN_COURS: 'Info',
+    A_FAIRE:  'Info',
+  };
+  const dateStr = op.date ? op.date.slice(0, 10) : '—';
+  const heureStr = op.date && op.date.length > 10 ? op.date.slice(11, 16) : '—';
+  const resultat = [
+    `Prévu: ${op.prevu.toLocaleString('fr-FR')}`,
+    `Engagé: ${op.engage.toLocaleString('fr-FR')}`,
+    `Décaissé: ${op.decaisse.toLocaleString('fr-FR')}`,
+  ].join(' / ');
+  return {
+    id:                    op.id,
+    date:                  dateStr,
+    heure:                 heureStr,
+    utilisateur:           op.wbs || '—',
+    initialesUtilisateur:  op.wbs ? op.wbs.slice(0, 2).toUpperCase() : '—',
+    action:                op.description,
+    module:                'Budget',
+    resultat,
+    niveau:                statutToNiveau[op.statut] ?? 'Info',
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -261,22 +287,35 @@ function buildLogColumns(onView: (log: OperationLog) => void): ColumnDef<Operati
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectOperationsJournalTab() {
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const activeProjectId = useUIStore(s => s.activeProjectId);
+  const projectId = urlProjectId || activeProjectId || '';
+
+  const { data: apiData, isLoading } = useJournal(projectId);
+
+  const [logs, setLogs] = useState<OperationLog[]>([]);
+
+  useEffect(() => {
+    const ops = (apiData as { operations?: JournalOperation[] })?.operations
+      ?? (Array.isArray((apiData as any)?.data) ? (apiData as any).data : []);
+    if (apiData) setLogs(ops.map(adaptJournalOp));
+  }, [apiData]);
+
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [selected,      setSelected]      = useState<OperationLog | null>(null);
   const [exported,      setExported]      = useState(false);
 
-  // ── KPIs calculés depuis les données mock ─────────────────────────────────
   const kpis = useMemo(() => ({
-    total:          mockOperationLogs.length,
-    succes:         mockOperationLogs.filter(l => l.niveau === 'Succès').length,
-    erreurs:        mockOperationLogs.filter(l => l.niveau === 'Erreur' || l.niveau === 'Avertissement').length,
-    modules:        new Set(mockOperationLogs.map(l => l.module)).size,
-  }), []);
+    total:   logs.length,
+    succes:  logs.filter(l => l.niveau === 'Succès').length,
+    erreurs: logs.filter(l => l.niveau === 'Erreur' || l.niveau === 'Avertissement').length,
+    modules: new Set(logs.map(l => l.module)).size,
+  }), [logs]);
 
-  const recent = useMemo(() => mockOperationLogs.slice(0, 5), []);
+  const recent = useMemo(() => logs.slice(0, 5), [logs]);
 
   function handleExportCsv() {
-    exportCsv(mockOperationLogs);
+    exportCsv(logs);
     setExported(true);
     setTimeout(() => setExported(false), 2500);
   }
@@ -359,12 +398,13 @@ export default function ProjectOperationsJournalTab() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Journal complet des opérations</CardTitle>
-          <span className="text-xs text-muted-foreground">{mockOperationLogs.length} entrées</span>
+          <span className="text-xs text-muted-foreground">{logs.length} entrées</span>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
             columns={columns}
-            data={mockOperationLogs}
+            data={logs}
+            isLoading={isLoading}
             searchKey="action"
             searchPlaceholder="Rechercher une opération..."
             filters={[

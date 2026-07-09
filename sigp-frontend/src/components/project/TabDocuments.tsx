@@ -1,4 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useUIStore } from '@/stores/uiStore';
+import { useDocuments, useCreateDocument, useUpdateDocument, useDeleteDocument } from '@/hooks/useDocuments';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, LineChart, Line,
@@ -12,7 +15,7 @@ import {
 } from 'lucide-react';
 import type { DocumentProjet, TypeFichier, StatutDocument, ConfidentialiteDocument } from '@/types';
 import {
-  MOCK_DOCUMENTS, DOCUMENT_CATEGORIES, TYPE_FICHIER_OPTIONS, STATUT_DOCUMENT_OPTIONS,
+  DOCUMENT_CATEGORIES, TYPE_FICHIER_OPTIONS, STATUT_DOCUMENT_OPTIONS,
 } from '@/mocks/documentsMocks';
 import { DocumentSlideOver } from './documents/DocumentSlideOver';
 import type { DocumentSavePayload } from './documents/DocumentSlideOver';
@@ -88,7 +91,20 @@ function nextDocCode(docs: DocumentProjet[]): string {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TabDocuments() {
-  const [documents, setDocuments] = useState<DocumentProjet[]>(MOCK_DOCUMENTS);
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const { activeProjectId }  = useUIStore();
+  const resolvedProjectId    = urlProjectId || activeProjectId || '';
+
+  const { data: documentsData, isLoading: isLoadingDocs } = useDocuments(resolvedProjectId);
+  const createMutation = useCreateDocument(resolvedProjectId);
+  const updateMutation = useUpdateDocument(resolvedProjectId);
+  const deleteMutation = useDeleteDocument(resolvedProjectId);
+
+  const [documents, setDocuments] = useState<DocumentProjet[]>([]);
+
+  useEffect(() => {
+    if (documentsData) setDocuments(documentsData);
+  }, [documentsData]);
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
   const [slideDoc,  setSlideDoc]  = useState<DocumentProjet | null>(null);
@@ -179,61 +195,68 @@ export default function TabDocuments() {
       setDocuments(prev => prev.map(d =>
         d.id === id ? { ...d, ...payload, date_modification: today, updatedAt: now } : d,
       ));
+      updateMutation.mutate({ id, ...payload, date_modification: today });
     } else {
-      setDocuments(prev => {
-        const newDoc: DocumentProjet = {
-          id: `doc-${Date.now()}`,
-          projet_id: 'mock-proj-01',
-          ...payload,
-          date_modification: today,
-          createdAt: now,
-          updatedAt: now,
-        };
-        return [newDoc, ...prev];
-      });
-    }
-  }, []);
-
-  const handleDeleteConfirm = useCallback(() => {
-    if (!deleteTarget) return;
-    setDocuments(prev => prev.filter(d => d.id !== deleteTarget.id));
-    setDeleteTarget(null);
-  }, [deleteTarget]);
-
-  const handleDuplicate = useCallback((id: string) => {
-    const now   = new Date().toISOString();
-    const today = now.slice(0, 10);
-    setDocuments(prev => {
-      const original = prev.find(d => d.id === id);
-      if (!original) return prev;
-      const copy: DocumentProjet = {
-        ...original,
+      const newDoc: DocumentProjet = {
         id: `doc-${Date.now()}`,
-        code_document: nextDocCode(prev),
-        titre: `${original.titre} (copie)`,
-        statut: 'BROUILLON',
-        version: '1.0',
-        date_creation:    today,
+        projet_id: resolvedProjectId,
+        ...payload,
         date_modification: today,
         createdAt: now,
         updatedAt: now,
       };
-      return [copy, ...prev];
-    });
-  }, []);
+      setDocuments(prev => [newDoc, ...prev]);
+      createMutation.mutate({ ...payload, projet_id: resolvedProjectId, date_modification: today });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedProjectId]);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteTarget) return;
+    setDocuments(prev => prev.filter(d => d.id !== deleteTarget.id));
+    deleteMutation.mutate(deleteTarget.id);
+    setDeleteTarget(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deleteTarget]);
+
+  const handleDuplicate = useCallback((id: string) => {
+    const now      = new Date().toISOString();
+    const today    = now.slice(0, 10);
+    const original = documents.find(d => d.id === id);
+    if (!original) return;
+    const copy: DocumentProjet = {
+      ...original,
+      id: `doc-${Date.now()}`,
+      code_document: nextDocCode(documents),
+      titre: `${original.titre} (copie)`,
+      statut: 'BROUILLON',
+      version: '1.0',
+      date_creation:     today,
+      date_modification: today,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setDocuments(prev => [copy, ...prev]);
+    createMutation.mutate({ ...copy, projet_id: resolvedProjectId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents, resolvedProjectId]);
 
   const handleArchive = useCallback((id: string) => {
-    const now   = new Date().toISOString();
-    const today = now.slice(0, 10);
+    const now      = new Date().toISOString();
+    const today    = now.slice(0, 10);
+    const doc      = documents.find(d => d.id === id);
+    const newStatut: StatutDocument = doc?.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE';
     setDocuments(prev => prev.map(d =>
       d.id === id ? {
         ...d,
-        statut: (d.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE') as StatutDocument,
+        statut: newStatut,
         date_modification: today,
         updatedAt: now,
       } : d,
     ));
-  }, []);
+    updateMutation.mutate({ id, statut: newStatut, date_modification: today });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents]);
 
   const openNew  = useCallback(() => { setSlideDoc(null);  setSlideMode('new');  setSlideOpen(true); }, []);
   const openView = useCallback((d: DocumentProjet) => { setSlideDoc(d); setSlideMode('view'); setSlideOpen(true); }, []);
@@ -251,33 +274,32 @@ export default function TabDocuments() {
       png: 'Image', jpg: 'Image', jpeg: 'Image', gif: 'Image', webp: 'Image',
       zip: 'ZIP', rar: 'ZIP',
     };
-    const type: TypeFichier    = typeMap[ext] ?? 'Autre';
-    const taille_ko            = Math.max(1, Math.round(file.size / 1024));
-    const now                  = new Date().toISOString();
-    const today                = now.slice(0, 10);
-    setDocuments(prev => {
-      const code = nextDocCode(prev);
-      const newDoc: DocumentProjet = {
-        id: `doc-${Date.now()}`,
-        projet_id: 'mock-proj-01',
-        code_document: code,
-        titre: file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' '),
-        categorie: 'Autre',
-        version: '1.0',
-        auteur: 'Utilisateur',
-        responsable: 'Utilisateur',
-        date_creation: today,
-        date_modification: today,
-        statut: 'BROUILLON',
-        taille_ko,
-        type_fichier: type,
-        mots_cles: [],
-        confidentialite: 'INTERNE',
-        createdAt: now,
-        updatedAt: now,
-      };
-      return [newDoc, ...prev];
-    });
+    const type: TypeFichier = typeMap[ext] ?? 'Autre';
+    const taille_ko         = Math.max(1, Math.round(file.size / 1024));
+    const now               = new Date().toISOString();
+    const today             = now.slice(0, 10);
+    const code              = nextDocCode(documents);
+    const newDoc: DocumentProjet = {
+      id: `doc-${Date.now()}`,
+      projet_id: resolvedProjectId,
+      code_document: code,
+      titre: file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' '),
+      categorie: 'Autre',
+      version: '1.0',
+      auteur: 'Utilisateur',
+      responsable: 'Utilisateur',
+      date_creation: today,
+      date_modification: today,
+      statut: 'BROUILLON',
+      taille_ko,
+      type_fichier: type,
+      mots_cles: [],
+      confidentialite: 'INTERNE',
+      createdAt: now,
+      updatedAt: now,
+    };
+    setDocuments(prev => [newDoc, ...prev]);
+    createMutation.mutate({ ...newDoc, projet_id: resolvedProjectId });
     if (uploadRef.current) uploadRef.current.value = '';
   }
 
@@ -627,6 +649,7 @@ export default function TabDocuments() {
           <DataTable
             columns={columns}
             data={documents}
+            isLoading={isLoadingDocs}
             searchKey="titre"
             searchPlaceholder="Rechercher un document…"
             filters={tableFilters}

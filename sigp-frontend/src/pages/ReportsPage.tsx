@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   Download, Trash2, Star, StarOff, Search, SlidersHorizontal,
@@ -28,11 +28,8 @@ import { ReportCatalogCard, formatBadgeVariant, frequencyBadgeVariant } from '@/
 import { ReportGenerationSheet, type GenerationMode } from '@/components/reports/ReportGenerationSheet';
 import { ReportExportsChart } from '@/components/reports/ReportExportsChart';
 
-// Mock data
+// Mock labels/options (static — no data mocks)
 import {
-  mockReportTemplates,
-  mockGeneratedReports,
-  mockMonthlyExports,
   ALL_CATEGORIES,
   ALL_FORMATS,
   type ReportTemplate,
@@ -41,7 +38,113 @@ import {
   type ReportFormat,
   type ReportCategory,
   type ReportsKPIs,
+  type MonthlyExportsData,
 } from '@/mocks/reportsMocks';
+import type { RapportProjet, TypeRapport, FormatRapport } from '@/types';
+import { useReports, useDeleteReport } from '@/hooks/useReports';
+
+// ── Adapters: RapportProjet → ReportPage types ────────────────────────────────
+
+const TYPE_TO_CATEGORY: Record<TypeRapport, ReportCategory> = {
+  MENSUEL:     'Synthèse & Tableau de bord',
+  TRIMESTRIEL: 'Synthèse & Tableau de bord',
+  ANNUEL:      'Synthèse & Tableau de bord',
+  AVANCEMENT:  'Synthèse & Tableau de bord',
+  BAILLEUR:    'Synthèse & Tableau de bord',
+  FINAL:       'Synthèse & Tableau de bord',
+  FINANCIER:   'Budget & Finance',
+  PTBA:        'Planification & PTBA',
+  RISQUES:     'Risques',
+  EVM:         'EVM & Performance',
+};
+
+const TYPE_TO_FREQUENCE: Record<TypeRapport, ReportTemplate['frequence']> = {
+  MENSUEL:     'Mensuel',
+  TRIMESTRIEL: 'Trimestriel',
+  FINANCIER:   'Mensuel',
+  EVM:         'Mensuel',
+  RISQUES:     'Mensuel',
+  PTBA:        'Trimestriel',
+  ANNUEL:      'Manuel',
+  AVANCEMENT:  'Manuel',
+  BAILLEUR:    'Manuel',
+  FINAL:       'Manuel',
+};
+
+function beFormatToFe(f: FormatRapport): ReportFormat {
+  if (f === 'Excel') return 'XLSX';
+  if (f === 'Word')  return 'DOCX';
+  return 'PDF';
+}
+
+function fmtTailleStr(ko: number): string {
+  if (ko < 1024)        return `${ko} Ko`;
+  if (ko < 1024 * 1024) return `${(ko / 1024).toFixed(1)} Mo`;
+  return `${(ko / (1024 * 1024)).toFixed(1)} Go`;
+}
+
+function adaptToGenerated(r: RapportProjet): GeneratedReport {
+  const genStat: GeneratedStatus =
+    r.statut === 'EN_ATTENTE' ? 'En cours' : 'Succès';
+  return {
+    id:             r.id,
+    reportCode:     r.code_rapport,
+    reportNom:      r.titre,
+    format:         beFormatToFe(r.format),
+    dateGeneration: r.date_generation,
+    genereePar:     r.auteur,
+    taille:         fmtTailleStr(r.taille_ko),
+    statut:         genStat,
+    categorie:      TYPE_TO_CATEGORY[r.type],
+  };
+}
+
+function buildTemplates(rapports: RapportProjet[]): ReportTemplate[] {
+  const seen = new Map<string, ReportTemplate>();
+  for (const r of [...rapports].sort((a, b) =>
+    a.date_generation.localeCompare(b.date_generation)
+  )) {
+    const code = r.code_rapport;
+    if (!seen.has(code)) {
+      seen.set(code, {
+        id:                 r.id,
+        code,
+        nom:                r.titre,
+        categorie:          TYPE_TO_CATEGORY[r.type],
+        description:        r.description ?? '',
+        formatsDisponibles: [beFormatToFe(r.format)],
+        auteur:             r.auteur,
+        dateCreation:       r.createdAt.slice(0, 10),
+        dateDernierExport:  r.date_generation,
+        statut:             r.statut === 'ARCHIVE' ? 'Archivé' : 'Disponible',
+        frequence:          TYPE_TO_FREQUENCE[r.type],
+        favori:             false,
+        nombreExports:      r.nb_telechargements,
+      });
+    } else {
+      const t = seen.get(code)!;
+      const fmt = beFormatToFe(r.format);
+      if (!t.formatsDisponibles.includes(fmt)) t.formatsDisponibles.push(fmt);
+      t.nombreExports += r.nb_telechargements;
+      if (r.date_generation > t.dateDernierExport) t.dateDernierExport = r.date_generation;
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function buildMonthlyExports(rapports: RapportProjet[]): MonthlyExportsData[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const dt = new Date();
+    dt.setDate(1);
+    dt.setMonth(dt.getMonth() - (11 - i));
+    const mois  = dt.toISOString().slice(0, 7);
+    const label = dt.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+    const exports = rapports
+      .filter(r => r.date_generation.startsWith(mois))
+      .reduce((s, r) => s + r.nb_telechargements + 1, 0);
+    return { mois: label, exports };
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // History DataTable filters
@@ -126,8 +229,27 @@ function CategorySection({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
-  const [templates, setTemplates] = useState<ReportTemplate[]>(mockReportTemplates);
-  const [generated, setGenerated] = useState<GeneratedReport[]>(mockGeneratedReports);
+  const { data: apiRapports } = useReports();
+  const deleteMutation = useDeleteReport();
+
+  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+  const [generated, setGenerated] = useState<GeneratedReport[]>([]);
+
+  useEffect(() => {
+    if (apiRapports) {
+      setTemplates(prev => {
+        const built = buildTemplates(apiRapports);
+        const prevById = new Map(prev.map(t => [t.id, t]));
+        return built.map(t => ({ ...t, favori: prevById.get(t.id)?.favori ?? t.favori }));
+      });
+      setGenerated(apiRapports.map(adaptToGenerated));
+    }
+  }, [apiRapports]);
+
+  const monthlyExports = useMemo(
+    () => buildMonthlyExports(apiRapports ?? []),
+    [apiRapports],
+  );
 
   // Catalogue filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -224,6 +346,7 @@ export default function ReportsPage() {
   function handleDeleteConfirm() {
     if (!reportToDelete) return;
     setTemplates((prev) => prev.filter((t) => t.id !== reportToDelete.id));
+    deleteMutation.mutate(reportToDelete.id);
     setDeleteModalOpen(false);
     setReportToDelete(null);
   }
@@ -255,6 +378,7 @@ export default function ReportsPage() {
 
   function handleDeleteGenerated(id: string) {
     setGenerated((prev) => prev.filter((g) => g.id !== id));
+    deleteMutation.mutate(id);
   }
 
   // ── History DataTable columns ─────────────────────────────────────────────
@@ -543,7 +667,7 @@ export default function ReportsPage() {
         {/* ── Historique ───────────────────────────────────────────── */}
         <TabsContent value="historique">
           <div className="flex flex-col gap-6">
-            <ReportExportsChart data={mockMonthlyExports} />
+            <ReportExportsChart data={monthlyExports} />
             <DataTable
               columns={historyColumns}
               data={generated}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   UserPlus, Eye, Edit, UserCheck, UserX, KeyRound,
@@ -22,9 +22,11 @@ import { UserPermissionsModal } from '@/components/users/UserPermissionsModal';
 import { ActionsMenu, type ActionItem } from '@/components/projects/ActionsMenu';
 import { userAvatarStyle } from '@/components/users/userAvatarStyle';
 
-// Mock data
+// Data hooks
+import { useUsers, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
+
+// Mock data (types + labels only — no mockUsers data import)
 import {
-  mockUsers,
   ROLE_LABELS,
   type MockUser,
   type UserRole,
@@ -88,7 +90,15 @@ function formatLastLogin(s: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<MockUser[]>(mockUsers);
+  const { data: usersData, isLoading: isLoadingUsers } = useUsers();
+  const updateMutation = useUpdateUser();
+  const deleteMutation = useDeleteUser();
+
+  const [users, setUsers] = useState<MockUser[]>([]);
+
+  useEffect(() => {
+    if (usersData) setUsers(usersData);
+  }, [usersData]);
 
   // SlideOver
   const [slideOverOpen, setSlideOverOpen] = useState(false);
@@ -134,12 +144,14 @@ export default function UsersPage() {
     setUsers((prev) =>
       prev.map((u) => u.id === user.id ? { ...u, actif: true, statut: 'Actif' as const } : u)
     );
+    updateMutation.mutate({ id: user.id, data: { actif: true } });
   }
 
   function handleDeactivate(user: MockUser) {
     setUsers((prev) =>
       prev.map((u) => u.id === user.id ? { ...u, actif: false, statut: 'Inactif' as const } : u)
     );
+    updateMutation.mutate({ id: user.id, data: { actif: false } });
   }
 
   function openResetPassword(user: MockUser) {
@@ -176,6 +188,7 @@ export default function UsersPage() {
   function handleDeleteConfirm() {
     if (!userToDelete) return;
     setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
+    deleteMutation.mutate(userToDelete.id);
     setDeleteModalOpen(false);
     setUserToDelete(null);
   }
@@ -369,6 +382,7 @@ export default function UsersPage() {
       <DataTable
         columns={columns}
         data={users}
+        isLoading={isLoadingUsers}
         searchKey="search"
         searchPlaceholder="Rechercher par nom ou email..."
         filters={userFilters}

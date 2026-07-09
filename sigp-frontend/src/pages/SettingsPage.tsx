@@ -25,10 +25,10 @@ import {
   type Theme,
 } from '@/stores/prefsStore';
 import {
-  mockUserProfile, mockActiveSessions, mockConnectionHistory,
   LANGUES, TIMEZONES, FORMATS_DATE, DEVISES,
   type UserProfile, type ActiveSession, type ConnectionHistory, type SessionDevice,
 } from '@/mocks/settingsMocks';
+import { useCurrentUserProfile, useUpdateProfile } from '@/hooks/useUserProfile';
 
 // ─── Types nav ────────────────────────────────────────────────────────────────
 
@@ -1684,9 +1684,15 @@ function SettingsSidebar({ profile, current, onSelect }: SidebarProps) {
 
 export default function SettingsPage() {
   const [current,  setCurrent]  = useState<SectionId>('compte');
-  const [profile,  setProfile]  = useState<UserProfile>(mockUserProfile);
-  const [sessions, setSessions] = useState(mockActiveSessions);
-  const connectionHistory       = mockConnectionHistory;
+  const backendProfile            = useCurrentUserProfile();
+  const updateProfileMutation     = useUpdateProfile();
+  const [profile,  setProfile]  = useState<UserProfile>(backendProfile);
+  const [sessions, setSessions] = useState<ActiveSession[]>([]);
+  const connectionHistory: ConnectionHistory[] = [];
+
+  useEffect(() => {
+    if (backendProfile.id) setProfile(backendProfile);
+  }, [backendProfile.id]);
 
   const { setTheme, setPrefs, setNotifs } = usePrefsStore();
 
@@ -1721,10 +1727,17 @@ export default function SettingsPage() {
     localStorage.removeItem('sigp-privacy');
   }
 
+  function handleSaveProfile(p: UserProfile) {
+    setProfile(p);
+    if (p.id) {
+      updateProfileMutation.mutate({ id: p.id, prenom: p.prenom, nom: p.nom, telephone: p.telephone || undefined });
+    }
+  }
+
   function renderSection(): React.ReactNode {
     switch (current) {
       case 'compte':
-        return <MonCompteSection profile={profile} onSave={setProfile} />;
+        return <MonCompteSection profile={profile} onSave={handleSaveProfile} />;
       case 'securite':
         return (
           <SecuriteSection

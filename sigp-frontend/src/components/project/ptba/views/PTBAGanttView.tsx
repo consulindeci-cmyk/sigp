@@ -1,4 +1,4 @@
-import { mockActivities, type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
+import { type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Card, CardContent } from '@/components/ui/data-display/Card';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
@@ -202,13 +202,14 @@ function GanttRow({ activity, isLast }: { activity: Activity; isLast: boolean })
 
 interface PTBAGanttViewProps {
   annee?: number;
+  activities?: Activity[];
 }
 
-export function PTBAGanttView({ annee: _annee }: PTBAGanttViewProps) {
-  const total = mockActivities.length;
-  const inProgress = mockActivities.filter(a => a.statut === 'En cours').length;
-  const done = mockActivities.filter(a => a.statut === 'Terminé').length;
-  const late = mockActivities.filter(a => a.statut === 'En retard').length;
+export function PTBAGanttView({ annee: _annee, activities = [] }: PTBAGanttViewProps) {
+  const total = activities.length;
+  const inProgress = activities.filter((a: Activity) => a.statut === 'En cours').length;
+  const done = activities.filter((a: Activity) => a.statut === 'Terminé').length;
+  const late = activities.filter((a: Activity) => a.statut === 'En retard').length;
 
   return (
     <div className="h-full overflow-auto bg-background">
@@ -304,11 +305,11 @@ export function PTBAGanttView({ annee: _annee }: PTBAGanttViewProps) {
               </thead>
 
               <tbody>
-                {mockActivities.map((act, i) => (
+                {activities.map((act: Activity, i: number) => (
                   <GanttRow
                     key={act.id}
                     activity={act}
-                    isLast={i === mockActivities.length - 1}
+                    isLast={i === activities.length - 1}
                   />
                 ))}
               </tbody>

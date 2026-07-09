@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
@@ -16,10 +16,13 @@ import type {
   ConfidentialiteGlobalDoc, TypeFichier,
 } from '@/types';
 import {
-  MOCK_GLOBAL_DOCUMENTS, STATUT_GLOBAL_DOC_LABEL, CONF_GLOBAL_DOC_LABEL,
+  STATUT_GLOBAL_DOC_LABEL, CONF_GLOBAL_DOC_LABEL,
   CATEGORIE_GLOBAL_DOC_OPTIONS, STATUT_GLOBAL_DOC_OPTIONS,
   CONF_GLOBAL_DOC_OPTIONS, TYPE_FICHIER_OPTIONS, AUTEURS_GLOBAL_DOC,
 } from '@/mocks/globalDocumentsMocks';
+import {
+  useGlobalDocuments, useUpdateGlobalDocument, useDeleteGlobalDocument,
+} from '@/hooks/useGlobalDocuments';
 import { DocumentSlideOver } from '@/components/documents/DocumentSlideOver';
 import type { DocumentSavePayload } from '@/components/documents/DocumentSlideOver';
 import { DocumentCategoryTree } from '@/components/documents/DocumentCategoryTree';
@@ -85,7 +88,15 @@ const PIE_COLORS = [
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
-  const [docs, setDocs]             = useState<DocumentGlobal[]>(MOCK_GLOBAL_DOCUMENTS);
+  const { data: docsData, isLoading: isLoadingDocs } = useGlobalDocuments();
+  const updateMutation = useUpdateGlobalDocument();
+  const deleteMutation = useDeleteGlobalDocument();
+
+  const [docs, setDocs] = useState<DocumentGlobal[]>([]);
+
+  useEffect(() => {
+    if (docsData) setDocs(docsData);
+  }, [docsData]);
   const [slideOpen, setSlideOpen]   = useState(false);
   const [slideMode, setSlideMode]   = useState<'new' | 'edit' | 'view'>('new');
   const [slideDoc,  setSlideDoc]    = useState<DocumentGlobal | null>(null);
@@ -233,27 +244,41 @@ export default function DocumentsPage() {
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
     setDocs(prev => prev.filter(d => d.id !== deleteTarget.id));
+    deleteMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deleteTarget]);
 
   const handleArchive = useCallback((doc: DocumentGlobal) => {
-    const now = new Date().toISOString();
+    const now   = new Date().toISOString();
     const today = now.slice(0, 10);
     setDocs(prev => prev.map(d =>
       d.id === doc.id
-        ? { ...d, statut: 'ARCHIVE', date_modification: today, updatedAt: now }
+        ? { ...d, statut: 'ARCHIVE' as const, date_modification: today, updatedAt: now }
         : d,
     ));
+    updateMutation.mutate({
+      id: doc.id,
+      changes: { feStatut: 'ARCHIVE', date_modification: today },
+      current: doc,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRestore = useCallback((doc: DocumentGlobal) => {
-    const now = new Date().toISOString();
+    const now   = new Date().toISOString();
     const today = now.slice(0, 10);
     setDocs(prev => prev.map(d =>
       d.id === doc.id
-        ? { ...d, statut: 'PUBLIE', date_modification: today, updatedAt: now }
+        ? { ...d, statut: 'PUBLIE' as const, date_modification: today, updatedAt: now }
         : d,
     ));
+    updateMutation.mutate({
+      id: doc.id,
+      changes: { feStatut: 'PUBLIE', date_modification: today },
+      current: doc,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDuplicate = useCallback((doc: DocumentGlobal) => {
@@ -752,6 +777,7 @@ export default function DocumentsPage() {
               <DataTable
                 columns={columns}
                 data={filteredDocs}
+                isLoading={isLoadingDocs}
                 searchKey="titre"
                 searchPlaceholder="Rechercher par titre, auteur, code…"
                 filters={tableFilters}

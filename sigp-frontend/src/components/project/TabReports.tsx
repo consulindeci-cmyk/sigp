@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, LineChart, Line,
@@ -11,9 +12,11 @@ import {
 } from 'lucide-react';
 import type { RapportProjet, TypeRapport, StatutRapport, FormatRapport } from '@/types';
 import {
-  MOCK_RAPPORTS, TYPE_RAPPORT_LABEL, TYPE_RAPPORT_OPTIONS,
+  TYPE_RAPPORT_LABEL, TYPE_RAPPORT_OPTIONS,
   STATUT_RAPPORT_OPTIONS, FORMAT_RAPPORT_OPTIONS,
 } from '@/mocks/reportsMocks';
+import { useReports, useCreateReport, useUpdateReport, useDeleteReport } from '@/hooks/useReports';
+import { useUIStore } from '@/stores/uiStore';
 import { ReportSlideOver } from './reports/ReportSlideOver';
 import type { ReportSavePayload } from './reports/ReportSlideOver';
 import { DataTable }  from '@/components/ui/data-table/DataTable';
@@ -85,11 +88,24 @@ function nextReportCode(rapports: RapportProjet[]): string {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TabReports() {
-  const [rapports, setRapports]   = useState<RapportProjet[]>(MOCK_RAPPORTS);
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const activeProjectId = useUIStore(s => s.activeProjectId);
+  const resolvedProjectId = urlProjectId || activeProjectId || '';
+
+  const { data: apiRapports, isLoading } = useReports(resolvedProjectId);
+  const createMutation = useCreateReport(resolvedProjectId);
+  const updateMutation = useUpdateReport(resolvedProjectId);
+  const deleteMutation = useDeleteReport(resolvedProjectId);
+
+  const [rapports, setRapports]   = useState<RapportProjet[]>([]);
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
   const [slideRpt,  setSlideRpt]  = useState<RapportProjet | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RapportProjet | null>(null);
+
+  useEffect(() => {
+    if (apiRapports) setRapports(apiRapports);
+  }, [apiRapports]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
@@ -194,24 +210,27 @@ export default function TabReports() {
       setRapports(prev => prev.map(r =>
         r.id === id ? { ...r, ...payload, updatedAt: now } : r,
       ));
+      updateMutation.mutate({ id, ...payload });
     } else {
       const newRapport: RapportProjet = {
         id: `rpt-${Date.now()}`,
-        projet_id: 'mock-proj-01',
+        projet_id: resolvedProjectId,
         ...payload,
         createdAt: now,
         updatedAt: now,
       };
       setRapports(prev => [newRapport, ...prev]);
       simulateDownload(newRapport);
+      createMutation.mutate({ ...payload, projet_id: resolvedProjectId });
     }
-  }, []);
+  }, [updateMutation, createMutation, resolvedProjectId]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
     setRapports(prev => prev.filter(r => r.id !== deleteTarget.id));
+    deleteMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
-  }, [deleteTarget]);
+  }, [deleteTarget, deleteMutation]);
 
   const handleDuplicate = useCallback((id: string) => {
     const now = new Date().toISOString();
@@ -237,26 +256,37 @@ export default function TabReports() {
 
   const handleArchive = useCallback((id: string) => {
     const now = new Date().toISOString();
-    setRapports(prev => prev.map(r =>
-      r.id === id ? {
-        ...r,
-        statut: (r.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE') as StatutRapport,
-        updatedAt: now,
-      } : r,
-    ));
-  }, []);
+    setRapports(prev => {
+      const current = prev.find(r => r.id === id);
+      const nextStatut: StatutRapport = current?.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE';
+      updateMutation.mutate({ id, statut: nextStatut });
+      return prev.map(r =>
+        r.id === id ? { ...r, statut: nextStatut, updatedAt: now } : r,
+      );
+    });
+  }, [updateMutation]);
 
   const handleDownload = useCallback((id: string) => {
     const now = new Date().toISOString();
-    setRapports(prev => prev.map(r =>
-      r.id === id ? {
-        ...r,
-        nb_telechargements: r.nb_telechargements + 1,
-        date_telechargement: now.slice(0, 10),
-        updatedAt: now,
-      } : r,
-    ));
-  }, []);
+    setRapports(prev => {
+      const current = prev.find(r => r.id === id);
+      if (current) {
+        updateMutation.mutate({
+          id,
+          nb_telechargements: current.nb_telechargements + 1,
+          date_telechargement: now.slice(0, 10),
+        });
+      }
+      return prev.map(r =>
+        r.id === id ? {
+          ...r,
+          nb_telechargements: r.nb_telechargements + 1,
+          date_telechargement: now.slice(0, 10),
+          updatedAt: now,
+        } : r,
+      );
+    });
+  }, [updateMutation]);
 
   const openNew  = useCallback(() => { setSlideRpt(null); setSlideMode('new');  setSlideOpen(true); }, []);
   const openView = useCallback((r: RapportProjet) => { setSlideRpt(r); setSlideMode('view'); setSlideOpen(true); }, []);
@@ -604,6 +634,7 @@ export default function TabReports() {
             searchKey="titre"
             searchPlaceholder="Rechercher un rapport…"
             filters={tableFilters}
+            isLoading={isLoading}
           />
         </CardContent>
       </Card>

@@ -1,4 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
+import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from '@/hooks/useTasks';
+import { useUIStore } from '@/stores/uiStore';
+import type { Tache } from '@/types';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   Activity as ActivityIcon, CheckCircle2, Clock, AlertTriangle,
@@ -18,11 +22,61 @@ import {
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import {
-  mockActivities,
   type Activity,
   type ActivityStatus,
   type ActivityPriority,
 } from '@/mocks/activitiesMocks';
+
+// ─── Adapters Tache ↔ Activity ─────────────────────────────────────────────────
+
+const STATUT_TO_ACTIVITY: Record<string, ActivityStatus> = {
+  A_FAIRE:    'Non démarré',
+  EN_COURS:   'En cours',
+  TERMINE:    'Terminé',
+  ANNULE:     'Suspendu',
+  EN_ATTENTE: 'Non démarré',
+};
+
+const ACTIVITY_TO_STATUT: Record<ActivityStatus, string> = {
+  'Non démarré': 'A_FAIRE',
+  'En cours':    'EN_COURS',
+  'Terminé':     'TERMINE',
+  'En retard':   'EN_COURS',
+  'Suspendu':    'ANNULE',
+};
+
+function adaptTache(t: Tache): Activity {
+  return {
+    id: t.id,
+    code: t.code_tache,
+    libelle: t.description,
+    description: t.description,
+    responsable: t.responsable ?? '—',
+    initialesResponsable: getInitiales(t.responsable ?? ''),
+    dateDebut: t.date_debut ?? '',
+    dateFin: t.date_fin ?? '',
+    avancement: t.avancement,
+    priorite: 'Moyenne',
+    statut: STATUT_TO_ACTIVITY[t.statut] ?? 'Non démarré',
+    composante: '',
+    budgetAlloue: parseFloat(t.cout_prevu) || 0,
+  };
+}
+
+function activityToDto(data: Omit<Activity, 'id'>, projectId: string): Partial<Tache> {
+  return {
+    projet_id:   projectId,
+    code_tache:  data.code,
+    description: data.libelle || data.description,
+    responsable: data.responsable || undefined,
+    date_debut:  data.dateDebut || undefined,
+    date_fin:    data.dateFin   || undefined,
+    avancement:  data.avancement,
+    statut:      ACTIVITY_TO_STATUT[data.statut] as Tache['statut'],
+    cout_prevu:  String(data.budgetAlloue || 0),
+    cout_reel:   '0',
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -571,7 +625,21 @@ function buildActivityColumns(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectActivitiesTab() {
-  const [activities,    setActivities]    = useState<Activity[]>(mockActivities);
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const activeProjectId      = useUIStore(s => s.activeProjectId);
+  const projectId            = urlProjectId || activeProjectId || '';
+
+  const { data: apiData, isLoading } = useTasks(projectId, { limit: 1000 });
+  const createMutation = useCreateTask(projectId);
+  const updateMutation = useUpdateTask(projectId);
+  const deleteMutation = useDeleteTask(projectId);
+
+  const [activities,    setActivities]    = useState<Activity[]>([]);
+
+  useEffect(() => {
+    const list = (apiData as { data?: Tache[] })?.data ?? (Array.isArray(apiData) ? apiData as Tache[] : []);
+    setActivities(list.map(adaptTache));
+  }, [apiData]);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [slideOverMode, setSlideOverMode] = useState<SlideOverMode>('new');
   const [selected,      setSelected]      = useState<Activity | null>(null);
@@ -597,15 +665,12 @@ export default function ProjectActivitiesTab() {
   // ── Sauvegarde (création ou modification) ─────────────────────────────────
   function handleSave(data: Omit<Activity, 'id'>) {
     if (slideOverMode === 'new') {
-      const newActivity: Activity = {
-        id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        ...data,
-      };
+      const newActivity: Activity = { id: `tmp-${Date.now()}`, ...data };
       setActivities(prev => [...prev, newActivity]);
+      createMutation.mutate(activityToDto(data, projectId));
     } else if (slideOverMode === 'edit' && selected) {
-      setActivities(prev =>
-        prev.map(a => a.id === selected.id ? { ...a, ...data } : a)
-      );
+      setActivities(prev => prev.map(a => a.id === selected.id ? { ...a, ...data } : a));
+      updateMutation.mutate({ id: selected.id, ...activityToDto(data, projectId) });
     }
     setSlideOverOpen(false);
   }
@@ -614,10 +679,8 @@ export default function ProjectActivitiesTab() {
   function handleDeleteConfirm() {
     if (deleteTargetId) {
       setActivities(prev => prev.filter(a => a.id !== deleteTargetId));
-      if (selected?.id === deleteTargetId) {
-        setSlideOverOpen(false);
-        setSelected(null);
-      }
+      if (selected?.id === deleteTargetId) { setSlideOverOpen(false); setSelected(null); }
+      deleteMutation.mutate(deleteTargetId);
     }
     setDeleteTargetId(null);
   }
@@ -699,6 +762,7 @@ export default function ProjectActivitiesTab() {
           <DataTable
             columns={columns}
             data={activities}
+            isLoading={isLoading}
             searchKey="libelle"
             searchPlaceholder="Rechercher une activité..."
             filters={[

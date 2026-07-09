@@ -5,7 +5,7 @@ import {
   LayoutList, TrendingUp, Banknote, Plus, Loader2,
   AlertCircle, Network, Layers, Trash2,
 } from 'lucide-react';
-import { useWBS, useUpdateWBSOrder } from '@/hooks/useWBS';
+import { useWBS, useUpdateWBSOrder, useCreateWBSNode, useUpdateWBSNode, useDeleteWBSNode } from '@/hooks/useWBS';
 import { useUIStore } from '@/stores/uiStore';
 import { WBSTree } from '@/components/project/wbs/WBSTree';
 import { WBSNodeForm } from '@/components/project/wbs/WBSNodeForm';
@@ -65,6 +65,9 @@ export default function WBSPage() {
 
   const { data: wbsData, isLoading, error } = useWBS(resolvedProjectId);
   const reorderMutation = useUpdateWBSOrder(resolvedProjectId);
+  const createMutation  = useCreateWBSNode(resolvedProjectId);
+  const updateMutation  = useUpdateWBSNode(resolvedProjectId);
+  const deleteMutation  = useDeleteWBSNode(resolvedProjectId);
 
   const [wbsItems, setWbsItems] = useState<WBS[]>([]);
 
@@ -105,6 +108,7 @@ export default function WBSPage() {
     setWbsItems(prev =>
       prev.filter(item => item.id !== deleteTarget.id && item.parent_id !== deleteTarget.id)
     );
+    deleteMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
   };
 
@@ -146,8 +150,10 @@ export default function WBSPage() {
 
     if (editingNode) {
       setWbsItems(prev => prev.map(item => (item.id === editingNode.id ? newNode : item)));
+      updateMutation.mutate({ id: editingNode.id, data });
     } else {
       setWbsItems(prev => [...prev, newNode]);
+      createMutation.mutate({ data, existingNodes: wbsItems });
     }
   };
 

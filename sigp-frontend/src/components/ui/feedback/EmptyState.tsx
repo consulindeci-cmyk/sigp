@@ -1,39 +1,44 @@
-import React from 'react';
 import { cn } from '@/lib/utils';
-import { LucideIcon } from 'lucide-react';
+import { Ghost, FolderOpen, SearchX } from 'lucide-react';
+import { ReactNode } from 'react';
 
-export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
-  icon?: LucideIcon;
-  title: string;
+type EmptyStateVariant = 'default' | 'folder' | 'search';
+
+interface EmptyStateProps {
+  title?: string;
   description?: string;
-  action?: React.ReactNode;
+  icon?: ReactNode;
+  variant?: EmptyStateVariant;
+  action?: ReactNode;
+  className?: string;
 }
 
-export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
-  ({ className, icon: Icon, title, description, action, ...props }, ref) => {
-    return (
-      <div
-        ref={ref}
-        className={cn(
-          "flex flex-col items-center justify-center rounded-lg border border-dashed border-border p-12 text-center animate-in fade-in-50",
-          className
-        )}
-        {...props}
-      >
-        {Icon && (
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted/50 mb-4">
-            <Icon className="h-6 w-6 text-muted-foreground" />
-          </div>
-        )}
-        <h3 className="mt-2 text-sm font-semibold text-foreground">{title}</h3>
-        {description && (
-          <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
-            {description}
-          </p>
-        )}
-        {action && <div className="mt-6">{action}</div>}
+export function EmptyState({
+  title = "Aucune donnée",
+  description = "Il n'y a rien à afficher pour le moment.",
+  icon,
+  variant = 'default',
+  action,
+  className,
+}: EmptyStateProps) {
+  const IconComponent = icon ? () => <>{icon}</> : 
+    variant === 'folder' ? FolderOpen : 
+    variant === 'search' ? SearchX : Ghost;
+
+  return (
+    <div className={cn(
+      "flex flex-col items-center justify-center p-8 text-center min-h-[250px] w-full",
+      "bg-muted/10 border border-dashed border-border rounded-lg",
+      className
+    )}>
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/50 mb-4">
+        <IconComponent className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
       </div>
-    );
-  }
-);
-EmptyState.displayName = 'EmptyState';
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <p className="mt-1 text-sm text-muted-foreground max-w-sm mb-4">
+        {description}
+      </p>
+      {action && <div>{action}</div>}
+    </div>
+  );
+}

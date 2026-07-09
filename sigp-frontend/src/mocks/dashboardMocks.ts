@@ -1,6 +1,5 @@
 import {
-  EvmDataPoint, TimeSeriesDataPoint, DistributionDataPoint,
-  CriticalActivity, MainRisk, Milestone, ProjectEvent,
+  CriticalActivity, MainRisk, ProjectEvent,
   PortfolioKPI, BudgetBailleur, RiskCategory, RecentActivity,
   UpcomingDeadline, DashboardAlert, ProjectStatusItem,
   BudgetConsumptionData, TimelineItem,
@@ -24,62 +23,6 @@ export const mockPortfolioKPIs: PortfolioKPI = {
   nombreBailleurs: 9,
 };
 
-// ==========================================
-// MOCK: EVM CURVE
-// ==========================================
-export const mockEvmData: EvmDataPoint[] = [
-  { date: '2023-Q1', pv: 500, ev: 450, ac: 480 },
-  { date: '2023-Q2', pv: 1200, ev: 1000, ac: 1100 },
-  { date: '2023-Q3', pv: 2000, ev: 1800, ac: 1950 },
-  { date: '2023-Q4', pv: 3500, ev: 3000, ac: 3400 },
-  { date: '2024-Q1', pv: 5000, ev: 4200, ac: 5100 },
-  { date: '2024-Q2', pv: 7000, ev: 6100, ac: 7200 },
-  { date: '2024-Q3', pv: 9500, ev: 8000, ac: 9800 },
-];
-
-// ==========================================
-// MOCK: DISBURSEMENTS — 12 MONTHS
-// ==========================================
-export const mockDisbursements: TimeSeriesDataPoint[] = [
-  { label: 'Jan', value: 20 },
-  { label: 'Fév', value: 35 },
-  { label: 'Mar', value: 60 },
-  { label: 'Avr', value: 45 },
-  { label: 'Mai', value: 80 },
-  { label: 'Juin', value: 110 },
-];
-
-export const mockDisbursements12Months: TimeSeriesDataPoint[] = [
-  { label: 'Juil', value: 8.2 },
-  { label: 'Août', value: 6.5 },
-  { label: 'Sep', value: 12.1 },
-  { label: 'Oct', value: 9.8 },
-  { label: 'Nov', value: 14.3 },
-  { label: 'Déc', value: 18.7 },
-  { label: 'Jan', value: 11.4 },
-  { label: 'Fév', value: 15.8 },
-  { label: 'Mar', value: 22.6 },
-  { label: 'Avr', value: 19.4 },
-  { label: 'Mai', value: 27.1 },
-  { label: 'Juin', value: 30.5 },
-];
-
-// ==========================================
-// MOCK: BUDGET DISTRIBUTION (By Component)
-// ==========================================
-export const mockBudgetDistribution: DistributionDataPoint[] = [
-  { label: 'Infrastructures', value: 12300000, percentage: 50, color: 'var(--navy-500)' },
-  { label: 'Équipements', value: 7380000, percentage: 30, color: 'var(--green)' },
-  { label: 'Gestion du projet', value: 4920000, percentage: 20, color: 'var(--amber)' },
-];
-
-// ==========================================
-// MOCK: FUNDING DISTRIBUTION
-// ==========================================
-export const mockFundingDistribution: DistributionDataPoint[] = [
-  { label: 'AFD (Prêt)', value: 18450000, percentage: 75, color: 'var(--navy-700)' },
-  { label: 'État du Niger', value: 6150000, percentage: 25, color: 'var(--slate)' },
-];
 
 // ==========================================
 // MOCK: BUDGET BY BAILLEUR
@@ -140,14 +83,7 @@ export const mockMainRisks: MainRisk[] = [
   { id: 'r3', description: 'Retard déblocage fonds État', level: 'medium', probability: 50 },
 ];
 
-// ==========================================
-// MOCK: MILESTONES & EVENTS
-// ==========================================
-export const mockMilestones: Milestone[] = [
-  { id: 'm1', date: '2026-07-15', title: 'Réception matériel phase 2', status: 'pending' },
-  { id: 'm2', date: '2026-08-02', title: 'Audit financier intermédiaire', status: 'pending' },
-  { id: 'm3', date: '2026-09-10', title: 'Revue à mi-parcours AFD', status: 'pending' },
-];
+
 
 export const mockEvents: ProjectEvent[] = [
   { id: 'e1', date: "Aujourd'hui", type: 'alert', description: 'Risque de change passé en statut Critique — PROJ-014.' },

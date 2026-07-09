@@ -1,0 +1,28 @@
+const fs = require('fs');
+
+// Fix controller spec
+const cSpecPath = 'c:/Users/Baba Traore/Documents/mesApp/projet/sigp-backend-v1/src/projects/project.controller.spec.ts';
+let cSpec = fs.readFileSync(cSpecPath, 'utf8');
+cSpec = cSpec.replace(
+  'const result = await controller.findAll(query);',
+  'const result = await controller.findAll(query, { id: "1", role: "VIEWER" } as any);'
+);
+fs.writeFileSync(cSpecPath, cSpec, 'utf8');
+
+// Fix service spec
+const sSpecPath = 'c:/Users/Baba Traore/Documents/mesApp/projet/sigp-backend-v1/src/projects/project.service.spec.ts';
+let sSpec = fs.readFileSync(sSpecPath, 'utf8');
+sSpec = sSpec.replace(
+  'mocks.risqueRepository,\n      mocks.ptbaRepository\n    );',
+  'mocks.risqueRepository,\n      mocks.ptbaRepository,\n      mocks.prismaService as any\n    );'
+);
+// just in case
+if (!sSpec.includes('mocks.prismaService')) {
+  sSpec = sSpec.replace(
+    'mocks.risqueRepository,\n      mocks.ptbaRepository,\n    );',
+    'mocks.risqueRepository,\n      mocks.ptbaRepository,\n      { user: { findUnique: jest.fn() } } as any\n    );'
+  );
+}
+
+fs.writeFileSync(sSpecPath, sSpec, 'utf8');
+console.log('Fixed specs 3');

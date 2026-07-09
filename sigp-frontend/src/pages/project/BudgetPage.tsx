@@ -459,6 +459,7 @@ export default function BudgetPage() {
     if (budget) {
       workflowMutation.mutate({
         budgetId:      budget.id,
+        versionId:     versionSelectionnee,
         nouveauStatut: newStatut,
         commentaire:   `Action : ${action}`,
       });
