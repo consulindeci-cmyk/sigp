@@ -1,27 +1,9 @@
 services:
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    container_name: sigp-api-dev
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: npm run start:dev
-    ports:
-      - "3000:3000"
-      - "9229:9229"
-    env_file: .env.development
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - sigp-net
-    restart: unless-stopped
-
+  # L'API NestJS ne tourne pas dans ce compose : le Dockerfile n'a pas de stage
+  # "development" (seulement "builder"/"production", utilisés pour le build Render).
+  # En dev, on lance l'app directement sur l'hôte : `npm run start:dev` (hot-reload
+  # natif, pas de volume monté à synchroniser). Docker ne sert ici qu'aux services
+  # d'infra (Postgres, Redis, MinIO, Mailhog, Adminer).
   db:
     image: postgres:16-alpine
     container_name: sigp-db-dev
