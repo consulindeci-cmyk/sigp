@@ -23,7 +23,9 @@ COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
 COPY --chown=nestjs:nodejs entrypoint.sh ./
 
-RUN chmod +x entrypoint.sh
+# keys/ n'est jamais commité (.gitignore) — généré à l'entrée du container.
+# logs/ reste writable si LOG_TO_FILE=true est activé.
+RUN mkdir -p keys logs && chown -R nestjs:nodejs keys logs && chmod +x entrypoint.sh
 
 USER nestjs
 EXPOSE 3000

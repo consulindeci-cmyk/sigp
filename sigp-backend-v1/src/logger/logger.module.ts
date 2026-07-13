@@ -12,6 +12,7 @@ import * as winston from 'winston';
         const isProduction = configService.get('NODE_ENV') === 'production';
         const logLevel = configService.get<string>('LOG_LEVEL', 'debug');
         const pretty = configService.get<boolean>('LOG_PRETTY', true);
+        const fileLoggingEnabled = configService.get<boolean>('LOG_TO_FILE', false);
 
         const formats: winston.Logform.Format[] = [
           winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -37,7 +38,9 @@ import * as winston from 'winston';
           format: winston.format.combine(...formats),
           transports: [
             new winston.transports.Console(),
-            ...(isProduction
+            // Fichiers désactivés par défaut : le filesystem des containers (Render, Docker)
+            // est en lecture seule / éphémère pour l'utilisateur non-root — stdout est capturé par la plateforme.
+            ...(fileLoggingEnabled
               ? [
                   new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
                   new winston.transports.File({ filename: 'logs/combined.log' }),
