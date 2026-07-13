@@ -1,8 +1,5 @@
 #!/bin/sh
 set -e
 
-echo "[SIGP] Running Prisma migrations..."
-npx prisma migrate deploy
-
-echo "[SIGP] Migrations complete. Starting server..."
+echo "[SIGP] Starting backend server connected to Supabase..."
 exec node dist/main.js
