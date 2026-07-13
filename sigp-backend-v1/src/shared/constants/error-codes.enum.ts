@@ -125,6 +125,9 @@ export enum ErrorCode {
   // Notifications
   NOTIFICATION_NOT_FOUND = 'NOTIF_001',
 
+  // History
+  HISTORY_NOT_FOUND = 'HIST_001',
+
   // Generic
   VALIDATION_ERROR = 'GEN_001',
   RESOURCE_NOT_FOUND = 'GEN_002',
