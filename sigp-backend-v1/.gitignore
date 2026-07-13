@@ -19,6 +19,9 @@ logs/
 # coverage
 coverage/
 
+# Vercel (legacy local link — le backend tourne sur Render, pas Vercel)
+.vercel/
+
 # misc
 .DS_Store
 .cache/

@@ -1,0 +1,14 @@
+# Vercel CLI local project links (contiennent des IDs de projet, pas des secrets,
+# mais ne doivent pas être commités — chaque environnement local se relie lui-même)
+.vercel/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Divers
+*.log
+.cache/

@@ -37,6 +37,19 @@ function separator() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  // Garde-fou : ce seed insère/écrase des comptes de démonstration (mots de passe
+  // connus publiquement). En production, il ne doit jamais tourner sans opt-in explicite —
+  // ni via un déploiement automatique, ni par erreur avec un DATABASE_URL de prod chargé localement.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_SEED !== 'true') {
+    console.error(
+      '[SIGP] Seed bloqué : NODE_ENV=production sans ALLOW_PROD_SEED=true.\n' +
+        '  Ce script est réservé aux comptes de démonstration — à ne lancer manuellement\n' +
+        "  que si c'est vraiment l'intention (voir docs/migrations.md § Seed manuel).\n" +
+        '  Pour confirmer : ALLOW_PROD_SEED=true npx prisma db seed',
+    );
+    process.exit(1);
+  }
+
   separator();
   console.log('  SIGP — Seed initial (données minimales)');
   separator();
