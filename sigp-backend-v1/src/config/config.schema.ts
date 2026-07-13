@@ -10,7 +10,7 @@ export const validationSchema = Joi.object({
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
 
   // Database
-  DATABASE_URL: Joi.string().required(),
+  DATABASE_URL: Joi.string().default('postgresql://postgres.alwueihbddrupomwiwmv:SigpProd_2026_SecurePwd!@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true'),
 
   // Redis
   REDIS_HOST: Joi.string().default('localhost'),
