@@ -15,6 +15,10 @@ import { QUEUE_NAMES } from './queue.constants';
           db: config.get<number>('REDIS_DB', 0),
           lazyConnect: true,
           maxRetriesPerRequest: null,
+          retryStrategy(times) {
+            if (times > 5) return null;
+            return Math.min(times * 500, 2000);
+          },
         },
         defaultJobOptions: {
           attempts: 3,

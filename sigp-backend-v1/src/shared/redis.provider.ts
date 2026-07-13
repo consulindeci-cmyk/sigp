@@ -6,8 +6,8 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
 
 export const RedisClientProvider: FactoryProvider<Redis> = {
   provide: REDIS_CLIENT,
-  useFactory: (config: ConfigService): Redis =>
-    new Redis({
+  useFactory: (config: ConfigService): Redis => {
+    const client = new Redis({
       host: config.get<string>('REDIS_HOST', 'localhost'),
       port: config.get<number>('REDIS_PORT', 6379),
       password: config.get<string>('REDIS_PASSWORD') || undefined,
@@ -15,7 +15,16 @@ export const RedisClientProvider: FactoryProvider<Redis> = {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       lazyConnect: true,
-    }),
+      retryStrategy(times) {
+        if (times > 5) return null;
+        return Math.min(times * 500, 2000);
+      },
+    });
+    client.on('error', (err) => {
+      console.warn(`[Redis Provider Warning] Connection failed: ${err.message}`);
+    });
+    return client;
+  },
   inject: [ConfigService],
 };
 

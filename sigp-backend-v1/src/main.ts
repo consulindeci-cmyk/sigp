@@ -10,6 +10,14 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
+  process.on('unhandledRejection', (reason: any) => {
+    if (reason && (reason.code === 'ECONNREFUSED' || (typeof reason.message === 'string' && reason.message.includes('ECONNREFUSED')))) {
+      console.warn(`[SIGP Fallback] Suppressed Redis ECONNREFUSED unhandled rejection: ${reason.message || reason}`);
+      return;
+    }
+    console.error('[SIGP Unhandled Rejection]', reason);
+  });
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   const config = app.get(ConfigService);
