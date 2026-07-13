@@ -1,3 +1,4 @@
+import 'tsconfig-paths/register';
 import { NestFactory } from '@nestjs/core';
 import { VersioningType, ValidationPipe } from '@nestjs/common';
 import { ExpressAdapter } from '@nestjs/platform-express';
@@ -6,10 +7,10 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import helmet from 'helmet';
 import express from 'express';
-import { AppModule } from '../dist/app.module';
-import { HttpExceptionFilter } from '../dist/common/exceptions/http-exception.filter';
-import { ResponseInterceptor } from '../dist/common/interceptors/response.interceptor';
-import { LoggingInterceptor } from '../dist/common/interceptors/logging.interceptor';
+import { AppModule } from '../src/app.module';
+import { HttpExceptionFilter } from '../src/common/exceptions/http-exception.filter';
+import { ResponseInterceptor } from '../src/common/interceptors/response.interceptor';
+import { LoggingInterceptor } from '../src/common/interceptors/logging.interceptor';
 
 const server = express();
 let appPromise: Promise<any> | null = null;

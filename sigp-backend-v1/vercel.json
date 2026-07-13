@@ -5,7 +5,7 @@
   "buildCommand": "npm run build",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "dist/**,tsconfig.json"
+      "includeFiles": "tsconfig.json"
     }
   },
   "rewrites": [
