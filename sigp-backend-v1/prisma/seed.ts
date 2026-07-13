@@ -147,41 +147,56 @@ async function main() {
     console.log(`⟳  Programme existe    : ${programme.nom} (${programme.id})`);
   }
 
-  // ── 6. Utilisateur administrateur ────────────────────────────────────────────
+  // ── 6. Utilisateurs (Administrateur + Utilisateurs de démo Frontend) ────────
 
-  let admin = await prisma.user.findFirst({
-    where: { email: ADMIN_EMAIL },
-  });
+  const demoUsers = [
+    { email: ADMIN_EMAIL,                password: ADMIN_PASSWORD,  role: UserRole.ADMIN,        nom: ADMIN_NOM,       prenom: ADMIN_PRENOM },
+    { email: 'admin@sigp.ci',            password: 'Admin@2026',    role: UserRole.ADMIN,        nom: 'Admin',         prenom: 'Super' },
+    { email: 'coord@sigp.ci',            password: 'Coord@2026',    role: UserRole.COORDINATEUR, nom: 'Coordonnateur', prenom: 'SIGP' },
+    { email: 'finance@sigp.ci',          password: 'Finance@2026',  role: UserRole.FINANCIER,    nom: 'Financier',     prenom: 'SIGP' },
+    { email: 'bailleur@banquemonde.org', password: 'Bailleur@2026', role: UserRole.VIEWER,       nom: 'Bailleur',      prenom: 'Banque Mondiale' },
+    { email: 'audit@sigp.ci',            password: 'Audit@2026',    role: UserRole.AUDITEUR,     nom: 'Auditeur',      prenom: 'SIGP' },
+  ];
 
-  if (!admin) {
-    // Hachage identique à AuthService.login() → argon2.hash()
-    const motDePasseHash = await argon2.hash(ADMIN_PASSWORD);
+  for (const u of demoUsers) {
+    let user = await prisma.user.findFirst({ where: { email: u.email } });
+    const motDePasseHash = await argon2.hash(u.password);
 
-    admin = await prisma.user.create({
-      data: {
-        nom:              ADMIN_NOM,
-        prenom:           ADMIN_PRENOM,
-        email:            ADMIN_EMAIL,
-        mot_de_passe:     motDePasseHash,
-        role:             UserRole.ADMIN,
-        actif:            true,
-        langue_preference: 'fr',
-      },
-    });
-    console.log(`✔  Utilisateur créé    : ${admin.prenom} ${admin.nom} (${admin.id})`);
-  } else {
-    console.log(`⟳  Utilisateur existe  : ${admin.prenom} ${admin.nom} (${admin.id})`);
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          nom: u.nom,
+          prenom: u.prenom,
+          email: u.email,
+          mot_de_passe: motDePasseHash,
+          role: u.role,
+          actif: true,
+          langue_preference: 'fr',
+        },
+      });
+      console.log(`✔  Utilisateur créé    : ${user.prenom} ${user.nom} (${u.email}) [Rôle: ${user.role}]`);
+    } else {
+      // Met à jour le mot de passe pour être sûr qu'il correspond
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          mot_de_passe: motDePasseHash,
+          role: u.role,
+          actif: true,
+        },
+      });
+      console.log(`⟳  Utilisateur mis à jour : ${user.prenom} ${user.nom} (${u.email}) [Rôle: ${user.role}]`);
+    }
   }
 
   // ── Résumé ───────────────────────────────────────────────────────────────────
 
   separator();
-  console.log('  COMPTE ADMINISTRATEUR');
+  console.log('  COMPTES UTILISATEURS DU SYSTÈME');
   separator();
-  console.log(`  Email        : ${ADMIN_EMAIL}`);
-  console.log(`  Mot de passe : ${ADMIN_PASSWORD}`);
-  console.log(`  Rôle         : ${UserRole.ADMIN}`);
-  console.log(`  ID           : ${admin.id}`);
+  for (const u of demoUsers) {
+    console.log(`  - ${u.email.padEnd(26)} | MDP: ${u.password.padEnd(14)} | Rôle: ${u.role}`);
+  }
   separator();
   console.log('  PROGRAMME (pour créer des projets)');
   separator();
