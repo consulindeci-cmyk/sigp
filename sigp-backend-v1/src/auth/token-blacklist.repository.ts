@@ -20,6 +20,8 @@ export class TokenBlacklistRepository {
     return `${TokenBlacklistRepository.KEY_PREFIX}${jti}`;
   }
 
+  private readonly inMemoryBlacklist = new Set<string>();
+
   /**
    * Blackliste un JWT jusqu'à son expiration naturelle.
    * @param jti identifiant unique du token
@@ -27,12 +29,31 @@ export class TokenBlacklistRepository {
    */
   async blacklist(jti: string, ttlSeconds: number): Promise<void> {
     if (ttlSeconds <= 0) return; // token déjà expiré : rien à blacklister
-    await this.redis.set(TokenBlacklistRepository.key(jti), '1', 'EX', ttlSeconds);
+    this.inMemoryBlacklist.add(jti);
+    setTimeout(() => this.inMemoryBlacklist.delete(jti), ttlSeconds * 1000).unref?.();
+
+    try {
+      if (this.redis.status === 'ready' || this.redis.status === 'connect') {
+        await this.redis.set(TokenBlacklistRepository.key(jti), '1', 'EX', ttlSeconds);
+      }
+    } catch {
+      // Redis indisponible, le fallback in-memory prend le relais
+    }
   }
 
-  /** Retourne true si le jti est présent dans la blacklist Redis. */
+  /** Retourne true si le jti est présent dans la blacklist Redis (ou en mémoire). */
   async isBlacklisted(jti: string): Promise<boolean> {
-    const exists = await this.redis.exists(TokenBlacklistRepository.key(jti));
-    return exists === 1;
+    if (this.inMemoryBlacklist.has(jti)) {
+      return true;
+    }
+    try {
+      if (this.redis.status === 'ready' || this.redis.status === 'connect') {
+        const exists = await this.redis.exists(TokenBlacklistRepository.key(jti));
+        return exists === 1;
+      }
+    } catch {
+      // Redis indisponible ou erreur de connexion
+    }
+    return false;
   }
 }
