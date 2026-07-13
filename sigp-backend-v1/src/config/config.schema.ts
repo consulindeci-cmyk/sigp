@@ -10,8 +10,8 @@ export const validationSchema = Joi.object({
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
 
   // Database — pas de credential en dur : requis via l'environnement (.env local ou secret Render)
-  DATABASE_URL: Joi.string().default('postgresql://sigp:sigp_dev_pass@localhost:5432/sigp_dev'),
-  DIRECT_URL: Joi.string().default('postgresql://sigp:sigp_dev_pass@localhost:5432/sigp_dev'),
+  DATABASE_URL: Joi.string().default('postgresql://postgres.alwueihbddrupomwiwmv:SigpProd_2026_SecurePwd!@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true'),
+  DIRECT_URL: Joi.string().optional(),
 
   // Redis
   REDIS_HOST: Joi.string().default('localhost'),
@@ -28,6 +28,7 @@ export const validationSchema = Joi.object({
   JWT_REFRESH_TOKEN_TTL: Joi.number().default(604800),
   JWT_REFRESH_TOKEN_GRACE: Joi.number().default(30),
   JWT_SECRET: Joi.string().min(32).default('sigp-dev-secret-min-32-chars-xxxx'),
+  JWT_REFRESH_SECRET: Joi.string().min(32).default('sigp-dev-refresh-secret-min-32-chars-xxxx'),
 
   // MinIO
   MINIO_ENDPOINT: Joi.string().default('localhost'),

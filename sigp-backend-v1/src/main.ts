@@ -24,11 +24,10 @@ async function bootstrap() {
   const port = config.get<number>('PORT', 3000);
   const prefix = config.get<string>('API_PREFIX', 'api');
   const frontendUrl = config.get<string>('FRONTEND_URL', 'http://localhost:5173');
-  const corsOrigins = config
-    .get<string>('CORS_ORIGINS', '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const corsOriginsEnv = config.get<string>('CORS_ORIGINS');
+  const corsOrigins = corsOriginsEnv
+    ? corsOriginsEnv.split(',').map((o) => o.trim())
+    : [frontendUrl];
 
   // Winston logger
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
@@ -36,7 +35,7 @@ async function bootstrap() {
   // Security
   app.use(helmet());
   app.enableCors({
-    origin: corsOrigins.length > 0 ? corsOrigins : [frontendUrl],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
