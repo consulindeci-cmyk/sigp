@@ -24,6 +24,8 @@ export interface ProjectSlideOverProps {
   project: Project | null;
   mode: ProjectSlideOverMode;
   onSave?: (data: Partial<Project>) => void;
+  saveError?: string | null;
+  isSaving?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -396,6 +398,8 @@ export function ProjectSlideOver({
   project,
   mode,
   onSave,
+  saveError,
+  isSaving = false,
 }: ProjectSlideOverProps) {
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -500,14 +504,21 @@ export function ProjectSlideOver({
 
         <SlideOverFooter>
           <SlideOverClose asChild>
-            <Button variant="outline">
+            <Button variant="outline" disabled={isSaving}>
               {readOnly ? 'Fermer' : 'Annuler'}
             </Button>
           </SlideOverClose>
           {!readOnly && (
-            <Button variant="default" onClick={handleSave}>
-              {mode === 'edit' ? 'Enregistrer les modifications' : 'Créer le projet'}
-            </Button>
+            <div className="flex flex-col items-end gap-2 flex-1">
+              {saveError && (
+                <p className="text-xs text-destructive text-right" role="alert">
+                  {saveError}
+                </p>
+              )}
+              <Button variant="default" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? 'Enregistrement…' : mode === 'edit' ? 'Enregistrer les modifications' : 'Créer le projet'}
+              </Button>
+            </div>
           )}
         </SlideOverFooter>
 

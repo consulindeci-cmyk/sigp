@@ -108,7 +108,10 @@ export default function ProjectsPage() {
     queryKey: ['programmes'],
     queryFn: async () => {
       const { data } = await api.get('/programmes');
-      return (data?.data ?? data) as Array<{ id: string }>;
+      // The API returns a paginated response: { data: { data: [...], meta: {} } }
+      // We must extract the inner data array correctly.
+      const list = data?.data?.data ?? data?.data ?? data ?? [];
+      return list as Array<{ id: string }>;
     },
   });
   const defaultProgrammeId: string | undefined = programmesData?.[0]?.id;
@@ -202,8 +205,11 @@ export default function ProjectsPage() {
     setSlideOverOpen(true);
   }
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   async function handleSave(data: Partial<Project>) {
     const payload = toCreatePayload(data);
+    setSaveError(null);
     try {
       if (slideOverMode === 'new') {
         await createProject.mutateAsync({ ...payload, programmeId: defaultProgrammeId });
@@ -211,8 +217,14 @@ export default function ProjectsPage() {
         await updateProject.mutateAsync({ id: selectedProject.id, payload });
       }
       setSlideOverOpen(false);
-    } catch {
-      // mutation error displayed via React Query; keep modal open
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string; error?: { message?: string } } }; message?: string };
+      const msg =
+        axiosErr?.response?.data?.error?.message ||
+        axiosErr?.response?.data?.message ||
+        axiosErr?.message ||
+        'Une erreur est survenue. Veuillez réessayer.';
+      setSaveError(msg);
     }
   }
 
@@ -549,10 +561,12 @@ export default function ProjectsPage() {
       {/* ── SlideOver View / Edit / New ─────────────────────────────────── */}
       <ProjectSlideOver
         open={slideOverOpen}
-        onOpenChange={setSlideOverOpen}
+        onOpenChange={(v) => { setSlideOverOpen(v); if (!v) setSaveError(null); }}
         project={selectedProject}
         mode={slideOverMode}
         onSave={handleSave}
+        saveError={saveError}
+        isSaving={createProject.isPending || updateProject.isPending}
       />
 
       {/* ── Delete Confirmation Modal ───────────────────────────────────── */}
