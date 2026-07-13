@@ -1,4 +1,4 @@
-import type { HistoryAction } from '@/types';
+export type HistoryAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'EXPORT' | 'VALIDATE' | 'REJECT';
 
 // Libellés et couleurs des 8 actions réellement émises par AuditAction (Prisma) —
 // aucune catégorie fictive (ex: "Téléchargement", "Import", "Archivage") n'a
