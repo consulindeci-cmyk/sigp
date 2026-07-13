@@ -13,8 +13,8 @@ export const RedisClientProvider: FactoryProvider<Redis> = {
       password: config.get<string>('REDIS_PASSWORD') || undefined,
       db: config.get<number>('REDIS_DB', 0),
       maxRetriesPerRequest: null,
-      enableReadyCheck: true,
-      lazyConnect: false,
+      enableReadyCheck: false,
+      lazyConnect: true,
     }),
   inject: [ConfigService],
 };

@@ -15,8 +15,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect();
-    this.logger.log('Prisma connected');
+    try {
+      await this.$connect();
+      this.logger.log('Prisma connected');
+    } catch (err) {
+      this.logger.warn(`Prisma initial connection failed on startup: ${err instanceof Error ? err.message : err}. Will reconnect on query.`);
+    }
   }
 
   async onModuleDestroy() {

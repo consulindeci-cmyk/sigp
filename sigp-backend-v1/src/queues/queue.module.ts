@@ -13,6 +13,8 @@ import { QUEUE_NAMES } from './queue.constants';
           port: config.get<number>('REDIS_PORT', 6379),
           password: config.get<string>('REDIS_PASSWORD') || undefined,
           db: config.get<number>('REDIS_DB', 0),
+          lazyConnect: true,
+          maxRetriesPerRequest: null,
         },
         defaultJobOptions: {
           attempts: 3,
