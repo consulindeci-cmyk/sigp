@@ -5,9 +5,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl python3
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY . .
-RUN npx prisma generate
+RUN npx prisma@6 generate
 RUN npm run build
-RUN npm prune --omit=dev --legacy-peer-deps && npx prisma generate
+RUN npm prune --omit=dev --legacy-peer-deps
 
 # ── Stage 2 : production ──────────────────────────────────────────────────────
 FROM node:20-slim AS production
