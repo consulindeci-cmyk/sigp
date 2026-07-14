@@ -160,13 +160,14 @@ export function useProject(id: string) {
   return useQuery({
     queryKey: projectKeys.detail(id),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${id}`)
-      return (data?.data ?? data) as ProjectApiDto
+      const { data } = await api.get(`/projects/${id}`);
+      const raw = data?.data?.data ?? data?.data ?? data;
+      return raw as ProjectApiDto;
     },
     enabled: !!id,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Résumé financier
@@ -174,13 +175,13 @@ export function useProjectSummary(id: string) {
   return useQuery({
     queryKey: projectKeys.summary(id),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${id}/summary`)
-      return data?.data ?? data
+      const { data } = await api.get(`/projects/${id}/summary`);
+      return data?.data?.data ?? data?.data ?? data;
     },
     enabled: !!id,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Top 5 risques actifs
@@ -188,14 +189,20 @@ export function useProjectTopRisks(projectId: string) {
   return useQuery({
     queryKey: projectKeys.topRisks(projectId),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/risks/top`)
-      const raw = (data as any)?.data ?? data;
-      return (Array.isArray(raw) ? raw : []) as ProjectTopRisk[]
+      const { data } = await api.get(`/projects/${projectId}/risks/top`);
+      const raw = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : [];
+      return raw as ProjectTopRisk[];
     },
     enabled: !!projectId,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Activités PTBA critiques (en retard)
@@ -203,14 +210,20 @@ export function useProjectCriticalActivities(projectId: string) {
   return useQuery({
     queryKey: projectKeys.criticalActivities(projectId),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/ptba/critical`)
-      const raw = (data as any)?.data ?? data;
-      return (Array.isArray(raw) ? raw : []) as CriticalActivityResponse[]
+      const { data } = await api.get(`/projects/${projectId}/ptba/critical`);
+      const raw = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : [];
+      return raw as CriticalActivityResponse[];
     },
     enabled: !!projectId,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Décaissements mensuels
@@ -218,14 +231,20 @@ export function useProjectDisbursements(projectId: string) {
   return useQuery({
     queryKey: projectKeys.disbursementsMonthly(projectId),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/disbursements/monthly`)
-      const raw = (data as any)?.data ?? data;
-      return (Array.isArray(raw) ? raw : []) as DisbursementMonthly[]
+      const { data } = await api.get(`/projects/${projectId}/disbursements/monthly`);
+      const raw = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : [];
+      return raw as DisbursementMonthly[];
     },
     enabled: !!projectId,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Répartition budget par rubrique
@@ -233,14 +252,20 @@ export function useProjectBudgetDistribution(projectId: string) {
   return useQuery({
     queryKey: projectKeys.budgetDistribution(projectId),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/budget/distribution`)
-      const raw = (data as any)?.data ?? data;
-      return (Array.isArray(raw) ? raw : []) as BudgetDistributionItem[]
+      const { data } = await api.get(`/projects/${projectId}/budget/distribution`);
+      const raw = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : [];
+      return raw as BudgetDistributionItem[];
     },
     enabled: !!projectId,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Sources de financement
@@ -248,14 +273,20 @@ export function useProjectFundingSources(projectId: string) {
   return useQuery({
     queryKey: projectKeys.fundingSources(projectId),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/funding-sources`)
-      const raw = (data as any)?.data ?? data;
-      return (Array.isArray(raw) ? raw : []) as FundingSourceItem[]
+      const { data } = await api.get(`/projects/${projectId}/funding-sources`);
+      const raw = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : [];
+      return raw as FundingSourceItem[];
     },
     enabled: !!projectId,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Jalons (livrables)
@@ -263,14 +294,20 @@ export function useProjectMilestones(projectId: string) {
   return useQuery({
     queryKey: projectKeys.milestones(projectId),
     queryFn: async () => {
-      const { data } = await api.get(`/projects/${projectId}/milestones`)
-      const raw = (data as any)?.data ?? data;
-      return (Array.isArray(raw) ? raw : []) as MilestoneItem[]
+      const { data } = await api.get(`/projects/${projectId}/milestones`);
+      const raw = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : [];
+      return raw as MilestoneItem[];
     },
     enabled: !!projectId,
 
     refetchOnWindowFocus: false,
-  })
+  });
 }
 
 // Créer un projet
