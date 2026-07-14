@@ -97,6 +97,58 @@ export class UsersRepository {
     await this.prisma.user.delete({ where: { id } });
   }
 
+  /**
+   * Calcule les KPIs synthétiques des utilisateurs dans une transaction Prisma.
+   */
+  async getPortfolioKpis(filters?: { organisationId?: string }): Promise<{
+    totalUsers: number;
+    activeUsers: number;
+    inactiveUsers: number;
+    administrators: number;
+    coordinators: number;
+    financiers: number;
+    auditors: number;
+    viewers: number;
+  }> {
+    const baseWhere: Prisma.UserWhereInput = {};
+    if (filters?.organisationId) {
+      baseWhere.organisation_id = filters.organisationId;
+    }
+
+    const [
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      adminCount,
+      coordCount,
+      finCount,
+      audCount,
+      viewCount,
+      cpCount,
+    ] = await this.prisma.$transaction([
+      this.prisma.user.count({ where: baseWhere }),
+      this.prisma.user.count({ where: { ...baseWhere, actif: true } }),
+      this.prisma.user.count({ where: { ...baseWhere, actif: false } }),
+      this.prisma.user.count({ where: { ...baseWhere, role: UserRole.ADMIN } }),
+      this.prisma.user.count({ where: { ...baseWhere, role: UserRole.COORDINATEUR } }),
+      this.prisma.user.count({ where: { ...baseWhere, role: UserRole.FINANCIER } }),
+      this.prisma.user.count({ where: { ...baseWhere, role: UserRole.AUDITEUR } }),
+      this.prisma.user.count({ where: { ...baseWhere, role: UserRole.VIEWER } }),
+      this.prisma.user.count({ where: { ...baseWhere, role: UserRole.CHARGE_PROGRAMME } }),
+    ]);
+
+    return {
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      administrators: adminCount,
+      coordinators: coordCount,
+      financiers: finCount,
+      auditors: audCount,
+      viewers: viewCount + cpCount,
+    };
+  }
+
   private buildWhere(params: FindUsersParams): Prisma.UserWhereInput {
     const where: Prisma.UserWhereInput = {};
 

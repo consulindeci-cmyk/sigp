@@ -3,23 +3,18 @@ import { DocumentStatus } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { PaginationDto } from '@/shared/dto/pagination.dto';
 
-export class DocumentQueryDto extends PaginationDto {
-  @ApiPropertyOptional({ description: 'Filtrer par projet' })
+export class DocumentGlobalQueryDto extends PaginationDto {
+  @ApiPropertyOptional({ description: 'Filtrer par catégorie' })
   @IsOptional()
-  @IsUUID()
-  projectId?: string;
-
-  @ApiPropertyOptional({ description: 'Filtrer par livrable' })
-  @IsOptional()
-  @IsUUID()
-  livrableId?: string;
+  @IsString()
+  categorie?: string;
 
   @ApiPropertyOptional({ enum: DocumentStatus, description: 'Filtrer par statut' })
   @IsOptional()
   @IsEnum(DocumentStatus)
   statut?: DocumentStatus;
 
-  @ApiPropertyOptional({ description: 'Recherche textuelle (titre, description)' })
+  @ApiPropertyOptional({ description: 'Recherche textuelle (titre, description, catégorie)' })
   @IsOptional()
   @IsString()
   search?: string;
@@ -49,7 +44,7 @@ export class DocumentQueryDto extends PaginationDto {
   @IsString()
   dateTo?: string;
 
-  @ApiPropertyOptional({ description: 'Champ de tri' })
+  @ApiPropertyOptional({ description: 'Champ de tri (titre, categorie, statut, created_at, updated_at)' })
   @IsOptional()
   @IsString()
   sortBy?: string;

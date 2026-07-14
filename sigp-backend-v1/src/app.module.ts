@@ -30,6 +30,8 @@ import { PpmEtapeModule } from './ppm-etapes/ppm-etape.module';
 import { RisqueModule } from './risques/risque.module';
 import { LivrableModule } from './livrables/livrable.module';
 import { DocumentModule } from './documents/document.module';
+import { DocumentGlobalModule } from './documents-globaux/document-global.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { ReportModule } from './reports/report.module';
 import { NotificationModule } from './notifications/notification.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -85,7 +87,9 @@ import { CommentModule } from './comments/comment.module';
     PpmEtapeModule,
     RisqueModule,
     LivrableModule,
+    UploadsModule,
     DocumentModule,
+    DocumentGlobalModule,
     ReportModule,
     NotificationModule,
     DashboardModule,

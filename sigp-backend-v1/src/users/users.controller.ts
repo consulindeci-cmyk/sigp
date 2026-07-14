@@ -34,6 +34,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserQueryDto } from './dto/user-query.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserListResponseDto } from './dto/user-list-response.dto';
+import { UserKpisResponseDto } from './dto/user-kpis-response.dto';
 
 @ApiTags('users')
 @ApiAuth(UserRole.ADMIN)
@@ -55,6 +56,13 @@ export class UsersController {
   @ApiBadRequestResponse({ description: 'Paramètres de requête invalides', type: ApiErrorResponse })
   async findAll(@Query() query: UserQueryDto): Promise<UserListResponseDto> {
     return this.usersService.findAll(query);
+  }
+
+  @Get('summary/kpis')
+  @ApiOperation({ summary: 'KPIs synthétiques du portefeuille d’utilisateurs' })
+  @ApiOkResponse({ description: 'KPIs des utilisateurs', type: UserKpisResponseDto })
+  async getKpis(@CurrentUser() user: AuthenticatedUser): Promise<UserKpisResponseDto> {
+    return this.usersService.getKpis(user);
   }
 
   @Get(':id')

@@ -16,14 +16,42 @@ export class ProjectAccessGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const user = (request as any).user as AuthenticatedUser;
-    const projectId = request.params.id;
-
-    if (!projectId) {
-      return true; // Si pas d'ID de projet dans la route, on ne vérifie pas l'accès au projet
-    }
 
     if (!user) {
-      return false; // Not authenticated (handled by AuthGuard usually)
+      return false;
+    }
+
+    let projectId: string | undefined =
+      request.params?.projectId ||
+      (typeof request.query?.projectId === 'string' ? request.query.projectId : undefined) ||
+      request.body?.projectId;
+
+    if (!projectId && request.params?.id) {
+      const paramId = request.params.id;
+      const projectExists = await this.prisma.project.findUnique({
+        where: { id: paramId },
+        select: { id: true },
+      });
+      if (projectExists) {
+        projectId = paramId;
+      } else {
+        const documentExists = await this.prisma.documentProjet.findUnique({
+          where: { id: paramId },
+          select: { project_id: true },
+        });
+        if (documentExists) {
+          projectId = documentExists.project_id;
+        } else {
+          if (request.baseUrl?.includes('/projects') || request.path?.includes('/projects')) {
+            throw new NotFoundException(`Projet avec l'ID ${paramId} non trouvé.`);
+          }
+          throw new NotFoundException(`Ressource (ID: ${paramId}) non trouvée.`);
+        }
+      }
+    }
+
+    if (!projectId) {
+      return true;
     }
 
     // Les ADMIN ont accès à tout

@@ -17,6 +17,12 @@ export class NotFoundException extends BusinessException {
   }
 }
 
+export class BadRequestException extends BusinessException {
+  constructor(errorCode: ErrorCode, message: string) {
+    super(errorCode, message, HttpStatus.BAD_REQUEST);
+  }
+}
+
 export class ConflictException extends BusinessException {
   constructor(errorCode: ErrorCode, message: string) {
     super(errorCode, message, HttpStatus.CONFLICT);

@@ -7,17 +7,16 @@ import { AppEvent } from '@/shared/constants/app-events.enum';
 import { ErrorCode } from '@/shared/constants/error-codes.enum';
 import { NotFoundException } from '@/common/exceptions/business.exception';
 import { PaginatedResult, paginate, paginationToSkipTake } from '@/shared/dto/pagination.dto';
-import { ProjectService } from '@/projects/project.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { UploadsService } from '@/uploads/uploads.service';
-import { DocumentRepository } from './document.repository';
-import { CreateDocumentDto } from './dto/create-document.dto';
-import { UpdateDocumentDto } from './dto/update-document.dto';
-import { DocumentQueryDto } from './dto/document-query.dto';
-import { DocumentResponseDto } from './dto/document-response.dto';
-import { DocumentVersionResponseDto } from './dto/document-version-response.dto';
+import { DocumentGlobalRepository } from './document-global.repository';
+import { CreateDocumentGlobalDto } from './dto/create-document-global.dto';
+import { UpdateDocumentGlobalDto } from './dto/update-document-global.dto';
+import { DocumentGlobalQueryDto } from './dto/document-global-query.dto';
+import { DocumentGlobalResponseDto } from './dto/document-global-response.dto';
+import { DocumentGlobalVersionResponseDto } from './dto/document-global-version-response.dto';
 
-const SORTABLE_FIELDS = ['titre', 'statut', 'created_at', 'createdAt', 'updated_at', 'updatedAt'] as const;
+const SORTABLE_FIELDS = ['titre', 'categorie', 'statut', 'created_at', 'createdAt', 'updated_at', 'updatedAt'] as const;
 
 export interface ActorContext {
   userId?: string;
@@ -26,17 +25,16 @@ export interface ActorContext {
 }
 
 @Injectable()
-export class DocumentService {
+export class DocumentGlobalService {
   constructor(
-    private readonly documentRepository: DocumentRepository,
-    private readonly projectService: ProjectService,
+    private readonly documentGlobalRepository: DocumentGlobalRepository,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
     private readonly prisma: PrismaService,
     private readonly uploadsService: UploadsService,
   ) {}
 
-  async findAll(query: DocumentQueryDto): Promise<PaginatedResult<DocumentResponseDto>> {
+  async findAll(query: DocumentGlobalQueryDto): Promise<PaginatedResult<DocumentGlobalResponseDto>> {
     const { skip, take } = paginationToSkipTake(query);
 
     let sortField: string =
@@ -48,12 +46,11 @@ export class DocumentService {
 
     const sortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
 
-    const { documents, total } = await this.documentRepository.findManyPaginated({
+    const { documents, total } = await this.documentGlobalRepository.findManyPaginated({
       skip,
       take,
       search: query.search,
-      projectId: query.projectId,
-      livrableId: query.livrableId,
+      categorie: query.categorie,
       statut: query.statut,
       createdBy: query.createdBy,
       mimeType: query.mimeType,
@@ -63,36 +60,33 @@ export class DocumentService {
       orderBy: { [sortField]: sortOrder },
     });
 
-    return paginate(documents.map(DocumentResponseDto.fromEntity), total, query);
+    return paginate(documents.map(DocumentGlobalResponseDto.fromEntity), total, query);
   }
 
-  async findOne(id: string): Promise<DocumentResponseDto> {
-    const document = await this.documentRepository.findById(id);
+  async findOne(id: string): Promise<DocumentGlobalResponseDto> {
+    const document = await this.documentGlobalRepository.findById(id);
     if (!document) {
-      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document introuvable');
+      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document global introuvable');
     }
-    return DocumentResponseDto.fromEntity(document);
+    return DocumentGlobalResponseDto.fromEntity(document);
   }
 
-  async create(dto: CreateDocumentDto, actor: ActorContext = {}): Promise<DocumentResponseDto> {
-    await this.projectService.findOne(dto.projectId);
-
-    const document = await this.documentRepository.create({
-      projectId: dto.projectId,
-      livrableId: dto.livrableId ?? null,
+  async create(dto: CreateDocumentGlobalDto, actor: ActorContext = {}): Promise<DocumentGlobalResponseDto> {
+    const document = await this.documentGlobalRepository.create({
       titre: dto.titre,
       description: dto.description ?? null,
+      categorie: dto.categorie ?? null,
       statut: dto.statut,
       createdBy: actor.userId ?? null,
     });
 
-    const response = DocumentResponseDto.fromEntity(document);
+    const response = DocumentGlobalResponseDto.fromEntity(document);
 
     setImmediate(() => {
       void this.auditService.log({
         userId: actor.userId,
         action: AuditAction.CREATE,
-        tableCible: 'documents_projet',
+        tableCible: 'documents_globaux',
         enregistrementId: document.id,
         apres: { ...response },
         ipAddress: actor.ip,
@@ -100,9 +94,8 @@ export class DocumentService {
       });
     });
 
-    this.eventEmitter.emit(AppEvent.DOCUMENT_CREATED, {
+    this.eventEmitter.emit(AppEvent.DOCUMENT_GLOBAL_CREATED ?? 'document-global.created', {
       documentId: document.id,
-      projectId: document.project_id,
     });
 
     return response;
@@ -110,31 +103,31 @@ export class DocumentService {
 
   async update(
     id: string,
-    dto: UpdateDocumentDto,
+    dto: UpdateDocumentGlobalDto,
     actor: ActorContext = {},
-  ): Promise<DocumentResponseDto> {
-    const existing = await this.documentRepository.findById(id);
+  ): Promise<DocumentGlobalResponseDto> {
+    const existing = await this.documentGlobalRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document introuvable');
+      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document global introuvable');
     }
 
-    const before = DocumentResponseDto.fromEntity(existing);
+    const before = DocumentGlobalResponseDto.fromEntity(existing);
 
-    const updated = await this.documentRepository.update(id, {
-      livrableId: dto.livrableId,
+    const updated = await this.documentGlobalRepository.update(id, {
       titre: dto.titre,
       description: dto.description,
+      categorie: dto.categorie,
       statut: dto.statut,
       updatedBy: actor.userId ?? null,
     });
 
-    const response = DocumentResponseDto.fromEntity(updated);
+    const response = DocumentGlobalResponseDto.fromEntity(updated);
 
     setImmediate(() => {
       void this.auditService.log({
         userId: actor.userId,
         action: AuditAction.UPDATE,
-        tableCible: 'documents_projet',
+        tableCible: 'documents_globaux',
         enregistrementId: id,
         avant: { ...before },
         apres: { ...response },
@@ -143,48 +136,33 @@ export class DocumentService {
       });
     });
 
-    this.eventEmitter.emit(AppEvent.DOCUMENT_UPDATED, { documentId: id });
-
-    if (dto.statut && dto.statut !== existing.statut) {
-      if (dto.statut === DocumentStatus.VALIDE) {
-        this.eventEmitter.emit(AppEvent.DOCUMENT_VALIDATED, {
-          documentId: id,
-          projectId: existing.project_id,
-        });
-      } else if (dto.statut === DocumentStatus.REJETE) {
-        this.eventEmitter.emit(AppEvent.DOCUMENT_REJECTED, {
-          documentId: id,
-          projectId: existing.project_id,
-        });
-      }
-    }
+    this.eventEmitter.emit(AppEvent.DOCUMENT_GLOBAL_UPDATED ?? 'document-global.updated', { documentId: id });
 
     return response;
   }
 
   async remove(id: string, actor: ActorContext = {}): Promise<void> {
-    const existing = await this.documentRepository.findById(id);
+    const existing = await this.documentGlobalRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document introuvable');
+      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document global introuvable');
     }
 
-    await this.documentRepository.softDelete(id);
+    await this.documentGlobalRepository.softDelete(id);
 
     setImmediate(() => {
       void this.auditService.log({
         userId: actor.userId,
         action: AuditAction.DELETE,
-        tableCible: 'documents_projet',
+        tableCible: 'documents_globaux',
         enregistrementId: id,
-        avant: { ...DocumentResponseDto.fromEntity(existing) },
+        avant: { ...DocumentGlobalResponseDto.fromEntity(existing) },
         ipAddress: actor.ip,
         userAgent: actor.userAgent,
       });
     });
 
-    this.eventEmitter.emit(AppEvent.DOCUMENT_DELETED, {
+    this.eventEmitter.emit(AppEvent.DOCUMENT_GLOBAL_DELETED ?? 'document-global.deleted', {
       documentId: id,
-      projectId: existing.project_id,
     });
   }
 
@@ -195,20 +173,24 @@ export class DocumentService {
     file: Express.Multer.File,
     actor: ActorContext = {},
     notes?: string,
-  ): Promise<DocumentResponseDto> {
-    const existing = await this.documentRepository.findById(id);
+    dateVersionStr?: string,
+  ): Promise<DocumentGlobalResponseDto> {
+    const existing = await this.documentGlobalRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document introuvable');
+      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document global introuvable');
     }
+
+    const dateVersion = dateVersionStr ? new Date(dateVersionStr) : new Date();
 
     await this.prisma.$transaction(async (tx) => {
       const upload = await this.uploadsService.saveFile(file, actor.userId ?? '', tx);
-      const latestNum = await this.documentRepository.findLatestVersionNumber(id, tx);
-      await this.documentRepository.createVersion(
+      const latestNum = await this.documentGlobalRepository.findLatestVersionNumber(id, tx);
+      await this.documentGlobalRepository.createVersion(
         {
           documentId: id,
           numeroVersion: latestNum + 1,
           uploadId: upload.id,
+          dateVersion,
           notes: notes ?? null,
           createdBy: actor.userId ?? null,
         },
@@ -216,18 +198,18 @@ export class DocumentService {
       );
     });
 
-    const updated = await this.documentRepository.findById(id);
+    const updated = await this.documentGlobalRepository.findById(id);
     if (!updated) {
-      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document introuvable après upload');
+      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document global introuvable après upload');
     }
 
-    const response = DocumentResponseDto.fromEntity(updated);
+    const response = DocumentGlobalResponseDto.fromEntity(updated);
 
     setImmediate(() => {
       void this.auditService.log({
         userId: actor.userId,
         action: AuditAction.CREATE,
-        tableCible: 'document_projet_versions',
+        tableCible: 'document_global_versions',
         enregistrementId: id,
         apres: { versionNumber: response.latestVersionNumber, uploadId: response.latestUploadId },
         ipAddress: actor.ip,
@@ -235,7 +217,7 @@ export class DocumentService {
       });
     });
 
-    this.eventEmitter.emit(AppEvent.DOCUMENT_UPDATED, { documentId: id, projectId: existing.project_id });
+    this.eventEmitter.emit(AppEvent.DOCUMENT_GLOBAL_UPDATED ?? 'document-global.updated', { documentId: id });
 
     return response;
   }
@@ -244,16 +226,16 @@ export class DocumentService {
     id: string,
     versionNumber?: number,
   ): Promise<{ upload: Upload; stream: fs.ReadStream }> {
-    const document = await this.documentRepository.findById(id);
+    const document = await this.documentGlobalRepository.findById(id);
     if (!document) {
-      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document introuvable');
+      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document global introuvable');
     }
 
     let targetUploadId: string | null = null;
     if (versionNumber) {
-      const version = await this.documentRepository.findVersionByNumber(id, versionNumber);
+      const version = await this.documentGlobalRepository.findVersionByNumber(id, versionNumber);
       if (!version) {
-        throw new NotFoundException(ErrorCode.DOCUMENT_VERSION_NOT_FOUND, `Version ${versionNumber} introuvable pour ce document`);
+        throw new NotFoundException(ErrorCode.DOCUMENT_VERSION_NOT_FOUND, `Version ${versionNumber} introuvable pour ce document global`);
       }
       targetUploadId = version.upload_id;
     } else {
@@ -262,7 +244,7 @@ export class DocumentService {
         : [];
       const latest = versions[0];
       if (!latest) {
-        throw new NotFoundException(ErrorCode.DOCUMENT_VERSION_NOT_FOUND, 'Aucun fichier/version associé à ce document');
+        throw new NotFoundException(ErrorCode.DOCUMENT_VERSION_NOT_FOUND, 'Aucun fichier/version associé à ce document global');
       }
       targetUploadId = latest.upload_id;
     }
@@ -274,12 +256,12 @@ export class DocumentService {
     return this.uploadsService.getFileStream(targetUploadId);
   }
 
-  async getVersions(id: string): Promise<DocumentVersionResponseDto[]> {
-    const document = await this.documentRepository.findById(id);
+  async getVersions(id: string): Promise<DocumentGlobalVersionResponseDto[]> {
+    const document = await this.documentGlobalRepository.findById(id);
     if (!document) {
-      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document introuvable');
+      throw new NotFoundException(ErrorCode.DOCUMENT_NOT_FOUND, 'Document global introuvable');
     }
-    const versions = await this.documentRepository.findVersionsByDocumentId(id);
-    return versions.map((v) => DocumentVersionResponseDto.fromEntity(v));
+    const versions = await this.documentGlobalRepository.findVersionsByDocumentId(id);
+    return versions.map((v) => DocumentGlobalVersionResponseDto.fromEntity(v));
   }
 }

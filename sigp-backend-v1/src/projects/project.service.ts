@@ -133,6 +133,78 @@ export class ProjectService {
     );
   }
 
+  // ─── KPIs portefeuille (Phase 19.5) ─────────────────────────────────────────
+
+  /**
+   * Calcule les KPIs du portefeuille entier directement en base de données.
+   * Respecte l'isolation multi-tenant (organisationId extrait du user si non-ADMIN).
+   */
+  async getKpis(
+    query: ProjectQueryDto,
+    user?: AuthenticatedUser,
+  ): Promise<{
+    total: number;
+    enBonneVoie: number;
+    aRisque: number;
+    enRetard: number;
+    clotured: number;
+    budgetPortefeuille: string;
+  }> {
+    let organisationId: string | undefined;
+    if (user && user.role !== 'ADMIN') {
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { organisation_id: true },
+      });
+      organisationId = dbUser?.organisation_id || undefined;
+    }
+
+    const result = await this.projectRepository.getPortfolioKpis({
+      programmeId: query.programmeId,
+      bailleurPrincipal: query.bailleurPrincipal,
+      secteur: query.secteur,
+      pays: query.pays,
+      organisationId,
+    });
+
+    // Formatage du budget portefeuille
+    const val = result.budgetTotal;
+    const sym = result.devise === 'EUR' ? '€' : result.devise === 'XOF' ? ' FCFA' : '$';
+    const budgetPortefeuille =
+      val >= 1_000_000
+        ? `${(val / 1_000_000).toFixed(1)}M${sym}`
+        : `${val.toLocaleString('fr-FR')}${sym}`;
+
+    return {
+      total: result.total,
+      enBonneVoie: result.enBonneVoie,
+      aRisque: result.aRisque,
+      enRetard: result.enRetard,
+      clotured: result.clotured,
+      budgetPortefeuille,
+    };
+  }
+
+  // ─── Options de référence (Phase 19.5) ──────────────────────────────────────
+
+  /**
+   * Renvoie les valeurs distinctes (Secteurs, Pays, Bailleurs) pour les filtres du frontend.
+   * Respecte l'isolation multi-tenant.
+   */
+  async getReferenceOptions(
+    user?: AuthenticatedUser,
+  ): Promise<{ sectors: string[]; countries: string[]; donors: string[] }> {
+    let organisationId: string | undefined;
+    if (user && user.role !== 'ADMIN') {
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { organisation_id: true },
+      });
+      organisationId = dbUser?.organisation_id || undefined;
+    }
+    return this.projectRepository.getReferenceOptions(organisationId);
+  }
+
   // ─── Détail ─────────────────────────────────────────────────────────────────
 
   async findOne(id: string): Promise<ProjectResponseDto> {

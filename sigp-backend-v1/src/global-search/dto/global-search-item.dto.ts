@@ -23,8 +23,8 @@ export class GlobalSearchItemDto {
   projectId: string | null;
 
   @ApiProperty()
-  createdAt: Date;
+  createdAt: Date | string;
 
   @ApiProperty()
-  updatedAt: Date;
+  updatedAt: Date | string;
 }

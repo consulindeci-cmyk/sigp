@@ -46,6 +46,7 @@ import { MilestoneResponseDto } from './dto/milestone-response.dto';
 import { EvmSummaryResponseDto } from './dto/evm-summary-response.dto';
 import { EvmHistoryResponseDto } from './dto/evm-history-response.dto';
 import { EvmService } from './evm.service';
+import { ProjectKpisResponseDto, ProjectReferenceOptionsDto } from './dto/project-kpis-response.dto';
 
 @ApiTags('projects')
 @Controller({ path: 'projects', version: '1' })
@@ -62,6 +63,42 @@ export class ProjectController {
       ip: req.ip ?? (req.socket.remoteAddress as string | undefined),
       userAgent: req.headers['user-agent'],
     };
+  }
+
+  @Get('summary/kpis')
+  @ApiAuth(
+    UserRole.VIEWER,
+    UserRole.ADMIN,
+    UserRole.COORDINATEUR,
+    UserRole.CHARGE_PROGRAMME,
+    UserRole.FINANCIER,
+    UserRole.AUDITEUR,
+  )
+  @ApiOperation({ summary: 'KPIs synthétiques du portefeuille (calculés en base de données)' })
+  @ApiOkResponse({ description: 'KPIs du portefeuille', type: ProjectKpisResponseDto })
+  @ApiBadRequestResponse({ description: 'Paramètres invalides', type: ApiErrorResponse })
+  async getKpis(
+    @Query() query: ProjectQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProjectKpisResponseDto> {
+    return this.projectService.getKpis(query, user);
+  }
+
+  @Get('reference-options')
+  @ApiAuth(
+    UserRole.VIEWER,
+    UserRole.ADMIN,
+    UserRole.COORDINATEUR,
+    UserRole.CHARGE_PROGRAMME,
+    UserRole.FINANCIER,
+    UserRole.AUDITEUR,
+  )
+  @ApiOperation({ summary: 'Options de référence distinctes (Secteurs, Pays, Bailleurs)' })
+  @ApiOkResponse({ description: 'Options de référence', type: ProjectReferenceOptionsDto })
+  async getReferenceOptions(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProjectReferenceOptionsDto> {
+    return this.projectService.getReferenceOptions(user);
   }
 
   @Get()

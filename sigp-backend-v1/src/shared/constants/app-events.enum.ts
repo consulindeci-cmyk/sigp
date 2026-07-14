@@ -95,6 +95,17 @@ export enum AppEvent {
   DOCUMENT_CREATED = 'document.created',
   DOCUMENT_UPDATED = 'document.updated',
   DOCUMENT_DELETED = 'document.deleted',
+  DOCUMENT_UPLOADED = 'document.uploaded',
+  DOCUMENT_DOWNLOADED = 'document.downloaded',
+  DOCUMENT_VERSION_ADDED = 'document.version.added',
+
+  // Documents Globaux
+  DOCUMENT_GLOBAL_CREATED = 'document-global.created',
+  DOCUMENT_GLOBAL_UPDATED = 'document-global.updated',
+  DOCUMENT_GLOBAL_DELETED = 'document-global.deleted',
+  DOCUMENT_GLOBAL_UPLOADED = 'document-global.uploaded',
+  DOCUMENT_GLOBAL_DOWNLOADED = 'document-global.downloaded',
+  DOCUMENT_GLOBAL_VERSION_ADDED = 'document-global.version.added',
 
   // Reports
   REPORT_COMPLETED = 'report.completed',

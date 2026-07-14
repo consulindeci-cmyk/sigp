@@ -12,6 +12,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserQueryDto, UserStatusFilter } from './dto/user-query.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { UserKpisResponseDto } from './dto/user-kpis-response.dto';
+import { AuthenticatedUser } from '@/auth/interfaces/user-request.interface';
 
 /** Champs autorisés au tri (protège contre l'injection dans orderBy). */
 const SORTABLE_FIELDS = [
@@ -65,6 +67,17 @@ export class UsersService {
     return paginate(users.map(UserResponseDto.fromEntity), total, query);
   }
 
+  // ─── KPIs synthétiques ──────────────────────────────────────────────────────
+
+  async getKpis(user?: AuthenticatedUser): Promise<UserKpisResponseDto> {
+    let organisationId: string | undefined;
+    if (user && user.role !== UserRole.ADMIN) {
+      const dbUser = await this.usersRepository.findById(user.id);
+      organisationId = dbUser?.organisation_id || undefined;
+    }
+    return this.usersRepository.getPortfolioKpis({ organisationId });
+  }
+
   // ─── Détail ─────────────────────────────────────────────────────────────────
 
   async findOne(id: string): Promise<UserResponseDto> {
@@ -80,7 +93,7 @@ export class UsersService {
   async create(dto: CreateUserDto, actor: ActorContext = {}): Promise<UserResponseDto> {
     const existing = await this.usersRepository.findByEmail(dto.email);
     if (existing) {
-      throw new ConflictException(ErrorCode.USER_EMAIL_TAKEN, 'Cet email est déjà utilisé');
+      throw new ConflictException(ErrorCode.USER_EMAIL_TAKEN, 'Cet email est déjà utilisé par un compte actif');
     }
 
     // Argon2id obligatoire — jamais bcrypt, jamais SHA
@@ -99,7 +112,10 @@ export class UsersService {
     } catch (error) {
       // Course entre le contrôle d'unicité et l'insert, ou email d'un compte soft-deleted
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException(ErrorCode.USER_EMAIL_TAKEN, 'Cet email est déjà utilisé');
+        throw new ConflictException(
+          ErrorCode.USER_EMAIL_TAKEN,
+          'Cet email est déjà utilisé (ou associé à un compte supprimé/désactivé)',
+        );
       }
       throw error;
     }

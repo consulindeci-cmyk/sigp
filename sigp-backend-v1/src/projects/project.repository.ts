@@ -392,6 +392,136 @@ export class ProjectRepository {
     });
   }
 
+  // ─── Portfolio KPIs — calcul direct SQL (Phase 19.5) ─────────────────────────
+
+  /**
+   * Calcule les KPIs du portefeuille entier via une seule requête groupBy Prisma.
+   * Filtre multi-tenant si organisationId est fourni.
+   * N'extrait aucune entité complète : uniquement des compteurs et agrégations.
+   */
+  async getPortfolioKpis(filters?: {
+    programmeId?: string;
+    bailleurPrincipal?: string;
+    secteur?: string;
+    pays?: string;
+    organisationId?: string;
+  }): Promise<{
+    total: number;
+    enBonneVoie: number;
+    aRisque: number;
+    enRetard: number;
+    clotured: number;
+    budgetTotal: number;
+    devise: string;
+  }> {
+    const baseWhere: Prisma.ProjectWhereInput = {};
+    if (filters?.programmeId) baseWhere.programme_id = filters.programmeId;
+    if (filters?.bailleurPrincipal) {
+      baseWhere.bailleur_principal = { contains: filters.bailleurPrincipal, mode: 'insensitive' };
+    }
+    if (filters?.secteur) {
+      baseWhere.secteur = { contains: filters.secteur, mode: 'insensitive' };
+    }
+    if (filters?.pays) {
+      baseWhere.pays = { contains: filters.pays, mode: 'insensitive' };
+    }
+    if (filters?.organisationId) {
+      baseWhere.programme = {
+        unite: { departement: { direction: { organisation_id: filters.organisationId } } },
+      };
+    }
+
+    const now = new Date();
+
+    // Compteurs parallèles par statut + budget + retard dans une seule transaction
+    const [
+      enCoursCount,
+      suspenduCount,
+      clotureCount,
+      annuleCount,
+      enPreparationCount,
+      enRetardCount,
+      budgetAgg,
+    ] = await this.prisma.$transaction([
+      this.prisma.project.count({ where: { ...baseWhere, statut: 'EN_COURS' } }),
+      this.prisma.project.count({ where: { ...baseWhere, statut: 'SUSPENDU' } }),
+      this.prisma.project.count({ where: { ...baseWhere, statut: 'CLOTURE' } }),
+      this.prisma.project.count({ where: { ...baseWhere, statut: 'ANNULE' } }),
+      this.prisma.project.count({ where: { ...baseWhere, statut: 'EN_PREPARATION' } }),
+      this.prisma.project.count({
+        where: { ...baseWhere, statut: 'EN_COURS', date_fin_prevue: { lt: now } },
+      }),
+      this.prisma.project.aggregate({
+        where: baseWhere,
+        _sum: { budget_total: true },
+      }),
+    ]);
+
+    const totalCount =
+      enCoursCount + suspenduCount + clotureCount + annuleCount + enPreparationCount;
+
+    // Détermination de la devise majoritaire (fallback XOF)
+    const deviseMajoritaire = await this.prisma.project.findFirst({
+      where: baseWhere,
+      select: { devise: true },
+      orderBy: { created_at: 'asc' },
+    });
+
+    return {
+      total: totalCount,
+      enBonneVoie: enCoursCount,
+      aRisque: suspenduCount,
+      enRetard: enRetardCount,
+      clotured: clotureCount + annuleCount,
+      budgetTotal: Number(budgetAgg._sum.budget_total ?? 0),
+      devise: deviseMajoritaire?.devise ?? 'XOF',
+    };
+  }
+
+  /**
+   * Récupère les valeurs distinctes pour les filtres de la liste (Secteurs, Pays, Bailleurs).
+   * Utilise findMany avec distinct pour éviter l'extraction d'entités complètes.
+   */
+  async getReferenceOptions(organisationId?: string): Promise<{
+    sectors: string[];
+    countries: string[];
+    donors: string[];
+  }> {
+    const baseWhere: Prisma.ProjectWhereInput = {};
+    if (organisationId) {
+      baseWhere.programme = {
+        unite: { departement: { direction: { organisation_id: organisationId } } },
+      };
+    }
+
+    const [secteurRows, paysRows, bailleurRows] = await this.prisma.$transaction([
+      this.prisma.project.findMany({
+        where: { ...baseWhere, secteur: { not: null } },
+        select: { secteur: true },
+        distinct: ['secteur'],
+        orderBy: { secteur: 'asc' },
+      }),
+      this.prisma.project.findMany({
+        where: { ...baseWhere, pays: { not: null } },
+        select: { pays: true },
+        distinct: ['pays'],
+        orderBy: { pays: 'asc' },
+      }),
+      this.prisma.project.findMany({
+        where: { ...baseWhere, bailleur_principal: { not: null } },
+        select: { bailleur_principal: true },
+        distinct: ['bailleur_principal'],
+        orderBy: { bailleur_principal: 'asc' },
+      }),
+    ]);
+
+    return {
+      sectors: secteurRows.map((r) => r.secteur!).filter(Boolean),
+      countries: paysRows.map((r) => r.pays!).filter(Boolean),
+      donors: bailleurRows.map((r) => r.bailleur_principal!).filter(Boolean),
+    };
+  }
+
   private buildWhere(params: FindProjectsParams): Prisma.ProjectWhereInput {
     const where: Prisma.ProjectWhereInput = {};
 

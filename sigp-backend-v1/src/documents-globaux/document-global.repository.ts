@@ -1,49 +1,47 @@
 import { Injectable } from '@nestjs/common';
-import { DocumentProjet, DocumentProjetVersion, DocumentStatus, Prisma, Upload } from '@prisma/client';
+import { DocumentGlobal, DocumentGlobalVersion, DocumentStatus, Prisma, Upload } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-import { DocumentProjetVersionWithUpload } from './dto/document-version-response.dto';
-import { DocumentProjetWithVersions } from './dto/document-response.dto';
+import { DocumentGlobalVersionWithUpload } from './dto/document-global-version-response.dto';
+import { DocumentGlobalWithVersions } from './dto/document-global-response.dto';
 
-export interface CreateDocumentData {
-  projectId: string;
-  livrableId?: string | null;
+export interface CreateDocumentGlobalData {
   titre: string;
   description?: string | null;
+  categorie?: string | null;
   statut?: DocumentStatus;
   createdBy?: string | null;
 }
 
-export interface UpdateDocumentData {
-  livrableId?: string | null;
+export interface UpdateDocumentGlobalData {
   titre?: string;
   description?: string | null;
+  categorie?: string | null;
   statut?: DocumentStatus;
   updatedBy?: string | null;
 }
 
-export interface FindDocumentsParams {
+export interface FindDocumentsGlobalParams {
   skip: number;
   take: number;
   search?: string;
-  projectId?: string;
-  livrableId?: string;
+  categorie?: string;
   statut?: DocumentStatus;
   createdBy?: string;
   mimeType?: string;
   fileType?: string;
   dateFrom?: string;
   dateTo?: string;
-  orderBy: Prisma.DocumentProjetOrderByWithRelationInput;
+  orderBy: Prisma.DocumentGlobalOrderByWithRelationInput;
 }
 
 @Injectable()
-export class DocumentRepository {
+export class DocumentGlobalRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   private async populateUploadsForVersions(
-    documents: (DocumentProjet & { versions?: DocumentProjetVersion[] })[],
+    documents: (DocumentGlobal & { versions?: DocumentGlobalVersion[] })[],
     tx?: Prisma.TransactionClient,
-  ): Promise<DocumentProjetWithVersions[]> {
+  ): Promise<DocumentGlobalWithVersions[]> {
     const client = tx ?? this.prisma;
     const allVersions = documents.flatMap((d) => d.versions ?? []);
 
@@ -76,9 +74,9 @@ export class DocumentRepository {
   }
 
   async findManyPaginated(
-    params: FindDocumentsParams,
+    params: FindDocumentsGlobalParams,
     tx?: Prisma.TransactionClient,
-  ): Promise<{ documents: DocumentProjetWithVersions[]; total: number }> {
+  ): Promise<{ documents: DocumentGlobalWithVersions[]; total: number }> {
     const client = tx ?? this.prisma;
     let docIdsFilter: string[] | undefined;
 
@@ -95,7 +93,7 @@ export class DocumentRepository {
       });
       const uploadIds = matchingUploads.map((u) => u.id);
       if (uploadIds.length > 0) {
-        const matchingVersions = await client.documentProjetVersion.findMany({
+        const matchingVersions = await client.documentGlobalVersion.findMany({
           where: { upload_id: { in: uploadIds } },
           select: { document_id: true },
         });
@@ -108,23 +106,23 @@ export class DocumentRepository {
     const where = this.buildWhere(params, docIdsFilter);
 
     const [rawDocuments, total] = await Promise.all([
-      client.documentProjet.findMany({
+      client.documentGlobal.findMany({
         where,
         skip: params.skip,
         take: params.take,
         orderBy: params.orderBy,
         include: { versions: true },
       }),
-      client.documentProjet.count({ where }),
+      client.documentGlobal.count({ where }),
     ]);
 
     const documents = await this.populateUploadsForVersions(rawDocuments, tx);
     return { documents, total };
   }
 
-  async findById(id: string, tx?: Prisma.TransactionClient): Promise<DocumentProjetWithVersions | null> {
+  async findById(id: string, tx?: Prisma.TransactionClient): Promise<DocumentGlobalWithVersions | null> {
     const client = tx ?? this.prisma;
-    const rawDoc = await client.documentProjet.findFirst({
+    const rawDoc = await client.documentGlobal.findFirst({
       where: { id, deleted_at: null },
       include: { versions: true },
     });
@@ -134,23 +132,13 @@ export class DocumentRepository {
     return populated ?? null;
   }
 
-  async findByProject(projectId: string, tx?: Prisma.TransactionClient): Promise<DocumentProjetWithVersions[]> {
+  async create(data: CreateDocumentGlobalData, tx?: Prisma.TransactionClient): Promise<DocumentGlobalWithVersions> {
     const client = tx ?? this.prisma;
-    const rawDocs = await client.documentProjet.findMany({
-      where: { project_id: projectId, deleted_at: null },
-      include: { versions: true },
-    });
-    return this.populateUploadsForVersions(rawDocs, tx);
-  }
-
-  async create(data: CreateDocumentData, tx?: Prisma.TransactionClient): Promise<DocumentProjetWithVersions> {
-    const client = tx ?? this.prisma;
-    const created = await client.documentProjet.create({
+    const created = await client.documentGlobal.create({
       data: {
-        project_id: data.projectId,
-        livrable_id: data.livrableId ?? null,
         titre: data.titre,
         description: data.description ?? null,
+        categorie: data.categorie ?? null,
         statut: data.statut ?? undefined,
         created_by: data.createdBy ?? null,
       },
@@ -160,14 +148,14 @@ export class DocumentRepository {
     return populated;
   }
 
-  async update(id: string, data: UpdateDocumentData, tx?: Prisma.TransactionClient): Promise<DocumentProjetWithVersions> {
+  async update(id: string, data: UpdateDocumentGlobalData, tx?: Prisma.TransactionClient): Promise<DocumentGlobalWithVersions> {
     const client = tx ?? this.prisma;
-    const updated = await client.documentProjet.update({
+    const updated = await client.documentGlobal.update({
       where: { id },
       data: {
-        livrable_id: data.livrableId,
         titre: data.titre,
         description: data.description,
+        categorie: data.categorie,
         statut: data.statut,
         updated_by: data.updatedBy,
       },
@@ -179,7 +167,7 @@ export class DocumentRepository {
 
   async softDelete(id: string, tx?: Prisma.TransactionClient): Promise<void> {
     const client = tx ?? this.prisma;
-    await client.documentProjet.update({
+    await client.documentGlobal.update({
       where: { id },
       data: { deleted_at: new Date() },
     });
@@ -187,9 +175,9 @@ export class DocumentRepository {
 
   // ── Versions Repository Methods ─────────────────────────────────────────────
 
-  async findVersionsByDocumentId(documentId: string, tx?: Prisma.TransactionClient): Promise<DocumentProjetVersionWithUpload[]> {
+  async findVersionsByDocumentId(documentId: string, tx?: Prisma.TransactionClient): Promise<DocumentGlobalVersionWithUpload[]> {
     const client = tx ?? this.prisma;
-    const versions = await client.documentProjetVersion.findMany({
+    const versions = await client.documentGlobalVersion.findMany({
       where: { document_id: documentId },
       orderBy: { numero_version: 'desc' },
     });
@@ -218,9 +206,9 @@ export class DocumentRepository {
     documentId: string,
     numeroVersion: number,
     tx?: Prisma.TransactionClient,
-  ): Promise<DocumentProjetVersionWithUpload | null> {
+  ): Promise<DocumentGlobalVersionWithUpload | null> {
     const client = tx ?? this.prisma;
-    const version = await client.documentProjetVersion.findUnique({
+    const version = await client.documentGlobalVersion.findUnique({
       where: { document_id_numero_version: { document_id: documentId, numero_version: numeroVersion } },
     });
     if (!version) return null;
@@ -235,7 +223,7 @@ export class DocumentRepository {
 
   async findLatestVersionNumber(documentId: string, tx?: Prisma.TransactionClient): Promise<number> {
     const client = tx ?? this.prisma;
-    const agg = await client.documentProjetVersion.aggregate({
+    const agg = await client.documentGlobalVersion.aggregate({
       where: { document_id: documentId },
       _max: { numero_version: true },
     });
@@ -247,17 +235,19 @@ export class DocumentRepository {
       documentId: string;
       numeroVersion: number;
       uploadId: string;
+      dateVersion?: Date;
       notes?: string | null;
       createdBy?: string | null;
     },
     tx?: Prisma.TransactionClient,
-  ): Promise<DocumentProjetVersionWithUpload> {
+  ): Promise<DocumentGlobalVersionWithUpload> {
     const client = tx ?? this.prisma;
-    const version = await client.documentProjetVersion.create({
+    const version = await client.documentGlobalVersion.create({
       data: {
         document_id: data.documentId,
         numero_version: data.numeroVersion,
         upload_id: data.uploadId,
+        date_version: data.dateVersion ?? new Date(),
         notes: data.notes ?? null,
         created_by: data.createdBy ?? null,
       },
@@ -270,19 +260,16 @@ export class DocumentRepository {
     return { ...version, upload, authorName };
   }
 
-  private buildWhere(params: FindDocumentsParams, docIdsFilter?: string[]): Prisma.DocumentProjetWhereInput {
-    const where: Prisma.DocumentProjetWhereInput = {
+  private buildWhere(params: FindDocumentsGlobalParams, docIdsFilter?: string[]): Prisma.DocumentGlobalWhereInput {
+    const where: Prisma.DocumentGlobalWhereInput = {
       deleted_at: null,
     };
 
     if (docIdsFilter !== undefined) {
       where.id = { in: docIdsFilter };
     }
-    if (params.projectId) {
-      where.project_id = params.projectId;
-    }
-    if (params.livrableId) {
-      where.livrable_id = params.livrableId;
+    if (params.categorie) {
+      where.categorie = params.categorie;
     }
     if (params.statut) {
       where.statut = params.statut;
@@ -308,6 +295,7 @@ export class DocumentRepository {
       where.OR = [
         { titre: { contains: params.search, mode: 'insensitive' } },
         { description: { contains: params.search, mode: 'insensitive' } },
+        { categorie: { contains: params.search, mode: 'insensitive' } },
       ];
     }
 
