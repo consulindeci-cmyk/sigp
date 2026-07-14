@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { MobileNavbar } from './MobileNavbar';
 import { useUIStore } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
 
@@ -12,7 +13,7 @@ export function AppShell() {
   const { sidebarOpen, setSidebarOpen } = useUIStore();
 
   return (
-    <div className="flex h-dvh w-full bg-background overflow-hidden text-foreground relative">
+    <div className="flex h-full w-full bg-background overflow-hidden text-foreground relative">
       {/* Desktop Sidebar (Static, collapsible) */}
       <div
         className={cn(
@@ -30,7 +31,7 @@ export function AppShell() {
           onClick={() => setSidebarOpen(false)}
         >
           <div
-            className="fixed inset-y-0 left-0 z-50 w-64 bg-sidebar shadow-modal animate-in slide-in-from-left duration-300"
+            className="fixed inset-y-0 left-0 z-50 w-72 bg-sidebar shadow-modal animate-in slide-in-from-left duration-300 flex flex-col h-full"
             onClick={(e) => e.stopPropagation()}
           >
             <Sidebar isMobile />
@@ -39,14 +40,15 @@ export function AppShell() {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden relative">
         <Topbar />
         <main
-          className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden bg-muted/10"
+          className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden bg-muted/10 pb-20 md:pb-12 scrollbar-thin"
           id="main-content"
         >
           <Outlet />
         </main>
+        <MobileNavbar />
       </div>
     </div>
   );

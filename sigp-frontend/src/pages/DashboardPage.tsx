@@ -19,11 +19,6 @@ import {
   Banknote, Wallet, FileSignature, ShieldAlert, ArrowRight,
   Flag, Clock, Calendar, TrendingUp,
 } from 'lucide-react';
-import {
-  mockBudgetByBailleur,
-  mockRisksByCategory,
-  mockProjectStatusDistribution,
-} from '@/mocks/dashboardMocks';
 import { useNotifications } from '@/hooks/useNotifications';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle,
@@ -104,25 +99,28 @@ export default function DashboardPage() {
       n >= 1_000_000
         ? `${(n / 1_000_000).toFixed(1).replace('.', ',')} M FCFA`
         : `${n.toLocaleString('fr-FR')} FCFA`;
-    const tauxPct = budgetTotal ? ((montantPaye / budgetTotal) * 100).toFixed(1) : '0';
     return {
       totalProjets:            api?.projets?.total          ?? 0,
       projetsActifs:           api?.projets?.actifs         ?? 0,
       projetsTermines:         api?.projets?.termines       ?? 0,
       projetsEnRetard:         api?.projets?.suspendus      ?? 0,
+      pctActifs:               api?.projets?.pctActifs      ?? 0,
+      pctTermines:             api?.projets?.pctTermines    ?? 0,
       budgetGlobal:            formatM(budgetTotal),
       budgetDecaisse:          formatM(montantPaye),
-      tauxDecaissement:        `${tauxPct}%`,
+      tauxDecaissement:        api?.finances?.tauxDecaissement ?? '0%',
       contratsActifs:          api?.passation?.marchesTotal   ?? 0,
       contratsEnApprobation:   api?.passation?.marchesEnCours ?? 0,
       risquesCritiques:        api?.risques?.critiques        ?? 0,
       risquesCritiquesProgram: api?.risques?.total            ?? 0,
-      nombreBailleurs:         0,
+      nombreBailleurs:         api?.finances?.nombreBailleurs ?? 0,
       // Finance detail for budget consumption widget
       _budgetTotal:    budgetTotal,
       _montantEngage:  montantEngage,
       _montantPaye:    montantPaye,
       _montantRestant: montantRestant,
+      _percentEngaged: api?.finances?.percentEngaged ?? 0,
+      _percentDisbursed: api?.finances?.percentDisbursed ?? 0,
     };
   }, [dashboard]);
 
@@ -134,8 +132,8 @@ export default function DashboardPage() {
       engaged:          Math.round(portfolioKPIs._montantEngage / 1_000_000 * 10) / 10,
       disbursed:        Math.round(portfolioKPIs._montantPaye / 1_000_000 * 10) / 10,
       remaining:        Math.round(portfolioKPIs._montantRestant / 1_000_000 * 10) / 10,
-      percentEngaged:   t ? Math.round(portfolioKPIs._montantEngage / t * 100) : 0,
-      percentDisbursed: t ? Math.round(portfolioKPIs._montantPaye / t * 100)   : 0,
+      percentEngaged:   portfolioKPIs._percentEngaged,
+      percentDisbursed: portfolioKPIs._percentDisbursed,
     };
   }, [portfolioKPIs]);
 
@@ -160,8 +158,9 @@ export default function DashboardPage() {
   const dashApi = dashboard as any;
   const evmData = (dashApi?.evmData ?? []) as { date: string; pv: number; ev: number; ac: number }[];
   const decaissementsMensuels = (dashApi?.decaissementsMensuels ?? []) as { label: string; value: number }[];
-  const budgetDistribution     = (dashApi?.budgetDistribution     ?? []) as { label: string; value: number }[];
-  const financementDistribution= (dashApi?.financementDistribution?? []) as { label: string; value: number }[];
+  const budgetDistribution     = (dashApi?.budgetDistribution     ?? []) as { label: string; value: number; percent?: number; color?: string }[];
+  const financementDistribution= (dashApi?.financementDistribution?? []) as { label: string; value: number; percent?: number; color?: string }[];
+  const risquesParCategorie    = (dashApi?.risquesParCategorie    ?? []) as { label: string; value: number; percent?: number; color?: string }[];
   const activitesCritiques     = (dashApi?.activitesCritiques     ?? []) as { id: string; code: string; name: string; status: 'blocked'|'delayed'; delayDays: number }[];
   const risquesPrincipaux      = (dashApi?.risquesPrincipaux      ?? []) as { id: string; description: string; probability: number; level: 'high'|'medium'|'low' }[];
   const jalons                 = (dashApi?.jalons                 ?? []) as { id: string; title: string; date: string; status: 'achieved'|'delayed'|'pending' }[];
@@ -173,11 +172,17 @@ export default function DashboardPage() {
   // Derived project status distribution
   const projectStatusDistribution = useMemo(() => {
     const api = dashboard as any;
-    if (!api?.projets) return mockProjectStatusDistribution;
+    if (!api?.projets) {
+      return [
+        { name: 'Actifs',    value: 0, color: STATUS_COLORS[0] },
+        { name: 'Terminés',  value: 0, color: STATUS_COLORS[1] },
+        { name: 'Suspendus', value: 0, color: STATUS_COLORS[2] },
+      ];
+    }
     return [
-      { name: 'Actifs',    value: api.projets.actifs,    color: mockProjectStatusDistribution[0]?.color },
-      { name: 'Terminés',  value: api.projets.termines,  color: mockProjectStatusDistribution[1]?.color },
-      { name: 'Suspendus', value: api.projets.suspendus, color: mockProjectStatusDistribution[2]?.color },
+      { name: 'Actifs',    value: api.projets.actifs,    color: STATUS_COLORS[0] },
+      { name: 'Terminés',  value: api.projets.termines,  color: STATUS_COLORS[1] },
+      { name: 'Suspendus', value: api.projets.suspendus, color: STATUS_COLORS[2] },
     ];
   }, [dashboard]);
 
@@ -214,11 +219,11 @@ export default function DashboardPage() {
       [],
       ['RÉPARTITION PAR BAILLEUR', ''],
       ['Bailleur', 'Budget', 'Part (%)'],
-      ...mockBudgetByBailleur.map(b => [b.label, b.value, String(b.percent)]),
+      ...financementDistribution.map(b => [b.label, String(b.value), String(b.percent ?? 0)]),
       [],
       ['RISQUES PAR CATÉGORIE', ''],
       ['Catégorie', 'Nombre', 'Part (%)'],
-      ...mockRisksByCategory.map(r => [r.label, String(r.value), String(r.percent)]),
+      ...risquesParCategorie.map(r => [r.label, String(r.value), String(r.percent ?? 0)]),
     ];
     const csv = '﻿' + lines.map(row =>
       row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')
@@ -1053,19 +1058,29 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="space-y-4">
-              {mockBudgetByBailleur.map((item, idx) => (
-                <div key={idx}>
-                  <div className="flex justify-between text-sm font-medium mb-1.5">
-                    <span className="text-foreground">{item.label}</span>
-                    <span className="text-foreground font-mono tabular-nums">{item.value}</span>
+              {financementDistribution.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Aucune source de financement enregistrée</p>
+              ) : (
+                financementDistribution.map((item, idx) => (
+                  <div key={idx}>
+                    <div className="flex justify-between text-sm font-medium mb-1.5">
+                      <span className="text-foreground">{item.label}</span>
+                      <span className="text-foreground font-mono tabular-nums">
+                        {typeof item.value === 'number'
+                          ? item.value >= 1_000_000
+                            ? `${(item.value / 1_000_000).toFixed(1).replace('.', ',')} M FCFA`
+                            : `${item.value.toLocaleString('fr-FR')} FCFA`
+                          : item.value}
+                      </span>
+                    </div>
+                    <ProgressBar
+                      value={item.percent ?? 0}
+                      color={(item.color ?? 'primary') as any}
+                      aria-label={`${item.label} : ${item.percent ?? 0}% du portefeuille`}
+                    />
                   </div>
-                  <ProgressBar
-                    value={item.percent}
-                    color={item.color}
-                    aria-label={`${item.label} : ${item.percent}% du portefeuille`}
-                  />
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
 
@@ -1078,19 +1093,23 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="space-y-4">
-              {mockRisksByCategory.map((item, idx) => (
-                <div key={idx}>
-                  <div className="flex justify-between text-sm font-medium mb-1.5">
-                    <span className="text-foreground">{item.label}</span>
-                    <span className="text-foreground tabular-nums">{item.value}</span>
+              {risquesParCategorie.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Aucun risque répertorié</p>
+              ) : (
+                risquesParCategorie.map((item, idx) => (
+                  <div key={idx}>
+                    <div className="flex justify-between text-sm font-medium mb-1.5">
+                      <span className="text-foreground">{item.label}</span>
+                      <span className="text-foreground tabular-nums">{item.value}</span>
+                    </div>
+                    <ProgressBar
+                      value={item.percent ?? 0}
+                      color={(item.color ?? 'destructive') as any}
+                      aria-label={`${item.label} : ${item.value} risques (${item.percent ?? 0}%)`}
+                    />
                   </div>
-                  <ProgressBar
-                    value={item.percent}
-                    color={item.color}
-                    aria-label={`${item.label} : ${item.value} risques`}
-                  />
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1547,20 +1566,24 @@ export default function DashboardPage() {
               Par catégorie
             </h3>
             <ul className="space-y-3">
-              {mockRisksByCategory.map((cat, i) => (
-                <li key={i}>
-                  <div className="flex items-center justify-between gap-3 mb-1.5">
-                    <span className="text-sm text-foreground flex-1 min-w-0 truncate">{cat.label}</span>
-                    <span className="text-sm font-bold font-mono tabular-nums text-foreground shrink-0">{cat.value}</span>
-                  </div>
-                  <ProgressBar
-                    value={cat.percent}
-                    color={cat.color}
-                    size="sm"
-                    aria-label={`${cat.label} : ${cat.value} risques`}
-                  />
-                </li>
-              ))}
+              {risquesParCategorie.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Aucun risque répertorié</p>
+              ) : (
+                risquesParCategorie.map((cat, i) => (
+                  <li key={i}>
+                    <div className="flex items-center justify-between gap-3 mb-1.5">
+                      <span className="text-sm text-foreground flex-1 min-w-0 truncate">{cat.label}</span>
+                      <span className="text-sm font-bold font-mono tabular-nums text-foreground shrink-0">{cat.value}</span>
+                    </div>
+                    <ProgressBar
+                      value={cat.percent ?? 0}
+                      color={(cat.color ?? 'destructive') as any}
+                      size="sm"
+                      aria-label={`${cat.label} : ${cat.value} risques (${cat.percent ?? 0}%)`}
+                    />
+                  </li>
+                ))
+              )}
             </ul>
           </div>
         </SlideOverBody>

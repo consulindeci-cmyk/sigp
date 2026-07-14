@@ -144,9 +144,9 @@ export function useRisks(projectId: string) {
   return useQuery({
     queryKey: ['risks', projectId],
     queryFn: async () => {
-      const { data } = await api.get('/risques', { params: { projectId, limit: 1000 } })
+      const { data } = await api.get('/risques', { params: { projectId, limit: 100 } })
       const risques = extractDtos(data).map(adaptRisque)
-      return { data: risques, meta: { total: risques.length, page: 1, limit: 1000, totalPages: 1 } }
+      return { data: risques, meta: { total: risques.length, page: 1, limit: 100, totalPages: 1 } }
     },
     enabled: !!projectId,
   })

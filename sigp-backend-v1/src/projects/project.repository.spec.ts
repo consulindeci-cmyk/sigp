@@ -7,10 +7,18 @@ interface PrismaMock {
     findMany: jest.Mock;
     count: jest.Mock;
     findFirst: jest.Mock;
+    findUnique: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
     delete: jest.Mock;
   };
+  ptbaActivite: { groupBy: jest.Mock; aggregate: jest.Mock };
+  livrable: { groupBy: jest.Mock };
+  wbsNode: { groupBy: jest.Mock };
+  budgetVersion: { findMany: jest.Mock };
+  budgetLigne: { groupBy: jest.Mock; aggregate: jest.Mock };
+  contract: { groupBy: jest.Mock };
+  risque: { groupBy: jest.Mock };
   $transaction: jest.Mock;
 }
 
@@ -20,10 +28,18 @@ function buildPrismaMock(): PrismaMock {
       findMany: jest.fn(),
       count: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
+    ptbaActivite: { groupBy: jest.fn(), aggregate: jest.fn() },
+    livrable: { groupBy: jest.fn() },
+    wbsNode: { groupBy: jest.fn() },
+    budgetVersion: { findMany: jest.fn() },
+    budgetLigne: { groupBy: jest.fn(), aggregate: jest.fn() },
+    contract: { groupBy: jest.fn() },
+    risque: { groupBy: jest.fn() },
     $transaction: jest.fn(),
   };
 }
@@ -99,16 +115,19 @@ describe('ProjectRepository', () => {
   });
 
   describe('lookups', () => {
-    it('findById queries by id via findFirst', async () => {
-      prisma.project.findFirst.mockResolvedValue({ id: 'p1' });
+    it('findById queries by id via findUnique', async () => {
+      prisma.project.findUnique.mockResolvedValue({ id: 'p1' });
       await repo.findById('p1');
-      expect(prisma.project.findFirst).toHaveBeenCalledWith({ where: { id: 'p1' } });
+      expect(prisma.project.findUnique).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        include: { manager: { select: { id: true, nom: true, prenom: true } } },
+      });
     });
 
-    it('findByCode queries by code (global uniqueness)', async () => {
-      prisma.project.findFirst.mockResolvedValue(null);
+    it('findByCode queries by code via findUnique (global uniqueness)', async () => {
+      prisma.project.findUnique.mockResolvedValue(null);
       await repo.findByCode('PRJ-01');
-      expect(prisma.project.findFirst).toHaveBeenCalledWith({ where: { code: 'PRJ-01' } });
+      expect(prisma.project.findUnique).toHaveBeenCalledWith({ where: { code: 'PRJ-01' } });
     });
   });
 
@@ -163,6 +182,35 @@ describe('ProjectRepository', () => {
       prisma.project.delete.mockResolvedValue({ id: 'p1' });
       await repo.softDelete('p1');
       expect(prisma.project.delete).toHaveBeenCalledWith({ where: { id: 'p1' } });
+    });
+  });
+
+  describe('getBatchAggregations()', () => {
+    it('returns empty map when project list is empty', async () => {
+      const result = await repo.getBatchAggregations([]);
+      expect(result.size).toBe(0);
+    });
+
+    it('batch computes progressScore, tauxDecaissement, composantes, activites, and livrables cleanly', async () => {
+      prisma.ptbaActivite.groupBy.mockResolvedValue([
+        { project_id: 'p1', _count: { _all: 5 }, _avg: { taux_realisation: 60 } },
+      ]);
+      prisma.livrable.groupBy.mockResolvedValue([{ project_id: 'p1', _count: { _all: 3 } }]);
+      prisma.wbsNode.groupBy.mockResolvedValue([{ project_id: 'p1', _count: { _all: 2 } }]);
+      prisma.budgetVersion.findMany.mockResolvedValue([{ id: 'bv1', project_id: 'p1' }]);
+      prisma.budgetLigne.groupBy.mockResolvedValue([
+        { version_id: 'bv1', _sum: { montant_prevu: 1000, montant_paye: 300 } },
+      ]);
+
+      const result = await repo.getBatchAggregations([{ id: 'p1', budget_total: 1000 }]);
+      expect(result.size).toBe(1);
+      expect(result.get('p1')).toEqual({
+        progressScore: 60,
+        tauxDecaissement: 30,
+        composantes: 2,
+        activites: 5,
+        livrables: 3,
+      });
     });
   });
 });

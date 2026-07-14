@@ -12,4 +12,10 @@ export class DashboardProjectDto {
 
   @ApiProperty({ description: 'Projets suspendus', example: 2 })
   suspendus: number;
+
+  @ApiProperty({ description: 'Pourcentage de projets actifs', example: 53 })
+  pctActifs: number;
+
+  @ApiProperty({ description: 'Pourcentage de projets terminés', example: 33 })
+  pctTermines: number;
 }

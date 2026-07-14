@@ -72,6 +72,12 @@ export class DashboardResponseDto {
   risquesPrincipaux: DashboardMainRiskDto[];
 
   @ApiProperty({
+    type: [DashboardDistributionItemDto],
+    description: 'Répartition des risques par catégorie (nature)',
+  })
+  risquesParCategorie: DashboardDistributionItemDto[];
+
+  @ApiProperty({
     type: [DashboardMilestoneDto],
     description: 'Prochains jalons (activités PTBA à venir, max 5)',
   })

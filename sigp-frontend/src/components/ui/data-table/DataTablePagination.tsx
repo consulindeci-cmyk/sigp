@@ -16,7 +16,7 @@ export function DataTablePagination<TData>({
         {table.getFilteredSelectedRowModel().rows.length > 0 && (
           <span>
             {table.getFilteredSelectedRowModel().rows.length} ligne(s) sélectionnée(s) sur{' '}
-            {table.getFilteredRowModel().rows.length}.
+            {table.options.rowCount ?? table.getFilteredRowModel().rows.length}.
           </span>
         )}
       </div>

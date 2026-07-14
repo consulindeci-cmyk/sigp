@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ColumnDef } from '@tanstack/react-table';
+import { ColumnDef, PaginationState, SortingState, ColumnFiltersState } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDashboard } from '@/hooks/useDashboard';
 import {
@@ -116,11 +116,63 @@ export default function ProjectsPage() {
   });
   const defaultProgrammeId: string | undefined = programmesData?.[0]?.id;
 
-  const { data: apiData } = useProjects();
+  // ── Controlled Table States (Server-Side Pagination, Sorting, Search, Filtering) ──
+  const [paginationState, setPaginationState] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 20,
+  });
+  const [sortingState, setSortingState] = useState<SortingState>([]);
+  const [columnFiltersState, setColumnFiltersState] = useState<ColumnFiltersState>([]);
+
+  const handleSortingChange = (updater: any) => {
+    setSortingState(updater);
+    setPaginationState((prev) => ({ ...prev, pageIndex: 0 }));
+  };
+
+  const handleColumnFiltersChange = (updater: any) => {
+    setColumnFiltersState(updater);
+    setPaginationState((prev) => ({ ...prev, pageIndex: 0 }));
+  };
+
+  const queryParams = useMemo(() => {
+    const searchFilter = columnFiltersState.find((f) => f.id === 'search');
+    const statusFilter = columnFiltersState.find((f) => f.id === 'status');
+    const donorFilter = columnFiltersState.find((f) => f.id === 'donor');
+    const sectorFilter = columnFiltersState.find((f) => f.id === 'sector');
+    const countryFilter = columnFiltersState.find((f) => f.id === 'country');
+
+    const filters: Record<string, any> = {};
+    if (statusFilter?.value) filters.status = statusFilter.value;
+    if (donorFilter?.value) filters.donor = donorFilter.value;
+    if (sectorFilter?.value) filters.sector = sectorFilter.value;
+    if (countryFilter?.value) filters.country = countryFilter.value;
+
+    const firstSort = sortingState[0];
+
+    return {
+      page: paginationState.pageIndex + 1,
+      limit: paginationState.pageSize,
+      search: searchFilter?.value ? String(searchFilter.value) : undefined,
+      sortBy: firstSort?.id,
+      sortOrder: firstSort ? (firstSort.desc ? ('desc' as const) : ('asc' as const)) : undefined,
+      filters: Object.keys(filters).length > 0 ? filters : undefined,
+    };
+  }, [paginationState, sortingState, columnFiltersState]);
+
+  const {
+    data: apiData,
+    isLoading: isProjectsLoading,
+    isError: isProjectsError,
+    error: projectsError,
+  } = useProjects(queryParams);
+
   const projects = useMemo<ProjectRow[]>(
     () => (apiData?.data ?? []).map(adaptToRow),
     [apiData],
   );
+
+  const pageCount = apiData?.meta?.totalPages ?? 1;
+  const rowCount = apiData?.meta?.total ?? projects.length;
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const createProject = useMutation({
@@ -520,7 +572,7 @@ export default function ProjectsPage() {
     <ContentLayout>
       <PageHeader
         title="Projets"
-        subtitle={`${projects.length} projet${projects.length !== 1 ? 's' : ''} — ${kpis.enBonneVoie} en bonne voie · ${kpis.aRisque} à risque · ${kpis.enRetard} en retard`}
+        subtitle={`${apiData?.meta?.total ?? projects.length} projet${(apiData?.meta?.total ?? projects.length) !== 1 ? 's' : ''} — ${kpis.enBonneVoie} en bonne voie · ${kpis.aRisque} à risque · ${kpis.enRetard} en retard`}
         actions={headerActions}
         className="mb-2"
       />
@@ -538,10 +590,24 @@ export default function ProjectsPage() {
         <DataTable
           columns={columns}
           data={projects}
+          isLoading={isProjectsLoading}
+          isError={isProjectsError}
+          errorMessage={(projectsError as any)?.message ?? 'Erreur lors du chargement des projets'}
           searchKey="search"
-          searchPlaceholder="Rechercher un projet, bailleur, pays..."
+          searchPlaceholder="Rechercher un projet, code, description..."
           filters={projectFilters}
           enableRowSelection
+          manualPagination
+          pageCount={pageCount}
+          rowCount={rowCount}
+          pagination={paginationState}
+          onPaginationChange={setPaginationState}
+          manualSorting
+          sorting={sortingState}
+          onSortingChange={handleSortingChange}
+          manualFiltering
+          columnFilters={columnFiltersState}
+          onColumnFiltersChange={handleColumnFiltersChange}
         />
       )}
 

@@ -28,6 +28,12 @@ export class DashboardDistributionItemDto {
 
   @ApiProperty({ example: 12300000 })
   value: number;
+
+  @ApiProperty({ example: 35, description: 'Part en pourcentage du total' })
+  percent: number;
+
+  @ApiProperty({ example: 'primary', required: false })
+  color?: string;
 }
 
 export class DashboardCriticalActivityDto {

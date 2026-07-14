@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import ProjectHeader from '../components/project/layout/ProjectHeader';
@@ -31,7 +31,6 @@ import TabSettings from '../components/project/TabSettings';
 import { type Project } from '@/mocks/projectsMocks';
 import { useProject, useProjectSummary } from '@/hooks/useProjects';
 import { adaptProjectDto } from '@/lib/projectAdapter';
-import ProjectNavigation from '../components/project/layout/ProjectNavigation';
 
 const PAD = 'px-4 sm:px-6 lg:px-8 py-6';
 const INNER = 'mx-auto w-full max-w-layout';
@@ -45,24 +44,33 @@ export default function ProjectDetail() {
   const { data: apiProject, isLoading } = useProject(id ?? '');
   const { data: summary } = useProjectSummary(id ?? '');
 
-  const project: Project | undefined = apiProject
-    ? {
-        ...adaptProjectDto(apiProject),
-        progressScore: summary?.progressScore ?? 0,
-        tauxDecaissement: summary?.tauxDecaissement ?? 0,
-        profileScore: summary?.profileScore ?? 0,
-      }
-    : undefined;
+  const project: Project | undefined = useMemo(() => {
+    if (!apiProject) return undefined;
+    return {
+      ...adaptProjectDto(apiProject),
+      progressScore: summary?.progressScore ?? 0,
+      tauxDecaissement: summary?.tauxDecaissement ?? 0,
+      profileScore: summary?.profileScore ?? 0,
+    };
+  }, [apiProject, summary]);
 
+  // Set default tab on load and reset when navigating to a different project
   useEffect(() => {
-    if (!project) return;
-    setActiveProject(id ?? null, project.name);
-    if (prevIdRef.current !== undefined && prevIdRef.current !== id) {
+    if (id !== prevIdRef.current) {
       setActiveProjectTab('overview');
+      prevIdRef.current = id;
     }
-    prevIdRef.current = id;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, project?.name]);
+  }, [id, setActiveProjectTab]);
+
+  // Synchronize the current project into the global UI store for breadcrumbs & sidebar
+  useEffect(() => {
+    if (project) {
+      setActiveProject(project.id, project.name);
+    } else {
+      setActiveProject(null, null);
+    }
+    return () => setActiveProject(null, null);
+  }, [project?.id, project?.name, setActiveProject]);
 
   if (isLoading || !project) {
     return <Loader fullWidth text="Chargement du projet..." />;
@@ -75,17 +83,6 @@ export default function ProjectDetail() {
       <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-4 sm:pb-6 bg-background border-b border-border">
         <div className={INNER}>
           <ProjectHeader project={project} onProjectUpdate={() => {}} />
-        </div>
-      </div>
-
-      {/* ── NAVIGATION ──────────────────────────────────────────────────── */}
-      <div className="px-4 sm:px-6 lg:px-8 py-2 bg-background border-b border-border">
-        <div className={INNER}>
-          <ProjectNavigation
-            activeTab={activeProjectTab}
-            setActiveTab={setActiveProjectTab}
-            summary={summary}
-          />
         </div>
       </div>
 

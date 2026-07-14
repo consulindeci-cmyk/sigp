@@ -20,9 +20,16 @@ export const useUIStore = create<UIState>()(
       activeProjectName: null,
       activeProjectTab: 'overview',
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-      setSidebarOpen: (open) => set({ sidebarOpen: open }),
-      setActiveProject: (id, name = null) => set({ activeProjectId: id, activeProjectName: name }),
-      setActiveProjectTab: (tab) => set({ activeProjectTab: tab }),
+      setSidebarOpen: (open) =>
+        set((state) => (state.sidebarOpen === open ? state : { sidebarOpen: open })),
+      setActiveProject: (id, name = null) =>
+        set((state) =>
+          state.activeProjectId === id && state.activeProjectName === name
+            ? state
+            : { activeProjectId: id, activeProjectName: name }
+        ),
+      setActiveProjectTab: (tab) =>
+        set((state) => (state.activeProjectTab === tab ? state : { activeProjectTab: tab })),
     }),
     {
       name: 'sigp-ui-store',

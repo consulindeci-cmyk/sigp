@@ -1,5 +1,6 @@
-﻿import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { Project, ProjectStatus } from '@prisma/client';
+import type { ProjectAggregationsSummary } from '../project.repository';
 
 type ProjectEntity = Project & {
   manager?: { id: string; nom: string; prenom: string } | null;
@@ -64,14 +65,54 @@ export class ProjectResponseDto {
   @ApiProperty({ example: 'Banque Mondiale', nullable: true })
   bailleurPrincipal: string | null;
 
+  @ApiProperty({ description: 'Score de progression (%)', example: 45 })
+  progressScore: number;
+
+  @ApiProperty({ description: 'Score de profil qualité (%)', example: 80 })
+  profileScore: number;
+
+  @ApiProperty({ description: 'Taux de décaissement (%)', example: 30 })
+  tauxDecaissement: number;
+
+  @ApiProperty({ description: 'Nombre de composantes WBS (niveau 1)', example: 3 })
+  composantes: number;
+
+  @ApiProperty({ description: "Nombre d'activités PTBA", example: 12 })
+  activites: number;
+
+  @ApiProperty({ description: 'Nombre de livrables', example: 8 })
+  livrables: number;
+
   @ApiProperty()
   createdAt: Date;
 
   @ApiProperty()
   updatedAt: Date;
 
+  /** Calcule le score de complétude du profil qualité à partir des 10 champs clés. */
+  static calculateProfileScore(project: ProjectEntity): number {
+    const fields = [
+      project.nom,
+      project.description,
+      project.budget_total,
+      project.manager_id,
+      project.programme_id,
+      project.secteur,
+      project.pays,
+      project.devise,
+      project.date_debut,
+      project.bailleur_principal,
+    ];
+    const filledFields = fields.filter((f) => f !== null && f !== undefined && f !== '');
+    return Math.round((filledFields.length / fields.length) * 100);
+  }
+
   /** Mappe une entité Prisma vers la vue publique en excluant tout champ interne. */
-  static fromEntity(project: ProjectEntity): ProjectResponseDto {
+  static fromEntity(
+    project: ProjectEntity,
+    agg?: Partial<ProjectAggregationsSummary>,
+  ): ProjectResponseDto {
+    const profileScore = ProjectResponseDto.calculateProfileScore(project);
     return {
       id: project.id,
       programmeId: project.programme_id,
@@ -91,6 +132,12 @@ export class ProjectResponseDto {
       pays: project.pays,
       secteur: project.secteur,
       bailleurPrincipal: project.bailleur_principal,
+      progressScore: agg?.progressScore ?? (project as any).progressScore ?? 0,
+      profileScore: agg?.profileScore ?? (project as any).profileScore ?? profileScore,
+      tauxDecaissement: agg?.tauxDecaissement ?? (project as any).tauxDecaissement ?? 0,
+      composantes: agg?.composantes ?? (project as any).composantes ?? 0,
+      activites: agg?.activites ?? (project as any).activites ?? 0,
+      livrables: agg?.livrables ?? (project as any).livrables ?? 0,
       createdAt: project.created_at,
       updatedAt: project.updated_at,
     };

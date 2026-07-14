@@ -1,11 +1,12 @@
 import { AuditAction, Prisma, ProjectStatus } from '@prisma/client';
-import { NotFoundException } from '@/common/exceptions/business.exception';
+import { ForbiddenException, NotFoundException } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/shared/constants/error-codes.enum';
 import { AppEvent } from '@/shared/constants/app-events.enum';
 import { AuditService } from '@/audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ProgrammeService } from '@/programmes/programme.service';
 import { UsersService } from '@/users/users.service';
+import { PrismaService } from '@/prisma/prisma.service';
 import { ProjectRepository, ProjectWithManager } from './project.repository';
 import { ProjectService } from './project.service';
 import { ProjectQueryDto } from './dto/project-query.dto';
@@ -56,6 +57,7 @@ function buildMocks() {
     create: jest.fn(),
     update: jest.fn(),
     softDelete: jest.fn().mockResolvedValue(undefined),
+    getBatchAggregations: jest.fn().mockResolvedValue(new Map()),
   } as unknown as jest.Mocked<ProjectRepository>;
 
   const programmeService = {
@@ -72,8 +74,28 @@ function buildMocks() {
 
   const eventEmitter = { emit: jest.fn() } as unknown as jest.Mocked<EventEmitter2>;
 
-  const risqueRepository = {} as unknown;
-  const ptbaRepository = {} as unknown;
+  const risqueRepository = {} as any;
+  const ptbaRepository = {} as any;
+
+  const prisma = {
+    programme: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: PRG_ID,
+        unite: {
+          departement: {
+            direction: {
+              organisation_id: 'org-1',
+            },
+          },
+        },
+      }),
+    },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({
+        organisation_id: 'org-1',
+      }),
+    },
+  } as any;
 
   const service = new ProjectService(
     projectRepository,
@@ -83,7 +105,7 @@ function buildMocks() {
     eventEmitter,
     risqueRepository,
     ptbaRepository,
-    { user: { findUnique: jest.fn() } } as unknown,
+    prisma,
   );
 
   return {
@@ -95,6 +117,7 @@ function buildMocks() {
     eventEmitter,
     risqueRepository,
     ptbaRepository,
+    prisma,
   };
 }
 
@@ -167,6 +190,34 @@ describe('ProjectService.findAll()', () => {
       expect.objectContaining({ orderBy: { statut: 'asc' } }),
     );
   });
+
+  it('populates progressScore, tauxDecaissement, composantes, activites, and livrables from batch aggregations', async () => {
+    const proj = buildProject();
+    mocks.projectRepository.findManyPaginated.mockResolvedValue({ projects: [proj], total: 1 });
+    mocks.projectRepository.getBatchAggregations.mockResolvedValue(
+      new Map([
+        [
+          proj.id,
+          {
+            progressScore: 75,
+            tauxDecaissement: 40,
+            composantes: 4,
+            activites: 10,
+            livrables: 6,
+          },
+        ],
+      ]),
+    );
+
+    const result = await mocks.service.findAll(new ProjectQueryDto());
+    expect(result.data[0]).toMatchObject({
+      progressScore: 75,
+      tauxDecaissement: 40,
+      composantes: 4,
+      activites: 10,
+      livrables: 6,
+    });
+  });
 });
 
 // ─── findOne ────────────────────────────────────────────────────────────────
@@ -178,13 +229,35 @@ describe('ProjectService.findOne()', () => {
     mocks = buildMocks();
   });
 
-  it('returns a ProjectResponseDto for an existing project', async () => {
-    mocks.projectRepository.findById.mockResolvedValue(buildProject());
+  it('returns a ProjectResponseDto for an existing project with batch aggregations', async () => {
+    const proj = buildProject();
+    mocks.projectRepository.findById.mockResolvedValue(proj);
+    mocks.projectRepository.getBatchAggregations.mockResolvedValue(
+      new Map([
+        [
+          proj.id,
+          {
+            progressScore: 50,
+            tauxDecaissement: 20,
+            composantes: 1,
+            activites: 3,
+            livrables: 2,
+          },
+        ],
+      ]),
+    );
 
     const result = await mocks.service.findOne('proj-001');
 
     expect(result.id).toBe('proj-001');
     expect(result.programmeId).toBe(PRG_ID);
+    expect(result).toMatchObject({
+      progressScore: 50,
+      tauxDecaissement: 20,
+      composantes: 1,
+      activites: 3,
+      livrables: 2,
+    });
   });
 
   it('throws PROJECT_NOT_FOUND when the project does not exist', async () => {
@@ -211,18 +284,28 @@ describe('ProjectService.create()', () => {
   it('verifies the parent programme exists before creating', async () => {
     await mocks.service.create(dto);
 
-    expect(mocks.programmeService.findOne).toHaveBeenCalledWith(PRG_ID);
+    expect(mocks.prisma.programme.findUnique).toHaveBeenCalledWith({
+      where: { id: PRG_ID },
+      include: expect.any(Object),
+    });
     expect(mocks.projectRepository.create).toHaveBeenCalled();
   });
 
   it('propagates PROGRAMME_NOT_FOUND (404) when the programme does not exist', async () => {
-    mocks.programmeService.findOne.mockRejectedValue(
-      new NotFoundException(ErrorCode.PROGRAMME_NOT_FOUND, 'Programme introuvable'),
-    );
+    mocks.prisma.programme.findUnique.mockResolvedValueOnce(null);
 
     await expect(mocks.service.create(dto)).rejects.toMatchObject({
       errorCode: ErrorCode.PROGRAMME_NOT_FOUND,
     });
+    expect(mocks.projectRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenException when user organisation does not match programme organisation on create', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValueOnce({ organisation_id: 'org-2' });
+
+    await expect(
+      mocks.service.create(dto, { userId: 'usr-1', userRole: 'COORDINATEUR' as any }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(mocks.projectRepository.create).not.toHaveBeenCalled();
   });
 
@@ -321,14 +404,26 @@ describe('ProjectService.update()', () => {
   it('re-verifies the new programme when programmeId changes', async () => {
     await mocks.service.update('proj-001', { programmeId: 'prg-999' });
 
-    expect(mocks.programmeService.findOne).toHaveBeenCalledWith('prg-999');
+    expect(mocks.prisma.programme.findUnique).toHaveBeenCalledWith({
+      where: { id: 'prg-999' },
+      include: expect.any(Object),
+    });
     expect(mocks.projectRepository.update).toHaveBeenCalled();
   });
 
   it('does not re-verify the programme when programmeId is unchanged', async () => {
     await mocks.service.update('proj-001', { programmeId: PRG_ID });
 
-    expect(mocks.programmeService.findOne).not.toHaveBeenCalled();
+    expect(mocks.prisma.programme.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenException when user organisation does not match target programme organisation on update', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValueOnce({ organisation_id: 'org-2' });
+
+    await expect(
+      mocks.service.update('proj-001', { programmeId: 'prg-999' }, { userId: 'usr-1', userRole: 'COORDINATEUR' as any }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(mocks.projectRepository.update).not.toHaveBeenCalled();
   });
 
   it('writes an UPDATE audit log with avant/apres and emits PROJECT_UPDATED', async () => {

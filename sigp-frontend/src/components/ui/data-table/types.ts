@@ -43,13 +43,16 @@ export interface DataTableProps<TData, TValue> {
   manualPagination?: boolean;
   pageCount?: number;
   rowCount?: number;
-  onPaginationChange?: (pagination: PaginationState) => void;
+  pagination?: PaginationState;
+  onPaginationChange?: (pagination: PaginationState | ((old: PaginationState) => PaginationState)) => void;
   
   manualSorting?: boolean;
-  onSortingChange?: (sorting: SortingState) => void;
+  sorting?: SortingState;
+  onSortingChange?: (sorting: SortingState | ((old: SortingState) => SortingState)) => void;
   
   manualFiltering?: boolean;
-  onColumnFiltersChange?: (filters: ColumnFiltersState) => void;
+  columnFilters?: ColumnFiltersState;
+  onColumnFiltersChange?: (filters: ColumnFiltersState | ((old: ColumnFiltersState) => ColumnFiltersState)) => void;
   
   // Callbacks
   onRowClick?: (row: TData) => void;

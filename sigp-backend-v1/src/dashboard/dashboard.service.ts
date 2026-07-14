@@ -198,6 +198,7 @@ export class DashboardService {
       rawTimelineContracts,
       rawEvmSnapshots,
       projectAgg,
+      rawRisquesCategories,
     ] = await Promise.all([
       // ── KPI counts ────────────────────────────────────────────────────────
       this.projectService.findAll({ ...page1 } as ProjectQueryDto),
@@ -360,6 +361,18 @@ export class DashboardService {
         where: { deleted_at: null, ...orgFilter },
         _sum: { budget_total: true },
       }),
+
+      // Répartition des risques par catégorie
+      this.prisma.risque.groupBy({
+        by: ['categorie'],
+        where: {
+          deleted_at: null,
+          ...orgFilterProject,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
     ]);
 
     // ── Aggregate existing KPI fields ──────────────────────────────────────
@@ -390,21 +403,54 @@ export class DashboardService {
     }
 
     // ── Build: Budget distribution ─────────────────────────────────────────
+    const BUDGET_COLORS = ['primary', 'success', 'warning', 'destructive', 'muted-foreground'];
     const budgetCatMap = new Map<string, number>();
     for (const l of rawBudgetLignes) {
       const cat = l.categorie ?? 'Autre';
       budgetCatMap.set(cat, (budgetCatMap.get(cat) ?? 0) + Number(l.montant_prevu));
     }
+    const totalBudgetLignesVal = Array.from(budgetCatMap.values()).reduce((a, b) => a + b, 0) || 1;
     const budgetDistribution: DashboardDistributionItemDto[] = Array.from(budgetCatMap.entries())
-      .map(([label, value]) => ({ label, value }))
+      .map(([label, value], idx) => ({
+        label,
+        value,
+        percent: Math.round((value / totalBudgetLignesVal) * 100) || 0,
+        color: BUDGET_COLORS[idx % BUDGET_COLORS.length],
+      }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
     // ── Build: Financement distribution ───────────────────────────────────
-    const financementDistribution: DashboardDistributionItemDto[] = rawFundingSources.map((f) => ({
-      label: f.nom,
-      value: Number(f.montant),
-    }));
+    const FUNDING_COLORS = ['primary', 'success', 'warning', 'muted-foreground', 'destructive'];
+    const totalFinancementVal = rawFundingSources.reduce((a, b) => a + Number(b.montant), 0) || 1;
+    const financementDistribution: DashboardDistributionItemDto[] = rawFundingSources
+      .map((f, idx) => {
+        const value = Number(f.montant);
+        return {
+          label: f.nom,
+          value,
+          percent: Math.round((value / totalFinancementVal) * 100) || 0,
+          color: FUNDING_COLORS[idx % FUNDING_COLORS.length],
+        };
+      })
+      .sort((a, b) => b.value - a.value);
+
+    // ── Build: Risques par catégorie ──────────────────────────────────────
+    const RISK_COLORS = ['destructive', 'warning', 'primary', 'success', 'muted-foreground'];
+    const totalRisquesCount = Number(risquesResult.meta.total ?? 1);
+    const risquesParCategorie: DashboardDistributionItemDto[] = rawRisquesCategories
+      .map((item, idx) => {
+        const value = item._count._all;
+        const label = item.categorie || 'Opérationnel';
+        const percent = Math.round((value / totalRisquesCount) * 100) || 0;
+        return {
+          label,
+          value,
+          percent,
+          color: RISK_COLORS[idx % RISK_COLORS.length],
+        };
+      })
+      .sort((a, b) => b.value - a.value);
 
     // ── Build: Activités critiques ─────────────────────────────────────────
     const activitesCritiques: DashboardCriticalActivityDto[] = rawActivitesCritiques.map((a) => {
@@ -559,12 +605,18 @@ export class DashboardService {
         ac: Math.round(vals.ac / 1000),
       }));
 
+    const totalProj = Number(projetsTotal.meta.total ?? 0);
+    const actifsProj = Number(projetsActifs.meta.total ?? 0);
+    const terminesProj = Number(projetsTermines.meta.total ?? 0);
+
     return {
       projets: {
-        total: projetsTotal.meta.total,
-        actifs: projetsActifs.meta.total,
-        termines: projetsTermines.meta.total,
+        total: totalProj,
+        actifs: actifsProj,
+        termines: terminesProj,
         suspendus: projetsSuspendus.meta.total,
+        pctActifs: totalProj ? Math.round((actifsProj / totalProj) * 100) : 0,
+        pctTermines: totalProj ? Math.round((terminesProj / totalProj) * 100) : 0,
       },
       finances: {
         budgetTotal,
@@ -573,6 +625,10 @@ export class DashboardService {
         montantRestant: budgetTotal - montantPaye,
         nombreVersions: versionsResult.meta.total,
         nombreLignes: budgetAgg._count._all,
+        tauxDecaissement: budgetTotal ? `${((montantPaye / budgetTotal) * 100).toFixed(1)}%` : '0%',
+        percentEngaged: budgetTotal ? Math.round((montantEngage / budgetTotal) * 100) : 0,
+        percentDisbursed: budgetTotal ? Math.round((montantPaye / budgetTotal) * 100) : 0,
+        nombreBailleurs: rawFundingSources.length,
       },
       risques: {
         total: risquesResult.meta.total,
@@ -604,6 +660,7 @@ export class DashboardService {
       financementDistribution,
       activitesCritiques,
       risquesPrincipaux,
+      risquesParCategorie,
       jalons,
       evenementsRecents,
       activitesRecentes,

@@ -4,7 +4,7 @@ import { AuditAction, DisbursementStatus, Prisma, ProjectStatus, UserRole } from
 import { AuditService } from '@/audit/audit.service';
 import { AppEvent } from '@/shared/constants/app-events.enum';
 import { ErrorCode } from '@/shared/constants/error-codes.enum';
-import { ConflictException, NotFoundException } from '@/common/exceptions/business.exception';
+import { ConflictException, ForbiddenException, NotFoundException } from '@/common/exceptions/business.exception';
 import { AuthenticatedUser } from '@/auth/interfaces/user-request.interface';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PaginatedResult, paginate, paginationToSkipTake } from '@/shared/dto/pagination.dto';
@@ -34,7 +34,39 @@ const SORTABLE_FIELDS = [
   'date_fin_prevue',
   'created_at',
   'updated_at',
+  'bailleur_principal',
+  'pays',
+  'secteur',
+  'budget_total',
 ] as const;
+
+const SORT_COLUMN_MAPPING: Record<string, string> = {
+  code: 'code',
+  nom: 'nom',
+  name: 'nom',
+  statut: 'statut',
+  status: 'statut',
+  date_debut: 'date_debut',
+  dateDebut: 'date_debut',
+  startDate: 'date_debut',
+  date_fin_prevue: 'date_fin_prevue',
+  dateFinPrevue: 'date_fin_prevue',
+  endDate: 'date_fin_prevue',
+  created_at: 'created_at',
+  createdAt: 'created_at',
+  updated_at: 'updated_at',
+  updatedAt: 'updated_at',
+  bailleur_principal: 'bailleur_principal',
+  bailleurPrincipal: 'bailleur_principal',
+  donor: 'bailleur_principal',
+  pays: 'pays',
+  country: 'pays',
+  secteur: 'secteur',
+  sector: 'secteur',
+  budget_total: 'budget_total',
+  budgetTotal: 'budget_total',
+  budgetDisplay: 'budget_total',
+};
 
 /** Contexte de l'acteur réalisant l'action (pour l'audit). */
 export interface ActorContext {
@@ -73,8 +105,8 @@ export class ProjectService {
     const { skip, take } = paginationToSkipTake(query);
 
     const sortField =
-      query.sortBy && (SORTABLE_FIELDS as readonly string[]).includes(query.sortBy)
-        ? query.sortBy
+      query.sortBy && SORT_COLUMN_MAPPING[query.sortBy]
+        ? SORT_COLUMN_MAPPING[query.sortBy]
         : 'created_at';
     const sortOrder: Prisma.SortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
 
@@ -86,10 +118,19 @@ export class ProjectService {
       statut: query.statut,
       managerId: query.managerId,
       organisationId: query.organisationId,
+      bailleurPrincipal: query.bailleurPrincipal,
+      secteur: query.secteur,
+      pays: query.pays,
       orderBy: { [sortField]: sortOrder },
     });
 
-    return paginate(projects.map(ProjectResponseDto.fromEntity), total, query);
+    const aggMap = await this.projectRepository.getBatchAggregations(projects);
+
+    return paginate(
+      projects.map((p) => ProjectResponseDto.fromEntity(p, aggMap.get(p.id))),
+      total,
+      query,
+    );
   }
 
   // ─── Détail ─────────────────────────────────────────────────────────────────
@@ -99,15 +140,16 @@ export class ProjectService {
     if (!project) {
       throw new NotFoundException(ErrorCode.PROJECT_NOT_FOUND, 'Projet introuvable');
     }
-    return ProjectResponseDto.fromEntity(project);
+    const aggMap = await this.projectRepository.getBatchAggregations([project]);
+    return ProjectResponseDto.fromEntity(project, aggMap.get(project.id));
   }
 
   // ─── Création ───────────────────────────────────────────────────────────────
 
   async create(dto: CreateProjectDto, actor: ActorContext = {}): Promise<ProjectResponseDto> {
-    // Le programme parent doit exister (lève PROGRAMME_NOT_FOUND / 404 sinon)
+    // Le programme parent doit exister et appartenir à la même organisation que l'acteur (sauf ADMIN)
     if (dto.programmeId) {
-      await this.programmeService.findOne(dto.programmeId);
+      await this.validateProgrammeOrganisation(dto.programmeId, actor);
     }
 
     // Le manager, s'il est fourni, doit exister (lève USER_NOT_FOUND / 404 sinon)
@@ -177,9 +219,9 @@ export class ProjectService {
       throw new NotFoundException(ErrorCode.PROJECT_NOT_FOUND, 'Projet introuvable');
     }
 
-    // programmeId est modifiable : revérifier l'existence du nouveau programme
+    // programmeId est modifiable : vérifier l'existence et l'accès multi-tenant au nouveau programme
     if (dto.programmeId && dto.programmeId !== existing.programme_id) {
-      await this.programmeService.findOne(dto.programmeId);
+      await this.validateProgrammeOrganisation(dto.programmeId, actor);
     }
 
     // manager, s'il est fourni, doit exister
@@ -209,7 +251,8 @@ export class ProjectService {
       updatedBy: actor.userId,
     });
 
-    const response = ProjectResponseDto.fromEntity(updated);
+    const aggMap = await this.projectRepository.getBatchAggregations([updated]);
+    const response = ProjectResponseDto.fromEntity(updated, aggMap.get(updated.id));
 
     setImmediate(() => {
       void this.auditService.log({
@@ -482,6 +525,67 @@ export class ProjectService {
   }
 
   // ─── Helper privé ─────────────────────────────────────────────────────────────
+
+  /** Vérifie que le programme cible existe et appartient à la même organisation que l'acteur (multi-tenant). */
+  private async validateProgrammeOrganisation(
+    programmeId: string,
+    actor: ActorContext,
+  ): Promise<void> {
+    const programme = await this.prisma.programme.findUnique({
+      where: { id: programmeId },
+      include: {
+        unite: {
+          include: {
+            departement: {
+              include: {
+                direction: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!programme) {
+      throw new NotFoundException(ErrorCode.PROGRAMME_NOT_FOUND, 'Programme introuvable');
+    }
+
+    if (actor.userRole === UserRole.ADMIN || (actor.userRole as string) === 'ADMIN') {
+      return;
+    }
+
+    if (!actor.userId) {
+      return;
+    }
+
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { organisation_id: true },
+    });
+
+    if (!dbUser || !dbUser.organisation_id) {
+      throw new ForbiddenException(
+        ErrorCode.PROJECT_ACCESS_DENIED,
+        "Accès refusé : vous n'êtes rattaché à aucune organisation.",
+      );
+    }
+
+    const programmeOrganisationId = programme.unite?.departement?.direction?.organisation_id;
+
+    if (!programmeOrganisationId) {
+      throw new ForbiddenException(
+        ErrorCode.PROJECT_ACCESS_DENIED,
+        "Accès refusé : le programme cible n'est rattaché à aucune organisation.",
+      );
+    }
+
+    if (programmeOrganisationId !== dbUser.organisation_id) {
+      throw new ForbiddenException(
+        ErrorCode.PROJECT_ACCESS_DENIED,
+        "Accès refusé : le programme cible appartient à une autre organisation.",
+      );
+    }
+  }
 
   /** Traduit une violation d'unicité Prisma (P2002) en conflit métier explicite. */
   private mapUniqueViolation(error: unknown): unknown {

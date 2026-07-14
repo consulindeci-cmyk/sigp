@@ -45,9 +45,9 @@ describe('ProjectController', () => {
     service.findAll.mockResolvedValue(paginated);
     const query = new ProjectQueryDto();
 
-    const result = await controller.findAll(query, { id: '1', role: 'VIEWER' } as unknown);
+    const result = await controller.findAll(query, { id: '1', role: 'VIEWER' } as any);
 
-    expect(service.findAll).toHaveBeenCalledWith(query);
+    expect(service.findAll).toHaveBeenCalledWith(query, { id: '1', role: 'VIEWER' });
     expect(result).toBe(paginated);
   });
 

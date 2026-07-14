@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import api from '@/lib/axios'
 import type { Projet, PaginatedResponse } from '@/types'
 import type { ProjectApiDto } from '@/lib/projectAdapter'
@@ -61,17 +61,98 @@ export const projectKeys = {
   milestones: (id: string) => [...projectKeys.all, 'milestones', id] as const,
 }
 
-// Liste des projets
-export function useProjects(params?: {
-  page?: number; limit?: number; search?: string; statut?: string
-}) {
+export interface UseProjectsParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  filters?: Record<string, any>;
+  statut?: string;
+  programmeId?: string;
+  managerId?: string;
+}
+
+// Liste des projets avec pagination, tri, recherche et filtres côté serveur
+export function useProjects(params?: UseProjectsParams) {
   return useQuery({
     queryKey: projectKeys.list(params),
     queryFn: async () => {
-      const { data } = await api.get('/projects', { params })
-      return (data?.data ?? data) as PaginatedResponse<ProjectApiDto>
+      const queryParams: Record<string, any> = {
+        page: params?.page ?? 1,
+        limit: params?.limit ?? 20,
+      };
+      if (params?.search) queryParams.search = params.search;
+      if (params?.sortBy) queryParams.sortBy = params.sortBy;
+      if (params?.sortOrder) queryParams.sortOrder = params.sortOrder;
+      if (params?.statut) queryParams.statut = params.statut;
+      if (params?.programmeId) queryParams.programmeId = params.programmeId;
+      if (params?.managerId) queryParams.managerId = params.managerId;
+      if (params?.filters) {
+        for (const [key, value] of Object.entries(params.filters)) {
+          if (value !== undefined && value !== null && value !== '') {
+            if (key === 'status' || key === 'statut') {
+              let mappedStatus = value;
+              switch (value) {
+                case 'En bonne voie': mappedStatus = 'EN_COURS'; break;
+                case 'À risque': mappedStatus = 'SUSPENDU'; break;
+                case 'Clôturé': mappedStatus = 'CLOTURE'; break;
+                case 'En préparation': mappedStatus = 'EN_PREPARATION'; break;
+              }
+              queryParams.statut = mappedStatus;
+            } else if (key === 'donor' || key === 'bailleurPrincipal') {
+              queryParams.bailleurPrincipal = value;
+            } else if (key === 'sector' || key === 'secteur') {
+              queryParams.secteur = value;
+            } else if (key === 'country' || key === 'pays') {
+              queryParams.pays = value;
+            } else {
+              queryParams[key] = value;
+            }
+          }
+        }
+      }
+
+      const { data } = await api.get('/projects', { params: queryParams });
+
+      // Shape 1: Wrapped by NestJS ResponseInterceptor -> { success: true, data: { data: [...], meta: { ... } } }
+      if (data && data.data && data.data.meta && Array.isArray(data.data.data)) {
+        return data.data as PaginatedResponse<ProjectApiDto>;
+      }
+
+      // Shape 2: Direct paginated response -> { data: [...], meta: { ... } }
+      if (data && data.meta && Array.isArray(data.data)) {
+        return data as PaginatedResponse<ProjectApiDto>;
+      }
+
+      // Shape 3 or fallback: Extract array whether wrapped or not
+      const list = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : (Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []));
+
+      const totalCount =
+        data?.data?.meta?.total ??
+        data?.meta?.total ??
+        list.length;
+
+      const totalPagesCount =
+        (data?.data?.meta?.totalPages ??
+          data?.meta?.totalPages ??
+          Math.ceil(totalCount / (params?.limit ?? 20))) || 1;
+
+      return {
+        data: list,
+        meta: {
+          total: totalCount,
+          page: params?.page ?? 1,
+          limit: params?.limit ?? 20,
+          totalPages: totalPagesCount,
+        },
+      } as PaginatedResponse<ProjectApiDto>;
     },
-  })
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
 }
 
 // Détail d'un projet
@@ -108,7 +189,8 @@ export function useProjectTopRisks(projectId: string) {
     queryKey: projectKeys.topRisks(projectId),
     queryFn: async () => {
       const { data } = await api.get(`/projects/${projectId}/risks/top`)
-      return (data?.data ?? data) as ProjectTopRisk[]
+      const raw = (data as any)?.data ?? data;
+      return (Array.isArray(raw) ? raw : []) as ProjectTopRisk[]
     },
     enabled: !!projectId,
 
@@ -122,7 +204,8 @@ export function useProjectCriticalActivities(projectId: string) {
     queryKey: projectKeys.criticalActivities(projectId),
     queryFn: async () => {
       const { data } = await api.get(`/projects/${projectId}/ptba/critical`)
-      return (data?.data ?? data) as CriticalActivityResponse[]
+      const raw = (data as any)?.data ?? data;
+      return (Array.isArray(raw) ? raw : []) as CriticalActivityResponse[]
     },
     enabled: !!projectId,
 
@@ -136,7 +219,8 @@ export function useProjectDisbursements(projectId: string) {
     queryKey: projectKeys.disbursementsMonthly(projectId),
     queryFn: async () => {
       const { data } = await api.get(`/projects/${projectId}/disbursements/monthly`)
-      return (data?.data ?? data) as DisbursementMonthly[]
+      const raw = (data as any)?.data ?? data;
+      return (Array.isArray(raw) ? raw : []) as DisbursementMonthly[]
     },
     enabled: !!projectId,
 
@@ -150,7 +234,8 @@ export function useProjectBudgetDistribution(projectId: string) {
     queryKey: projectKeys.budgetDistribution(projectId),
     queryFn: async () => {
       const { data } = await api.get(`/projects/${projectId}/budget/distribution`)
-      return (data?.data ?? data) as BudgetDistributionItem[]
+      const raw = (data as any)?.data ?? data;
+      return (Array.isArray(raw) ? raw : []) as BudgetDistributionItem[]
     },
     enabled: !!projectId,
 
@@ -164,7 +249,8 @@ export function useProjectFundingSources(projectId: string) {
     queryKey: projectKeys.fundingSources(projectId),
     queryFn: async () => {
       const { data } = await api.get(`/projects/${projectId}/funding-sources`)
-      return (data?.data ?? data) as FundingSourceItem[]
+      const raw = (data as any)?.data ?? data;
+      return (Array.isArray(raw) ? raw : []) as FundingSourceItem[]
     },
     enabled: !!projectId,
 
@@ -178,7 +264,8 @@ export function useProjectMilestones(projectId: string) {
     queryKey: projectKeys.milestones(projectId),
     queryFn: async () => {
       const { data } = await api.get(`/projects/${projectId}/milestones`)
-      return (data?.data ?? data) as MilestoneItem[]
+      const raw = (data as any)?.data ?? data;
+      return (Array.isArray(raw) ? raw : []) as MilestoneItem[]
     },
     enabled: !!projectId,
 

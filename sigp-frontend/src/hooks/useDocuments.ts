@@ -147,8 +147,8 @@ function buildUpdatePayload(
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchDocuments(projectId: string): Promise<DocumentProjet[]> {
-  const { data } = await api.get('/documents', { params: { projectId, limit: 1000 } });
-  const raw: unknown = data?.data ?? data;
+  const { data } = await api.get('/documents', { params: { projectId, limit: 100 } });
+  const raw: unknown = data?.data?.data ?? data?.data ?? data;
   const dtos: DocumentDto[] = Array.isArray(raw) ? raw : [];
   return dtos.map(adaptDocument);
 }

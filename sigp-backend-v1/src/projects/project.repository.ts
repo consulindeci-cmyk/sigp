@@ -20,6 +20,15 @@ export type ProjectWithManager = Prisma.ProjectGetPayload<{
   include: typeof PROJECT_INCLUDE;
 }>;
 
+export interface ProjectAggregationsSummary {
+  progressScore: number;
+  profileScore?: number;
+  tauxDecaissement: number;
+  composantes: number;
+  activites: number;
+  livrables: number;
+}
+
 export interface CreateProjectData {
   programmeId?: string;
   code: string;
@@ -63,6 +72,9 @@ export interface FindProjectsParams {
   statut?: ProjectStatus;
   managerId?: string;
   organisationId?: string;
+  bailleurPrincipal?: string;
+  secteur?: string;
+  pays?: string;
   orderBy: Prisma.ProjectOrderByWithRelationInput;
 }
 
@@ -234,6 +246,112 @@ export class ProjectRepository {
     };
   }
 
+  /**
+   * Calcule par lots (sans N+1) les agrégations nécessaires pour l'affichage de la liste des projets.
+   * Utilise exactement 5 requêtes agrégées pour l'ensemble des projets fournis.
+   */
+  async getBatchAggregations(
+    projects: { id: string; budget_total?: any }[],
+  ): Promise<Map<string, ProjectAggregationsSummary>> {
+    const resultMap = new Map<string, ProjectAggregationsSummary>();
+    if (!projects || projects.length === 0) {
+      return resultMap;
+    }
+
+    const projectIds = projects.map((p) => p.id);
+
+    const [activitesGroups, livrablesGroups, wbsGroups, budgetVersions] = await Promise.all([
+      this.prisma.ptbaActivite.groupBy({
+        by: ['project_id'],
+        where: { project_id: { in: projectIds }, deleted_at: null },
+        _count: { _all: true },
+        _avg: { taux_realisation: true },
+      }),
+      this.prisma.livrable.groupBy({
+        by: ['project_id'],
+        where: { project_id: { in: projectIds }, deleted_at: null },
+        _count: { _all: true },
+      }),
+      this.prisma.wbsNode.groupBy({
+        by: ['project_id'],
+        where: { project_id: { in: projectIds }, deleted_at: null, parent_id: null },
+        _count: { _all: true },
+      }),
+      this.prisma.budgetVersion.findMany({
+        where: { project_id: { in: projectIds }, deleted_at: null },
+        select: { id: true, project_id: true },
+      }),
+    ]);
+
+    const budgetLignesGroups =
+      budgetVersions.length > 0
+        ? await this.prisma.budgetLigne.groupBy({
+            by: ['version_id'],
+            where: {
+              version_id: { in: budgetVersions.map((v) => v.id) },
+              deleted_at: null,
+            },
+            _sum: { montant_prevu: true, montant_paye: true },
+          })
+        : [];
+
+    const activitesMap = new Map<string, { count: number; avgTaux: number }>();
+    for (const g of activitesGroups) {
+      activitesMap.set(g.project_id, {
+        count: g._count._all,
+        avgTaux: Number(g._avg.taux_realisation ?? 0),
+      });
+    }
+
+    const livrablesMap = new Map<string, number>();
+    for (const g of livrablesGroups) {
+      livrablesMap.set(g.project_id, g._count._all);
+    }
+
+    const composantesMap = new Map<string, number>();
+    for (const g of wbsGroups) {
+      composantesMap.set(g.project_id, g._count._all);
+    }
+
+    const versionToProjectMap = new Map<string, string>();
+    for (const bv of budgetVersions) {
+      versionToProjectMap.set(bv.id, bv.project_id);
+    }
+
+    const budgetMap = new Map<string, { prevu: number; paye: number }>();
+    for (const blg of budgetLignesGroups) {
+      const projectId = versionToProjectMap.get(blg.version_id);
+      if (projectId) {
+        const existing = budgetMap.get(projectId) || { prevu: 0, paye: 0 };
+        existing.prevu += Number(blg._sum.montant_prevu ?? 0);
+        existing.paye += Number(blg._sum.montant_paye ?? 0);
+        budgetMap.set(projectId, existing);
+      }
+    }
+
+    for (const project of projects) {
+      const act = activitesMap.get(project.id) || { count: 0, avgTaux: 0 };
+      const livCount = livrablesMap.get(project.id) || 0;
+      const compCount = composantesMap.get(project.id) || 0;
+      const bud = budgetMap.get(project.id) || { prevu: 0, paye: 0 };
+
+      const budgetTotal = bud.prevu > 0 ? bud.prevu : Number(project.budget_total ?? 0);
+      const montantPaye = bud.paye;
+      const tauxDecaissement =
+        budgetTotal > 0 ? Math.round((montantPaye / budgetTotal) * 10000) / 100 : 0;
+
+      resultMap.set(project.id, {
+        progressScore: Math.round(act.avgTaux),
+        tauxDecaissement,
+        composantes: compCount,
+        activites: act.count,
+        livrables: livCount,
+      });
+    }
+
+    return resultMap;
+  }
+
   // ─── Analytics ───────────────────────────────────────────────────────────────
 
   findDisbursementsForProject(projectId: string): Promise<Disbursement[]> {
@@ -302,6 +420,15 @@ export class ProjectRepository {
         { code: { contains: params.search, mode: 'insensitive' } },
         { description: { contains: params.search, mode: 'insensitive' } },
       ];
+    }
+    if (params.bailleurPrincipal) {
+      where.bailleur_principal = { contains: params.bailleurPrincipal, mode: 'insensitive' };
+    }
+    if (params.secteur) {
+      where.secteur = { contains: params.secteur, mode: 'insensitive' };
+    }
+    if (params.pays) {
+      where.pays = { contains: params.pays, mode: 'insensitive' };
     }
 
     return where;

@@ -216,8 +216,8 @@ function buildUpdatePayload(data: Partial<Contract>) {
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchContracts(projectId: string): Promise<Contract[]> {
-  const { data } = await api.get('/contracts', { params: { projectId, limit: 1000 } });
-  const raw: unknown = data?.data ?? data;
+  const { data } = await api.get('/contracts', { params: { projectId, limit: 100 } });
+  const raw: unknown = data?.data?.data ?? data?.data ?? data;
   const dtos: ContractDto[] = Array.isArray(raw) ? raw : [];
   return dtos.map(adaptContract);
 }

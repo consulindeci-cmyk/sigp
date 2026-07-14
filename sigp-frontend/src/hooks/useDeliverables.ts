@@ -150,9 +150,9 @@ export function useDeliverables(projectId: string) {
   return useQuery({
     queryKey: deliverableKeys.all(projectId),
     queryFn: async () => {
-      const { data } = await api.get('/livrables', { params: { projectId, limit: 1000 } });
+      const { data } = await api.get('/livrables', { params: { projectId, limit: 100 } });
       const livrables = extractDtos(data).map(adaptLivrable);
-      return { data: livrables, meta: { total: livrables.length, page: 1, limit: 1000, totalPages: 1 } };
+      return { data: livrables, meta: { total: livrables.length, page: 1, limit: 100, totalPages: 1 } };
     },
     enabled: !!projectId,
 

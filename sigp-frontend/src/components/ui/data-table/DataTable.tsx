@@ -26,11 +26,33 @@ export function DataTable<TData, TValue>({
   filters,
   enableRowSelection,
   onRowClick,
+  manualPagination,
+  pageCount,
+  rowCount,
+  pagination,
+  onPaginationChange,
+  manualSorting,
+  sorting,
+  onSortingChange,
+  manualFiltering,
+  columnFilters,
+  onColumnFiltersChange,
 }: DataTableProps<TData, TValue>) {
   const { table } = useDataTable({
     data,
     columns,
     enableRowSelection,
+    manualPagination,
+    pageCount,
+    rowCount,
+    pagination,
+    onPaginationChange,
+    manualSorting,
+    sorting,
+    onSortingChange,
+    manualFiltering,
+    columnFilters,
+    onColumnFiltersChange,
   });
 
   if (isError) {
@@ -50,7 +72,7 @@ export function DataTable<TData, TValue>({
       <div className="w-full overflow-x-auto overflow-y-hidden" role="region" aria-label="Tableau de données">
         {isLoading ? (
           <DataTableLoading />
-        ) : data.length === 0 ? (
+        ) : data.length === 0 || table.getRowModel().rows.length === 0 ? (
           <DataTableEmpty />
         ) : (
           <table className="w-full min-w-max border-collapse text-sm">

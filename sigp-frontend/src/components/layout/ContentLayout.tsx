@@ -15,7 +15,7 @@ export function ContentLayout({ children, header, scrollable = true, className, 
           {header}
         </div>
       )}
-      <div className={cn("flex-1 min-w-0 p-4 sm:p-6 lg:p-8", !scrollable && "flex flex-col min-h-0")}>
+      <div className={cn("flex-1 min-w-0 p-4 sm:p-6 lg:p-8 pb-20 sm:pb-20 lg:pb-20", !scrollable && "flex flex-col min-h-0")}>
         {/* max-w-layout = 100% fluid — Source unique de vérité définie dans tailwind.config.js */}
         <div className={cn("mx-auto w-full min-w-0 max-w-layout flex flex-col gap-6", !scrollable && "flex-1 min-h-0")}>
           {children}

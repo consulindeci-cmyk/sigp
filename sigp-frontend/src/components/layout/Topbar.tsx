@@ -22,6 +22,7 @@ import { useCurrentUserProfile } from '@/hooks/useUserProfile';
 import { useProjects } from '@/hooks/useProjects';
 import type { ProjectApiDto } from '@/lib/projectAdapter';
 import { userAvatarStyle } from '@/components/users/userAvatarStyle';
+import { PROJECT_NAV_GROUPS } from './Sidebar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -522,7 +523,7 @@ function adaptNotif(dto: NotificationDto): NotifItem {
 
 export function Topbar() {
   const location                  = useLocation();
-  const { setSidebarOpen }        = useUIStore();
+  const { setSidebarOpen, activeProjectTab, activeProjectName } = useUIStore();
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen,  setNotifOpen]  = useState(false);
@@ -585,9 +586,16 @@ export function Topbar() {
 
   // Current page title from location
   const path = location.pathname;
+  const isOnProjectDetail = /^\/projects\/.+/.test(path);
   const currentTitle =
     SECTION_TITLE[path] ??
-    (path.startsWith('/projects/') ? 'Projets' : 'SIGP');
+    (isOnProjectDetail ? 'Détail du Projet' : 'SIGP');
+
+  const allNavItems = PROJECT_NAV_GROUPS.reduce<Array<{ id: string; label: string }>>(
+    (acc, group) => [...acc, ...group.items],
+    []
+  );
+  const activeModuleLabel = allNavItems.find(i => i.id === activeProjectTab)?.label || 'Informations Générales';
 
   const currentUser = useCurrentUserProfile();
   const avatarStyle = userAvatarStyle(currentUser.initiales);
@@ -595,17 +603,22 @@ export function Topbar() {
   return (
     <>
       <header className="flex h-16 shrink-0 items-center gap-x-4 border-b border-border bg-background px-4 sm:gap-x-6 sm:px-6 lg:px-8 z-10 sticky top-0 shadow-sm">
-        {/* Mobile menu */}
-        <button
-          type="button"
-          className="-m-2.5 p-2.5 text-muted-foreground hover:text-foreground md:hidden"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="Ouvrir la sidebar"
-        >
-          <Menu className="h-5 w-5" aria-hidden="true" />
-        </button>
+        {/* Mobile menu (uniquement sur ProjectDetail pour naviguer dans les modules du projet) */}
+        {isOnProjectDetail && (
+          <>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all md:hidden shrink-0 text-xs font-semibold shadow-sm active:scale-95"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Ouvrir les modules du projet"
+            >
+              <Menu className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>Modules</span>
+            </button>
 
-        <div className="h-6 w-px bg-border md:hidden" aria-hidden="true" />
+            <div className="h-5 w-px bg-border md:hidden shrink-0" aria-hidden="true" />
+          </>
+        )}
 
         <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6 min-w-0 items-center">
 
@@ -621,8 +634,19 @@ export function Topbar() {
               <span className="text-muted-foreground shrink-0">/</span>
               <span className="font-semibold text-foreground tracking-tight truncate">{currentTitle}</span>
             </div>
-            <div className="sm:hidden">
-              <span className="font-semibold text-foreground tracking-tight truncate">{currentTitle}</span>
+            <div className="sm:hidden flex flex-col min-w-0">
+              {isOnProjectDetail ? (
+                <>
+                  <span className="text-[10px] text-muted-foreground leading-none font-medium truncate">
+                    {activeProjectName || 'Projet'}
+                  </span>
+                  <span className="font-bold text-primary text-xs truncate leading-tight mt-0.5">
+                    {activeModuleLabel}
+                  </span>
+                </>
+              ) : (
+                <span className="font-semibold text-foreground tracking-tight truncate">{currentTitle}</span>
+              )}
             </div>
           </div>
 

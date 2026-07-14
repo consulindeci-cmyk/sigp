@@ -585,7 +585,7 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
+      <div className="flex-1 px-4 sm:px-6 lg:px-8 pt-6 pb-20 sm:pb-20 lg:pb-20 flex flex-col gap-6">
 
         {/* ── Alerte ────────────────────────────────────────────────────────── */}
         {alertDocs.length > 0 && (

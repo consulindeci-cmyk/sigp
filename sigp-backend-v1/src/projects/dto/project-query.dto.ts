@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { ProjectStatus } from '@prisma/client';
 import { PaginationDto } from '@/shared/dto/pagination.dto';
 
@@ -27,4 +27,19 @@ export class ProjectQueryDto extends PaginationDto {
   @IsOptional()
   @IsUUID('4', { message: "L'identifiant de l'organisation est invalide" })
   organisationId?: string;
+
+  @ApiPropertyOptional({ description: 'Filtrer par bailleur principal' })
+  @IsOptional()
+  @IsString()
+  bailleurPrincipal?: string;
+
+  @ApiPropertyOptional({ description: 'Filtrer par secteur' })
+  @IsOptional()
+  @IsString()
+  secteur?: string;
+
+  @ApiPropertyOptional({ description: 'Filtrer par pays' })
+  @IsOptional()
+  @IsString()
+  pays?: string;
 }

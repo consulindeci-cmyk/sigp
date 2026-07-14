@@ -42,8 +42,8 @@ export const notifKeys = {
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchNotifications(): Promise<NotificationDto[]> {
-  const { data } = await api.get('/notifications', { params: { limit: 1000 } });
-  const raw = data?.data ?? data;
+  const { data } = await api.get('/notifications', { params: { limit: 100 } });
+  const raw = data?.data?.data ?? data?.data ?? data;
   return Array.isArray(raw) ? raw : [];
 }
 

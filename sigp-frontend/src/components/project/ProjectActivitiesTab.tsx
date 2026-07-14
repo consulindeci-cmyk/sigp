@@ -629,7 +629,7 @@ export default function ProjectActivitiesTab() {
   const activeProjectId      = useUIStore(s => s.activeProjectId);
   const projectId            = urlProjectId || activeProjectId || '';
 
-  const { data: apiData, isLoading } = useTasks(projectId, { limit: 1000 });
+  const { data: apiData, isLoading } = useTasks(projectId, { limit: 100 });
   const createMutation = useCreateTask(projectId);
   const updateMutation = useUpdateTask(projectId);
   const deleteMutation = useDeleteTask(projectId);
@@ -637,7 +637,7 @@ export default function ProjectActivitiesTab() {
   const [activities,    setActivities]    = useState<Activity[]>([]);
 
   useEffect(() => {
-    const list = (apiData as { data?: Tache[] })?.data ?? (Array.isArray(apiData) ? apiData as Tache[] : []);
+    const list = (apiData as any)?.data?.data ?? (apiData as any)?.data ?? (Array.isArray(apiData) ? apiData as Tache[] : []);
     setActivities(list.map(adaptTache));
   }, [apiData]);
   const [slideOverOpen, setSlideOverOpen] = useState(false);

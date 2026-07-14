@@ -49,7 +49,6 @@ import { EvmService } from './evm.service';
 
 @ApiTags('projects')
 @Controller({ path: 'projects', version: '1' })
-@UseGuards(ProjectAccessGuard)
 export class ProjectController {
   constructor(
     private readonly projectService: ProjectService,
@@ -85,6 +84,7 @@ export class ProjectController {
   }
 
   @Get(':id/summary')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.VIEWER,
     UserRole.ADMIN,
@@ -102,6 +102,7 @@ export class ProjectController {
   }
 
   @Get(':id/risks/top')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.VIEWER,
     UserRole.ADMIN,
@@ -119,6 +120,7 @@ export class ProjectController {
   }
 
   @Get(':id/ptba/critical')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.VIEWER,
     UserRole.ADMIN,
@@ -138,6 +140,7 @@ export class ProjectController {
   }
 
   @Get(':id/disbursements/monthly')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.VIEWER,
     UserRole.ADMIN,
@@ -157,6 +160,7 @@ export class ProjectController {
   }
 
   @Get(':id/budget/distribution')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.VIEWER,
     UserRole.ADMIN,
@@ -176,6 +180,7 @@ export class ProjectController {
   }
 
   @Get(':id/funding-sources')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.VIEWER,
     UserRole.ADMIN,
@@ -195,6 +200,7 @@ export class ProjectController {
   }
 
   @Get(':id/milestones')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(UserRole.ADMIN, UserRole.COORDINATEUR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtenir les prochains jalons (Livrables et Activités)' })
   @ApiParam({ name: 'id', description: 'UUID du projet' })
@@ -208,6 +214,7 @@ export class ProjectController {
   }
 
   @Get(':id/evm/summary')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.ADMIN,
     UserRole.COORDINATEUR,
@@ -228,6 +235,7 @@ export class ProjectController {
   }
 
   @Get(':id/evm/history')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.ADMIN,
     UserRole.COORDINATEUR,
@@ -248,6 +256,7 @@ export class ProjectController {
   }
 
   @Get(':id')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(
     UserRole.VIEWER,
     UserRole.ADMIN,
@@ -281,6 +290,7 @@ export class ProjectController {
   }
 
   @Patch(':id')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(UserRole.COORDINATEUR, UserRole.ADMIN)
   @ApiOperation({ summary: 'Modifier un projet' })
   @ApiParam({ name: 'id', format: 'uuid' })
@@ -301,6 +311,7 @@ export class ProjectController {
   }
 
   @Delete(':id')
+  @UseGuards(ProjectAccessGuard)
   @ApiAuth(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Supprimer (soft delete) un projet' })

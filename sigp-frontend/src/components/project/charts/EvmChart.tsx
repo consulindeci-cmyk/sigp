@@ -19,11 +19,13 @@ interface Props {
 export default function EvmChart({ projectId }: Props) {
   const { data, isLoading, isError } = useProjectEvmHistory(projectId);
 
+  const list = Array.isArray(data) ? data : ((data as any)?.data ?? []);
+
   const state = isLoading
     ? 'loading'
     : isError
     ? 'error'
-    : !data || data.length === 0
+    : !Array.isArray(list) || list.length === 0
     ? 'empty'
     : 'success';
 
@@ -35,14 +37,14 @@ export default function EvmChart({ projectId }: Props) {
   };
 
   const chartData = useMemo(() => {
-    if (!data) return [];
-    return data.map((d) => ({
+    if (!Array.isArray(list)) return [];
+    return list.map((d: any) => ({
       name: d.periode,
       PV: d.pv,
       EV: d.ev,
       AC: d.ac,
     }));
-  }, [data]);
+  }, [list]);
 
   return (
     <WidgetWrapper title="Courbe en S (PV vs EV vs AC)" state={state}>

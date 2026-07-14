@@ -62,10 +62,10 @@ function adaptReport(dto: ReportDto): RapportProjet {
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchReports(projectId?: string): Promise<RapportProjet[]> {
-  const params: Record<string, string | number> = { limit: 1000 };
+  const params: Record<string, string | number> = { limit: 100 };
   if (projectId) params.projectId = projectId;
   const { data } = await api.get('/reports', { params });
-  const raw: unknown = data?.data ?? data;
+  const raw: unknown = data?.data?.data ?? data?.data ?? data;
   const dtos: ReportDto[] = Array.isArray(raw) ? raw : [];
   return dtos.map(adaptReport);
 }

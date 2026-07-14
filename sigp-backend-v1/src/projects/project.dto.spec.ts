@@ -35,8 +35,10 @@ describe('CreateProjectDto validation', () => {
     ).toEqual([]);
   });
 
-  it('rejects a missing programmeId (obligatoire)', async () => {
-    expect(await errorsFor(CreateProjectDto, { code: 'X', nom: 'X' })).toContain('programmeId');
+  it('accepts a missing programmeId (facultatif)', async () => {
+    expect(await errorsFor(CreateProjectDto, { code: 'X', nom: 'X Projet' })).not.toContain(
+      'programmeId',
+    );
   });
 
   it('rejects an invalid programmeId (not a UUID)', async () => {

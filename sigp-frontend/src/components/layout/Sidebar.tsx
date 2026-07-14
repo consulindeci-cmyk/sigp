@@ -18,7 +18,7 @@ import {
 // Project sub-navigation data
 // ---------------------------------------------------------------------------
 
-const PROJECT_NAV_GROUPS = [
+export const PROJECT_NAV_GROUPS = [
   {
     title: "Aperçu & Cadrage",
     items: [
@@ -126,13 +126,118 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
     if (isMobile) setSidebarOpen(false);
   };
 
+  // ── Mode Fiche Projet : Drawer / Sidebar dédiée exclusivement aux modules du projet ──
+  if (isOnProjectDetail && (isMobile || isExpanded)) {
+    return (
+      <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground overflow-hidden">
+        {/* En-tête du menu de projet */}
+        <div className="p-4 border-b border-sidebar-border bg-sidebar-accent/15 shrink-0 overflow-hidden">
+          <Link
+            to="/projects"
+            onClick={handleMobileClick}
+            className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline mb-3 transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">Retour à la liste des projets</span>
+          </Link>
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm shadow-md shrink-0">
+              {(activeProjectName?.[0] ?? 'P').toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <h2 className="text-sm font-bold text-sidebar-foreground truncate leading-tight">
+                {activeProjectName ?? 'Détail du Projet'}
+              </h2>
+              <p className="text-[11px] text-sidebar-foreground/60 truncate mt-0.5">
+                Navigation des 19 modules
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Liste des modules organisés par groupes */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4 scrollbar-thin">
+          {PROJECT_NAV_GROUPS.map((group) => (
+            <div key={group.title} className="space-y-1">
+              <div className="px-2 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/40 mb-1.5 truncate">
+                {group.title}
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map((navItem) => {
+                  const isTabActive = activeProjectTab === navItem.id;
+                  return (
+                    <button
+                      key={navItem.id}
+                      onClick={() => {
+                        setActiveProjectTab(navItem.id);
+                        handleMobileClick();
+                      }}
+                      className={cn(
+                        'w-full text-left px-3 py-2 rounded-lg flex items-center justify-between gap-2 transition-all duration-150 overflow-hidden min-w-0',
+                        isTabActive
+                          ? 'bg-primary text-primary-foreground font-bold shadow-sm'
+                          : 'text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 overflow-hidden flex-1">
+                        <div
+                          className={cn(
+                            'h-2 w-2 rounded-full shrink-0',
+                            isTabActive ? 'bg-primary-foreground' : dotColor(navItem.status as ItemStatus)
+                          )}
+                          aria-hidden="true"
+                        />
+                        <span className="text-xs truncate">{navItem.label}</span>
+                      </div>
+                      {isTabActive && (
+                        <span className="text-[10px] font-semibold opacity-80 shrink-0">Actif</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Footer info in drawer */}
+        <div className="p-3 border-t border-sidebar-border bg-sidebar/50 text-center shrink-0 overflow-hidden">
+          <span className="text-[10px] text-sidebar-foreground/50 truncate block">
+            SIGP/GPD ERP — Modules {isMobile ? 'Mobile' : 'Projet'}
+          </span>
+        </div>
+
+        {/* ── Bouton Toggle (Desktop uniquement) ────────────────────────── */}
+        {!isMobile && (
+          <button
+            onClick={toggleSidebar}
+            aria-label={sidebarOpen ? 'Réduire la sidebar' : 'Élargir la sidebar'}
+            className={cn(
+              'absolute -right-3 top-[4.5rem]',
+              'h-6 w-6 rounded-full',
+              'border border-sidebar-border bg-sidebar text-sidebar-foreground',
+              'flex items-center justify-center',
+              'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+              'shadow-card transition-colors z-10'
+            )}
+          >
+            {sidebarOpen
+              ? <ChevronLeft  className="h-3 w-3" />
+              : <ChevronRight className="h-3 w-3" />
+            }
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground">
 
       {/* ── Brand Header ──────────────────────────────────────────────── */}
       <div
         className={cn(
-          'flex items-center h-16 border-b border-sidebar-border px-4 transition-all duration-300 shrink-0',
+          'flex items-center h-16 border-b border-sidebar-border px-4 transition-all duration-300 shrink-0 overflow-hidden',
           isExpanded ? 'justify-between' : 'justify-center'
         )}
       >
@@ -155,7 +260,7 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
 
       {/* ── Navigation ────────────────────────────────────────────────── */}
       <nav
-        className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5"
+        className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 space-y-0.5 scrollbar-thin"
         aria-label="Navigation principale"
       >
         {navItems.map((item) => {
@@ -164,11 +269,16 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
             <React.Fragment key={item.to}>
               <Link
                 to={item.to}
-                onClick={handleMobileClick}
+                onClick={() => {
+                  handleMobileClick();
+                  if (!isExpanded && item.to === '/projects' && isOnProjectDetail) {
+                    setSidebarOpen(true);
+                  }
+                }}
                 title={!isExpanded ? item.label : undefined}
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group relative',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group relative overflow-hidden min-w-0',
                   isActive
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
                     : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'

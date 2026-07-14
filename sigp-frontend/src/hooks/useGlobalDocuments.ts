@@ -142,8 +142,8 @@ function buildUpdateMeta(
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchGlobalDocuments(): Promise<DocumentGlobal[]> {
-  const { data } = await api.get('/documents', { params: { limit: 1000 } });
-  const raw: unknown = data?.data ?? data;
+  const { data } = await api.get('/documents', { params: { limit: 100 } });
+  const raw: unknown = data?.data?.data ?? data?.data ?? data;
   const dtos: GlobalDocumentDto[] = Array.isArray(raw) ? raw : [];
   return dtos.map(adaptGlobalDocument);
 }

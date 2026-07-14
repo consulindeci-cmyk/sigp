@@ -21,4 +21,16 @@ export class DashboardFinanceDto {
 
   @ApiProperty({ description: 'Nombre de lignes budgétaires', example: 42 })
   nombreLignes: number;
+
+  @ApiProperty({ description: 'Taux de décaissement (pourcentage formatté ex: 30.5%)', example: '30.5%' })
+  tauxDecaissement: string;
+
+  @ApiProperty({ description: 'Pourcentage engagé', example: 40 })
+  percentEngaged: number;
+
+  @ApiProperty({ description: 'Pourcentage décaissé', example: 30 })
+  percentDisbursed: number;
+
+  @ApiProperty({ description: 'Nombre de bailleurs / sources de financement', example: 4 })
+  nombreBailleurs: number;
 }

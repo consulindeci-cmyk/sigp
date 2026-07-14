@@ -113,10 +113,10 @@ function adaptObjective(dto: LogframeObjectiveDto): CadreLogique {
 
 async function fetchObjectives(projectId: string): Promise<CadreLogique[]> {
   const { data } = await api.get('/logframe-objectives', {
-    params: { projectId, limit: 1000 },
+    params: { projectId, limit: 100 },
   });
   // Handle both paginated { data: [...] } and plain array responses
-  const raw: unknown = data?.data ?? data;
+  const raw: unknown = data?.data?.data ?? data?.data ?? data;
   const dtos: LogframeObjectiveDto[] = Array.isArray(raw) ? raw : [];
   return dtos.map(adaptObjective);
 }

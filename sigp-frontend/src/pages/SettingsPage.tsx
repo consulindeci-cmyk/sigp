@@ -1803,7 +1803,7 @@ export default function SettingsPage() {
         </div>
 
         <main className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-20">
             {renderSection()}
           </div>
         </main>
