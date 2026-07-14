@@ -3,8 +3,7 @@ import { Loader2, Info, AlertTriangle, CheckCircle } from 'lucide-react';
 
 import { mockEvents } from '../../mocks/dashboardMocks';
 
-import { type Project } from '@/mocks/projectsMocks';
-import { formatBudget } from '@/lib/projectAdapter';
+import { formatBudget, type Project } from '@/lib/projectAdapter';
 import {
   useProjectTopRisks,
   useProjectCriticalActivities,

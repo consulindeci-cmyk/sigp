@@ -11,7 +11,7 @@ import {
   ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
 import { ProjectSlideOver } from '@/components/projects/ProjectSlideOver';
-import type { Project } from '@/mocks/projectsMocks';
+import type { Project } from '@/lib/projectAdapter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

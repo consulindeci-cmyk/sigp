@@ -1,6 +1,6 @@
 import { Briefcase, TrendingUp, AlertTriangle, Clock, Banknote } from 'lucide-react';
 import { StatCard } from '@/components/ui/data-display/StatCard';
-import type { ProjectsKPIs } from '@/mocks/projectsMocks';
+import type { ProjectsKPIs } from '@/lib/projectAdapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable KPI strip for portfolio/projects list views
@@ -39,7 +39,7 @@ export function ProjectKPIs({ kpis }: { kpis: ProjectsKPIs }) {
       />
       <StatCard
         title="Budget Portefeuille"
-        value={kpis.budgetPortefeuille}
+        value={kpis.budgetPortefeuille || '0'}
         icon={<Banknote className="h-4 w-4" aria-hidden="true" />}
         iconVariant="default"
         description={`${kpis.clotured} projet(s) clôturé(s)`}

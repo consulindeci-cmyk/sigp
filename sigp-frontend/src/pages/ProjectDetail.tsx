@@ -28,9 +28,8 @@ import TabHistory from '../components/project/TabHistory';
 import TabComments from '../components/project/TabComments';
 import TabSettings from '../components/project/TabSettings';
 
-import { type Project } from '@/mocks/projectsMocks';
 import { useProject, useProjectSummary } from '@/hooks/useProjects';
-import { adaptProjectDto } from '@/lib/projectAdapter';
+import { adaptProjectDto, type Project } from '@/lib/projectAdapter';
 
 const PAD = 'px-4 sm:px-6 lg:px-8 py-6';
 const INNER = 'mx-auto w-full max-w-layout';

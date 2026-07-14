@@ -1,186 +1,181 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import api from '@/lib/axios';
-import { ROLE_LABELS } from '@/mocks/usersMocks';
-import type { MockUser, UserRole, UserPermissions } from '@/mocks/usersMocks';
+import type { PaginatedResponse } from '@/types';
+import {
+  adaptUserDto,
+  type UserApiDto,
+  type UserRow,
+  type UserRole,
+  type CreateUserPayload,
+  type UpdateUserPayload,
+  type UsersKPIs,
+} from '@/lib/userAdapter';
 
-// ── Cache keys ────────────────────────────────────────────────────────────────
+// ── Cache keys (Phase 20.1: Granular Keys — Anti-Query Storm) ─────────────────
 
 export const userKeys = {
-  all: () => ['users'] as const,
-  one: (id: string) => ['users', id] as const,
+  all: ['users'] as const,
+  list: (params?: object) => [...userKeys.all, 'list', params] as const,
+  detail: (id: string) => [...userKeys.all, 'detail', id] as const,
+  kpis: (filters?: object) => [...userKeys.all, 'kpis', filters] as const,
 };
 
-// ── Backend DTO ───────────────────────────────────────────────────────────────
+// ── Params ────────────────────────────────────────────────────────────────────
 
-type BERole = 'ADMIN' | 'COORDINATEUR' | 'CHARGE_PROGRAMME' | 'FINANCIER' | 'AUDITEUR' | 'VIEWER';
-
-interface UserDto {
-  id: string;
-  nom: string;
-  prenom: string;
-  email: string;
-  role: BERole;
-  actif: boolean;
-  telephone: string | null;
-  languePreference: string;
-  avatarUrl: string | null;
-  derniereConnexion: string | null;
-  createdAt: string;
-  updatedAt: string;
+export interface UseUsersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  filters?: Record<string, string | number | boolean | undefined>;
+  role?: UserRole;
+  status?: 'active' | 'inactive';
 }
 
-// ── Role mapping ──────────────────────────────────────────────────────────────
+// ── Hook: Liste paginée, filtrée et triée côté serveur ───────────────────────
 
-const BE_TO_FE_ROLE: Record<BERole, UserRole> = {
-  ADMIN:            'ADMIN_PROJET',
-  COORDINATEUR:     'COORDONNATEUR_PROJET',
-  CHARGE_PROGRAMME: 'RESPONSABLE_SUIVI_EVALUATION',
-  FINANCIER:        'RESPONSABLE_FINANCIER',
-  AUDITEUR:         'AUDITEUR',
-  VIEWER:           'OBSERVATEUR',
-};
-
-const FE_TO_BE_ROLE: Record<UserRole, BERole> = {
-  SUPER_ADMIN:                   'ADMIN',
-  ADMIN_PROJET:                  'ADMIN',
-  COORDONNATEUR_PROJET:          'COORDINATEUR',
-  RESPONSABLE_FINANCIER:         'FINANCIER',
-  RESPONSABLE_TECHNIQUE:         'COORDINATEUR',
-  RESPONSABLE_PASSATION_MARCHES: 'COORDINATEUR',
-  RESPONSABLE_SUIVI_EVALUATION:  'CHARGE_PROGRAMME',
-  BAILLEUR:                      'VIEWER',
-  AUDITEUR:                      'AUDITEUR',
-  OBSERVATEUR:                   'VIEWER',
-};
-
-// ── Permissions default (mirrors usersMocks.defaultPermissions) ───────────────
-
-function permissionsFromRole(role: UserRole): UserPermissions {
-  const all:   UserPermissions = { projets: true,  budget: true,  marches: true,  rapports: true,  utilisateurs: true,  parametres: true,  export: true,  audit: true  };
-  const admin: UserPermissions = { projets: true,  budget: true,  marches: true,  rapports: true,  utilisateurs: true,  parametres: false, export: true,  audit: false };
-  const cp:    UserPermissions = { projets: true,  budget: true,  marches: false, rapports: true,  utilisateurs: false, parametres: false, export: true,  audit: false };
-  const fin:   UserPermissions = { projets: true,  budget: true,  marches: false, rapports: true,  utilisateurs: false, parametres: false, export: true,  audit: false };
-  const tech:  UserPermissions = { projets: true,  budget: false, marches: false, rapports: true,  utilisateurs: false, parametres: false, export: true,  audit: false };
-  const march: UserPermissions = { projets: true,  budget: false, marches: true,  rapports: true,  utilisateurs: false, parametres: false, export: true,  audit: false };
-  const se:    UserPermissions = { projets: true,  budget: false, marches: false, rapports: true,  utilisateurs: false, parametres: false, export: true,  audit: true  };
-  const bail:  UserPermissions = { projets: false, budget: false, marches: false, rapports: true,  utilisateurs: false, parametres: false, export: true,  audit: false };
-  const aud:   UserPermissions = { projets: false, budget: false, marches: false, rapports: true,  utilisateurs: false, parametres: false, export: false, audit: true  };
-  const obs:   UserPermissions = { projets: false, budget: false, marches: false, rapports: true,  utilisateurs: false, parametres: false, export: false, audit: false };
-
-  switch (role) {
-    case 'SUPER_ADMIN':                   return all;
-    case 'ADMIN_PROJET':                  return admin;
-    case 'COORDONNATEUR_PROJET':          return cp;
-    case 'RESPONSABLE_FINANCIER':         return fin;
-    case 'RESPONSABLE_TECHNIQUE':         return tech;
-    case 'RESPONSABLE_PASSATION_MARCHES': return march;
-    case 'RESPONSABLE_SUIVI_EVALUATION':  return se;
-    case 'BAILLEUR':                      return bail;
-    case 'AUDITEUR':                      return aud;
-    case 'OBSERVATEUR':                   return obs;
-  }
-}
-
-// ── Adapter: UserDto → MockUser ───────────────────────────────────────────────
-
-function adaptUser(dto: UserDto): MockUser {
-  const feRole: UserRole = BE_TO_FE_ROLE[dto.role] ?? 'OBSERVATEUR';
-  const initiales = `${dto.prenom[0] ?? '?'}${dto.nom[0] ?? '?'}`.toUpperCase();
-  const statut = dto.actif ? ('Actif' as const) : ('Inactif' as const);
-  const lastConnexion = dto.derniereConnexion
-    ? new Date(dto.derniereConnexion).toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-      })
-    : '—';
-  const createdAt = dto.createdAt ? dto.createdAt.split('T')[0] : '';
-
-  return {
-    id:              dto.id,
-    prenom:          dto.prenom,
-    nom:             dto.nom,
-    initiales,
-    email:           dto.email,
-    telephone:       dto.telephone ?? '',
-    role:            feRole,
-    roleLabel:       ROLE_LABELS[feRole] ?? feRole,
-    fonction:        '',
-    statut,
-    actif:           dto.actif,
-    createdAt,
-    lastConnexion,
-    projetsAffecter: [],
-    permissions:     permissionsFromRole(feRole),
-  };
-}
-
-// ── Fetch ─────────────────────────────────────────────────────────────────────
-
-async function fetchUsers(): Promise<MockUser[]> {
-  const { data } = await api.get('/users', { params: { limit: 500 } });
-  const raw: unknown = data?.data ?? data;
-  const dtos: UserDto[] = Array.isArray(raw) ? raw : [];
-  return dtos.map(adaptUser);
-}
-
-// ── Hooks ─────────────────────────────────────────────────────────────────────
-
-export function useUsers() {
+export function useUsers(params?: UseUsersParams) {
   return useQuery({
-    queryKey: userKeys.all(),
-    queryFn:  fetchUsers,
+    queryKey: userKeys.list(params),
+    queryFn: async () => {
+      const queryParams: Record<string, string | number | boolean | undefined> = {
+        page: params?.page ?? 1,
+        limit: params?.limit ?? 20,
+      };
 
+      if (params?.search) queryParams.search = params.search;
+      if (params?.sortBy) queryParams.sortBy = params.sortBy;
+      if (params?.sortOrder) queryParams.sortOrder = params.sortOrder;
+      if (params?.role) queryParams.role = params.role;
+      if (params?.status) queryParams.status = params.status;
+
+      if (params?.filters) {
+        for (const [key, value] of Object.entries(params.filters)) {
+          if (value !== undefined && value !== null && value !== '') {
+            if (key === 'role') {
+              queryParams.role = value as UserRole;
+            } else if (key === 'status') {
+              queryParams.status = value as 'active' | 'inactive';
+            } else {
+              queryParams[key] = value;
+            }
+          }
+        }
+      }
+
+      const { data } = await api.get('/users', { params: queryParams });
+
+      // Shape 1: Wrapped by NestJS ResponseInterceptor -> { success: true, data: { data: [...], meta: { ... } } }
+      if (data && data.data && data.data.meta && Array.isArray(data.data.data)) {
+        const list = (data.data.data as UserApiDto[]).map(adaptUserDto);
+        return {
+          data: list,
+          meta: data.data.meta,
+        } as PaginatedResponse<UserRow>;
+      }
+
+      // Shape 2: Direct paginated response -> { data: [...], meta: { ... } }
+      if (data && data.meta && Array.isArray(data.data)) {
+        const list = (data.data as UserApiDto[]).map(adaptUserDto);
+        return {
+          data: list,
+          meta: data.meta,
+        } as PaginatedResponse<UserRow>;
+      }
+
+      // Shape 3 or fallback
+      const rawList = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : [];
+
+      const list = (rawList as UserApiDto[]).map(adaptUserDto);
+      const totalCount = data?.data?.meta?.total ?? data?.meta?.total ?? list.length;
+      const totalPagesCount =
+        (data?.data?.meta?.totalPages ??
+          data?.meta?.totalPages ??
+          Math.ceil(totalCount / (params?.limit ?? 20))) || 1;
+
+      return {
+        data: list,
+        meta: {
+          total: totalCount,
+          page: params?.page ?? 1,
+          limit: params?.limit ?? 20,
+          totalPages: totalPagesCount,
+          hasNextPage: (params?.page ?? 1) < totalPagesCount,
+          hasPreviousPage: (params?.page ?? 1) > 1,
+        },
+      } as PaginatedResponse<UserRow>;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   });
 }
+
+// ── Hook: Détail d'un utilisateur ─────────────────────────────────────────────
 
 export function useUser(id: string) {
   return useQuery({
-    queryKey: userKeys.one(id),
+    queryKey: userKeys.detail(id),
     queryFn: async () => {
       const { data } = await api.get(`/users/${id}`);
-      return adaptUser(data?.data ?? data);
+      const payload = data?.data ?? data;
+      return adaptUserDto(payload as UserApiDto);
     },
     enabled: !!id,
+    staleTime: 60_000,
   });
 }
+
+// ── Hook: KPIs du portefeuille utilisateurs (GET /users/summary/kpis) ─────────
+
+export function useUsersKPIs() {
+  return useQuery({
+    queryKey: userKeys.kpis(),
+    queryFn: async () => {
+      const { data } = await api.get('/users/summary/kpis');
+      const payload = data?.data ?? data;
+      return payload as UsersKPIs;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Mutations : Création / Modification / Suppression (Inval chirurgicales) ───
 
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (dto: {
-      nom: string;
-      prenom: string;
-      email: string;
-      password: string;
-      role?: UserRole;
-      telephone?: string;
-    }) => {
-      const beRole: BERole = dto.role ? FE_TO_BE_ROLE[dto.role] : 'VIEWER';
-      const { data } = await api.post('/users', { ...dto, role: beRole });
-      return adaptUser(data?.data ?? data);
+    mutationFn: async (payload: CreateUserPayload) => {
+      const { data } = await api.post('/users', payload);
+      const resp = data?.data ?? data;
+      return adaptUserDto(resp as UserApiDto);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all() }),
-    onError:   () => qc.invalidateQueries({ queryKey: userKeys.all() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: userKeys.list() });
+      qc.invalidateQueries({ queryKey: userKeys.kpis() });
+    },
   });
 }
 
 export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      data,
-    }: {
-      id: string;
-      data: { nom?: string; prenom?: string; telephone?: string; role?: UserRole; actif?: boolean };
-    }) => {
-      const payload: Record<string, unknown> = { ...data };
-      if (data.role !== undefined) payload.role = FE_TO_BE_ROLE[data.role];
-      const { data: resp } = await api.patch(`/users/${id}`, payload);
-      return adaptUser(resp?.data ?? resp);
+    mutationFn: async ({ id, data: payload }: { id: string; data: UpdateUserPayload }) => {
+      const { data } = await api.patch(`/users/${id}`, payload);
+      const resp = data?.data ?? data;
+      return adaptUserDto(resp as UserApiDto);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all() }),
-    onError:   () => qc.invalidateQueries({ queryKey: userKeys.all() }),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: userKeys.list() });
+      qc.invalidateQueries({ queryKey: userKeys.kpis() });
+      qc.invalidateQueries({ queryKey: userKeys.detail(variables.id) });
+    },
   });
 }
 
@@ -189,8 +184,12 @@ export function useDeleteUser() {
   return useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/users/${id}`);
+      return id;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all() }),
-    onError:   () => qc.invalidateQueries({ queryKey: userKeys.all() }),
+    onSuccess: (deletedId) => {
+      qc.invalidateQueries({ queryKey: userKeys.list() });
+      qc.invalidateQueries({ queryKey: userKeys.kpis() });
+      qc.invalidateQueries({ queryKey: userKeys.detail(deletedId) });
+    },
   });
 }

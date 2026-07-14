@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, CalendarDays, User, MapPin, Banknote } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { X, CalendarDays, User, MapPin, Banknote, Loader2 } from 'lucide-react';
+import api from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
@@ -9,10 +11,11 @@ import { Badge } from '@/components/ui/data-display/Badge';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import {
   SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
+  SlideOverDescription, SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import { statusVariant, progressColor } from '@/components/projects/ProjectCard';
-import type { Project, ProjectStatus, ProjectSector } from '@/mocks/projectsMocks';
+import { statusToStatut, statutToStatus, computeInitiales, type Project, type ProjectSector } from '@/lib/projectAdapter';
+import { useProjectsReferenceOptions } from '@/hooks/useProjects';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +34,7 @@ export interface ProjectSlideOverProps {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string): string {
+  if (!iso) return '—';
   try {
     return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   } catch { return iso; }
@@ -55,9 +59,11 @@ interface FormValues {
   donor: string;
   sector: string;
   country: string;
-  manager: string;
+  managerId: string;
   startDate: string;
   endDate: string;
+  dateFinEffective: string;
+  dateClotureEffective: string;
   budgetTotal: string;
   devise: string;
 }
@@ -65,25 +71,28 @@ interface FormValues {
 type FormErrors = Partial<Record<keyof FormValues, string>>;
 
 const EMPTY_FORM: FormValues = {
-  code: '', status: 'En préparation', name: '', description: '',
-  donor: '', sector: '', country: '', manager: '',
-  startDate: '', endDate: '', budgetTotal: '', devise: 'USD',
+  code: '', status: 'EN_PREPARATION', name: '', description: '',
+  donor: '', sector: '', country: '', managerId: '',
+  startDate: '', endDate: '', dateFinEffective: '', dateClotureEffective: '',
+  budgetTotal: '', devise: 'XOF',
 };
 
 function projectToForm(p: Project): FormValues {
   return {
     code: p.code,
-    status: p.status,
+    status: p.statut || statusToStatut(p.status) || 'EN_PREPARATION',
     name: p.name,
     description: p.description,
     donor: p.donor,
     sector: p.sector,
     country: p.country,
-    manager: p.manager,
+    managerId: p.managerId || '',
     startDate: p.startDate,
     endDate: p.endDate,
-    budgetTotal: String(p.budgetTotal),
-    devise: p.devise,
+    dateFinEffective: p.dateFinEffective || '',
+    dateClotureEffective: p.dateClotureEffective || '',
+    budgetTotal: p.budgetTotal ? String(p.budgetTotal) : '',
+    devise: p.devise || 'XOF',
   };
 }
 
@@ -114,6 +123,7 @@ function FieldRow({
 // ── View mode ─────────────────────────────────────────────────────────────────
 
 function ProjectViewContent({ project }: { project: Project }) {
+  const isClosed = project.statut === 'CLOTURE';
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
@@ -130,12 +140,12 @@ function ProjectViewContent({ project }: { project: Project }) {
       {/* Grid détails */}
       <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
         <DetailRow label="Bailleur">
-          <span className="font-medium">{project.donor}</span>
+          <span className="font-medium">{project.donor || '—'}</span>
         </DetailRow>
         <DetailRow label="Pays">
           <div className="flex items-center gap-1">
             <MapPin className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
-            {project.country}
+            {project.country || '—'}
           </div>
         </DetailRow>
         <div className="col-span-2">
@@ -145,7 +155,7 @@ function ProjectViewContent({ project }: { project: Project }) {
                 {project.initialesManager}
               </div>
               <User className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-              {project.manager}
+              {project.manager || '—'}
             </div>
           </DetailRow>
         </div>
@@ -161,6 +171,22 @@ function ProjectViewContent({ project }: { project: Project }) {
             {formatDate(project.endDate)}
           </div>
         </DetailRow>
+        {isClosed && (
+          <>
+            <DetailRow label="Date fin effective">
+              <div className="flex items-center gap-1 font-mono">
+                <CalendarDays className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
+                {formatDate(project.dateFinEffective)}
+              </div>
+            </DetailRow>
+            <DetailRow label="Date de clôture">
+              <div className="flex items-center gap-1 font-mono">
+                <CalendarDays className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
+                {formatDate(project.dateClotureEffective)}
+              </div>
+            </DetailRow>
+          </>
+        )}
       </div>
 
       {/* Budget */}
@@ -235,21 +261,43 @@ function ProjectFormContent({
   values,
   errors,
   onChange,
+  isEditMode,
 }: {
   values: FormValues;
   errors: FormErrors;
   onChange: (k: keyof FormValues, v: string) => void;
+  isEditMode: boolean;
 }) {
+  const { data: refOptions, isLoading: isRefLoading } = useProjectsReferenceOptions();
+  const { data: usersList, isLoading: isUsersLoading } = useQuery({
+    queryKey: ['users', 'list'],
+    queryFn: async () => {
+      const { data } = await api.get('/users', { params: { limit: 100 } }).catch(() => ({ data: [] }));
+      const raw = Array.isArray(data?.data?.data)
+        ? data.data.data
+        : (Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []));
+      return raw as Array<{ id: string; nom: string; prenom: string; role?: string }>;
+    },
+    staleTime: 60_000,
+  });
+
+  const isCloture = values.status === 'CLOTURE';
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-      <FieldRow id="proj-code" label="Code projet" error={errors.code} required>
+      <FieldRow id="proj-code" label="Code projet" error={errors.code} required={!isEditMode}>
         <Input
           id="proj-code"
           value={values.code}
           onChange={e => onChange('code', e.target.value)}
           placeholder="PROJ-XXX"
+          disabled={isEditMode}
+          className={isEditMode ? 'opacity-60 cursor-not-allowed' : ''}
         />
+        {isEditMode && (
+          <p className="text-[11px] text-muted-foreground">Le code est immuable après création.</p>
+        )}
       </FieldRow>
 
       <FieldRow id="proj-statut" label="Statut">
@@ -258,11 +306,11 @@ function ProjectFormContent({
           value={values.status}
           onChange={e => onChange('status', e.target.value)}
         >
-          <option value="En préparation">En préparation</option>
-          <option value="En bonne voie">En bonne voie</option>
-          <option value="À risque">À risque</option>
-          <option value="En retard">En retard</option>
-          <option value="Clôturé">Clôturé</option>
+          <option value="EN_PREPARATION">En préparation</option>
+          <option value="EN_COURS">En bonne voie</option>
+          <option value="SUSPENDU">À risque</option>
+          <option value="CLOTURE">Clôturé</option>
+          <option value="ANNULE">Annulé</option>
         </Select>
       </FieldRow>
 
@@ -285,66 +333,79 @@ function ProjectFormContent({
         />
       </FieldRow>
 
-      <FieldRow id="proj-bailleur" label="Bailleur" error={errors.donor} required>
+      <FieldRow id="proj-bailleur" label="Bailleur" error={errors.donor}>
         <Select
           id="proj-bailleur"
           value={values.donor}
           onChange={e => onChange('donor', e.target.value)}
+          disabled={isRefLoading}
         >
-          <option value="">Sélectionner un bailleur</option>
-          <option value="AFD">AFD</option>
-          <option value="Banque Mondiale">Banque Mondiale</option>
-          <option value="Union Européenne">Union Européenne</option>
-          <option value="USAID">USAID</option>
-          <option value="PNUD">PNUD</option>
-          <option value="BAD">BAD</option>
-          <option value="OMS">OMS</option>
-          <option value="UNICEF">UNICEF</option>
+          <option value="">
+            {isRefLoading ? 'Chargement…' : 'Sélectionner un bailleur'}
+          </option>
+          {(refOptions?.donors ?? []).map(d => (
+            <option key={d} value={d}>{d}</option>
+          ))}
         </Select>
       </FieldRow>
 
-      <FieldRow id="proj-secteur" label="Secteur" error={errors.sector} required>
+      <FieldRow id="proj-secteur" label="Secteur" error={errors.sector}>
         <Select
           id="proj-secteur"
           value={values.sector}
           onChange={e => onChange('sector', e.target.value)}
+          disabled={isRefLoading}
         >
-          <option value="">Sélectionner un secteur</option>
-          <option value="Eau & Assainissement">Eau & Assainissement</option>
-          <option value="Agriculture">Agriculture</option>
-          <option value="Santé">Santé</option>
-          <option value="Éducation">Éducation</option>
-          <option value="Infrastructure">Infrastructure</option>
-          <option value="Énergie">Énergie</option>
-          <option value="Gouvernance">Gouvernance</option>
+          <option value="">
+            {isRefLoading ? 'Chargement…' : 'Sélectionner un secteur'}
+          </option>
+          {(refOptions?.sectors ?? []).map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
         </Select>
       </FieldRow>
 
-      <FieldRow id="proj-pays" label="Pays" error={errors.country} required>
+      <FieldRow id="proj-pays" label="Pays" error={errors.country}>
         <Select
           id="proj-pays"
           value={values.country}
           onChange={e => onChange('country', e.target.value)}
+          disabled={isRefLoading}
         >
-          <option value="">Sélectionner un pays</option>
-          <option value="Niger">Niger</option>
-          <option value="Mali">Mali</option>
-          <option value="Burkina Faso">Burkina Faso</option>
-          <option value="Sénégal">Sénégal</option>
-          <option value="Côte d'Ivoire">Côte d'Ivoire</option>
+          <option value="">
+            {isRefLoading ? 'Chargement…' : 'Sélectionner un pays'}
+          </option>
+          {(refOptions?.countries ?? []).map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </Select>
       </FieldRow>
 
-      <FieldRow id="proj-manager" label="Chef de projet" error={errors.manager} required>
-        <Input
+      <FieldRow id="proj-manager" label="Chef de projet" error={errors.managerId}>
+        <Select
           id="proj-manager"
-          value={values.manager}
-          onChange={e => onChange('manager', e.target.value)}
-          placeholder="Prénom Nom"
-        />
+          value={values.managerId}
+          onChange={e => onChange('managerId', e.target.value)}
+          disabled={isUsersLoading}
+        >
+          <option value="">
+            {isUsersLoading ? 'Chargement…' : 'Sélectionner un chef de projet'}
+          </option>
+          {(usersList ?? []).map(u => (
+            <option key={u.id} value={u.id}>
+              {u.prenom} {u.nom} ({u.role ?? 'Utilisateur'})
+            </option>
+          ))}
+        </Select>
+        {isUsersLoading && (
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Chargement des utilisateurs…
+          </div>
+        )}
       </FieldRow>
 
-      <FieldRow id="proj-debut" label="Date début" error={errors.startDate} required>
+      <FieldRow id="proj-debut" label="Date début" error={errors.startDate}>
         <Input
           id="proj-debut"
           type="date"
@@ -353,7 +414,7 @@ function ProjectFormContent({
         />
       </FieldRow>
 
-      <FieldRow id="proj-fin" label="Date fin prévue" error={errors.endDate} required>
+      <FieldRow id="proj-fin" label="Date fin prévue" error={errors.endDate}>
         <Input
           id="proj-fin"
           type="date"
@@ -362,7 +423,29 @@ function ProjectFormContent({
         />
       </FieldRow>
 
-      <FieldRow id="proj-budget" label="Budget total" error={errors.budgetTotal} required>
+      {/* Champs de clôture — visibles uniquement si statut = CLOTURE */}
+      {isCloture && (
+        <>
+          <FieldRow id="proj-fin-eff" label="Date fin effective">
+            <Input
+              id="proj-fin-eff"
+              type="date"
+              value={values.dateFinEffective}
+              onChange={e => onChange('dateFinEffective', e.target.value)}
+            />
+          </FieldRow>
+          <FieldRow id="proj-cloture-eff" label="Date de clôture">
+            <Input
+              id="proj-cloture-eff"
+              type="date"
+              value={values.dateClotureEffective}
+              onChange={e => onChange('dateClotureEffective', e.target.value)}
+            />
+          </FieldRow>
+        </>
+      )}
+
+      <FieldRow id="proj-budget" label="Budget total" error={errors.budgetTotal}>
         <Input
           id="proj-budget"
           type="number"
@@ -404,6 +487,8 @@ export function ProjectSlideOver({
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
 
+  const isEditMode = mode === 'edit';
+
   // Sync form when the panel opens or the mode/project changes
   useEffect(() => {
     if (!open) return;
@@ -422,17 +507,21 @@ export function ProjectSlideOver({
 
   function validate(): boolean {
     const errs: FormErrors = {};
-    if (!values.code.trim()) errs.code = 'Code requis';
+    if (!isEditMode && !values.code.trim()) errs.code = 'Code requis';
     if (!values.name.trim()) errs.name = 'Nom requis';
-    if (!values.donor) errs.donor = 'Bailleur requis';
-    if (!values.sector) errs.sector = 'Secteur requis';
-    if (!values.country) errs.country = 'Pays requis';
-    if (!values.manager.trim()) errs.manager = 'Chef de projet requis';
-    if (!values.startDate) errs.startDate = 'Date requise';
-    if (!values.endDate) errs.endDate = 'Date requise';
-    if (!values.budgetTotal || Number(values.budgetTotal) <= 0) {
-      errs.budgetTotal = 'Montant requis (> 0)';
+
+    // Les champs suivants sont obligatoires uniquement hors phase de préparation
+    // (aligné sur @IsOptional() dans le DTO backend — dateDebut, dateFinPrevue, budgetTotal)
+    const isPreparation = values.status === 'EN_PREPARATION';
+    if (!isPreparation) {
+      if (!values.startDate) errs.startDate = 'Date de début requise';
+      if (!values.endDate) errs.endDate = 'Date de fin requise';
+      if (!values.budgetTotal || Number(values.budgetTotal) <= 0) {
+        errs.budgetTotal = 'Montant requis (> 0)';
+      }
     }
+    if (!values.managerId) errs.managerId = 'Chef de projet requis';
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -440,34 +529,32 @@ export function ProjectSlideOver({
   function handleSave() {
     if (!validate()) return;
 
-    const budgetTotal = Number(values.budgetTotal);
-    const sym = values.devise === 'EUR' ? '€' : values.devise === 'XOF' ? '' : '$';
-    const budgetDisplay = budgetTotal >= 1_000_000
-      ? `${sym}${(budgetTotal / 1_000_000).toFixed(1)}M`
-      : `${sym}${budgetTotal.toLocaleString('fr-FR')}`;
+    const budgetTotal = values.budgetTotal ? Number(values.budgetTotal) : undefined;
 
-    const parts = values.manager.trim().split(/\s+/);
-    const initialesManager = parts.length >= 2
-      ? `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase()
-      : (parts[0]?.[0] ?? '').toUpperCase();
+    // Les initiales sont calculées côté adaptateur à partir des données serveur.
+    // Ici on en calcule une version provisoire à partir de ce qu'on sait.
+    const selectedUser = values.managerId; // UUID — le nom sera résolu par le serveur
+    const initialesManager = computeInitiales(undefined, undefined); // sera mis à jour après refresh
 
     onSave?.({
-      code: values.code.trim(),
+      code: values.code.trim() || undefined,
       name: values.name.trim(),
       description: values.description.trim(),
-      donor: values.donor,
-      sector: values.sector as ProjectSector,
-      country: values.country,
-      manager: values.manager.trim(),
+      donor: values.donor || undefined,
+      sector: (values.sector || undefined) as ProjectSector | undefined,
+      country: values.country || undefined,
+      managerId: selectedUser || undefined,
       initialesManager,
-      startDate: values.startDate,
-      endDate: values.endDate,
+      startDate: values.startDate || undefined,
+      endDate: values.endDate || undefined,
+      dateFinEffective: values.dateFinEffective || undefined,
+      dateClotureEffective: values.dateClotureEffective || undefined,
       budgetTotal,
       devise: values.devise,
-      budgetDisplay,
-      status: values.status as ProjectStatus,
+      status: statutToStatus(values.status),
+      statut: values.status,
     });
-    // Parent is responsible for closing the SlideOver after successful save
+    // Parent closes the SlideOver after successful save
   }
 
   const titles: Record<ProjectSlideOverMode, string> = {
@@ -489,6 +576,10 @@ export function ProjectSlideOver({
             </Button>
           </SlideOverClose>
         </SlideOverHeader>
+        {/* SlideOverDescription sr-only : requis par Radix UI DialogContent pour l'accessibilité */}
+        <SlideOverDescription>
+          {mode === 'view' ? 'Consultation des détails du projet' : mode === 'edit' ? 'Formulaire de modification du projet' : 'Formulaire de création d’un nouveau projet'}
+        </SlideOverDescription>
 
         <SlideOverBody>
           {readOnly && project ? (
@@ -498,6 +589,7 @@ export function ProjectSlideOver({
               values={values}
               errors={errors}
               onChange={handleChange}
+              isEditMode={isEditMode}
             />
           )}
         </SlideOverBody>

@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, User, MapPin, Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import { Card, CardContent } from '@/components/ui/data-display/Card';
 import { ActionsMenu, type ActionItem } from '@/components/projects/ActionsMenu';
-import type { Project, ProjectStatus } from '@/mocks/projectsMocks';
+import type { Project, ProjectStatus } from '@/lib/projectAdapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -16,13 +17,15 @@ function formatDateShort(iso: string): string {
   } catch { return iso; }
 }
 
-export function statusVariant(s: ProjectStatus): 'success' | 'warning' | 'destructive' | 'secondary' | 'default' {
+export function statusVariant(s: ProjectStatus | string): 'success' | 'warning' | 'destructive' | 'secondary' | 'default' {
   switch (s) {
     case 'En bonne voie':  return 'success';
     case 'À risque':       return 'warning';
     case 'En retard':      return 'destructive';
     case 'Clôturé':        return 'secondary';
     case 'En préparation': return 'default';
+    case 'Annulé':         return 'destructive';
+    default:               return 'default';
   }
 }
 
@@ -132,3 +135,6 @@ export function ProjectCard({ project, actions }: ProjectCardProps) {
     </Card>
   );
 }
+
+// Enveloppé avec React.memo pour éviter les re-renders inutiles depuis la vue Grid (P-06 Phase 19.5)
+export const MemoProjectCard = memo(ProjectCard);

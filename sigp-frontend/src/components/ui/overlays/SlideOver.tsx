@@ -42,6 +42,21 @@ const SlideOverContent = React.forwardRef<
 ));
 SlideOverContent.displayName = DialogPrimitive.Content.displayName;
 
+// Description accessible masquée visuellement (sr-only).
+// Satisfait l'exigence Radix UI DialogContent qui requiert une Description
+// ou aria-describedby={undefined} pour éviter le warning de console.
+const SlideOverDescription = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Description
+    ref={ref}
+    className={className ?? 'sr-only'}
+    {...props}
+  />
+));
+SlideOverDescription.displayName = DialogPrimitive.Description.displayName;
+
 const SlideOverHeader = ({
   className,
   ...props
@@ -99,6 +114,7 @@ export {
   SlideOverTrigger,
   SlideOverClose,
   SlideOverContent,
+  SlideOverDescription,
   SlideOverHeader,
   SlideOverTitle,
   SlideOverBody,

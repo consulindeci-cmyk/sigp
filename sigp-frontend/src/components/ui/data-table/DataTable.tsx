@@ -10,9 +10,9 @@ import { useDataTable } from './hooks/useDataTable';
 import { DataTableProps } from './types';
 
 function SortIcon({ sorted }: { sorted: false | 'asc' | 'desc' }) {
-  if (!sorted) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
-  if (sorted === 'asc') return <ArrowUp className="h-3 w-3 text-primary" />;
-  return <ArrowDown className="h-3 w-3 text-primary" />;
+  if (!sorted) return <ArrowUpDown className="h-3 w-3 opacity-40" aria-hidden="true" />;
+  if (sorted === 'asc') return <ArrowUp className="h-3 w-3 text-primary" aria-hidden="true" />;
+  return <ArrowDown className="h-3 w-3 text-primary" aria-hidden="true" />;
 }
 
 export function DataTable<TData, TValue>({
@@ -79,13 +79,13 @@ export function DataTable<TData, TValue>({
             <thead className="sticky top-0 z-20 bg-muted/95 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id} className="border-b-2 border-border">
-                  {headerGroup.headers.map((header, hIdx) => {
+                  {headerGroup.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sorted = header.column.getIsSorted();
                     const meta = header.column.columnDef.meta as { align?: string; isSticky?: boolean; isStickyRight?: boolean } | undefined;
                     const align = meta?.align ?? 'left';
-                    const isStickyLeft = meta?.isSticky || hIdx === 0; // Default first col is sticky
-                    const isStickyRight = meta?.isStickyRight;
+                    const isStickyLeft = meta?.isSticky === true;
+                    const isStickyRight = meta?.isStickyRight === true;
 
                     return (
                       <th
@@ -137,11 +137,11 @@ export function DataTable<TData, TValue>({
                       onRowClick && 'cursor-pointer'
                     )}
                   >
-                    {row.getVisibleCells().map((cell, cellIndex) => {
+                    {row.getVisibleCells().map((cell) => {
                       const meta = cell.column.columnDef.meta as { align?: string; isSticky?: boolean; isStickyRight?: boolean } | undefined;
                       const align = meta?.align ?? 'left';
-                      const isStickyLeft = meta?.isSticky || cellIndex === 0;
-                      const isStickyRight = meta?.isStickyRight;
+                      const isStickyLeft = meta?.isSticky === true;
+                      const isStickyRight = meta?.isStickyRight === true;
 
                       return (
                         <td

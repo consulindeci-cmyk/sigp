@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import api from '@/lib/axios'
-import type { Projet, PaginatedResponse } from '@/types'
-import type { ProjectApiDto } from '@/lib/projectAdapter'
+import type { PaginatedResponse } from '@/types'
+import { statusToStatut, formatBudget, type ProjectApiDto, type CreateProjectPayload, type UpdateProjectPayload } from '@/lib/projectAdapter'
 
 export interface ProjectTopRisk {
   id: string;
@@ -59,6 +59,8 @@ export const projectKeys = {
   budgetDistribution: (id: string) => [...projectKeys.all, 'budgetDistribution', id] as const,
   fundingSources: (id: string) => [...projectKeys.all, 'fundingSources', id] as const,
   milestones: (id: string) => [...projectKeys.all, 'milestones', id] as const,
+  kpis: (filters?: object) => [...projectKeys.all, 'kpis', filters] as const,
+  referenceOptions: () => [...projectKeys.all, 'referenceOptions'] as const,
 }
 
 export interface UseProjectsParams {
@@ -67,7 +69,7 @@ export interface UseProjectsParams {
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
-  filters?: Record<string, any>;
+  filters?: Record<string, string | number | undefined>;
   statut?: string;
   programmeId?: string;
   managerId?: string;
@@ -78,7 +80,7 @@ export function useProjects(params?: UseProjectsParams) {
   return useQuery({
     queryKey: projectKeys.list(params),
     queryFn: async () => {
-      const queryParams: Record<string, any> = {
+      const queryParams: Record<string, string | number | undefined> = {
         page: params?.page ?? 1,
         limit: params?.limit ?? 20,
       };
@@ -92,20 +94,13 @@ export function useProjects(params?: UseProjectsParams) {
         for (const [key, value] of Object.entries(params.filters)) {
           if (value !== undefined && value !== null && value !== '') {
             if (key === 'status' || key === 'statut') {
-              let mappedStatus = value;
-              switch (value) {
-                case 'En bonne voie': mappedStatus = 'EN_COURS'; break;
-                case 'À risque': mappedStatus = 'SUSPENDU'; break;
-                case 'Clôturé': mappedStatus = 'CLOTURE'; break;
-                case 'En préparation': mappedStatus = 'EN_PREPARATION'; break;
-              }
-              queryParams.statut = mappedStatus;
+              queryParams.statut = statusToStatut(String(value));
             } else if (key === 'donor' || key === 'bailleurPrincipal') {
-              queryParams.bailleurPrincipal = value;
+              queryParams.bailleurPrincipal = String(value);
             } else if (key === 'sector' || key === 'secteur') {
-              queryParams.secteur = value;
+              queryParams.secteur = String(value);
             } else if (key === 'country' || key === 'pays') {
-              queryParams.pays = value;
+              queryParams.pays = String(value);
             } else {
               queryParams[key] = value;
             }
@@ -165,7 +160,6 @@ export function useProject(id: string) {
       return raw as ProjectApiDto;
     },
     enabled: !!id,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -179,7 +173,6 @@ export function useProjectSummary(id: string) {
       return data?.data?.data ?? data?.data ?? data;
     },
     enabled: !!id,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -200,7 +193,6 @@ export function useProjectTopRisks(projectId: string) {
       return raw as ProjectTopRisk[];
     },
     enabled: !!projectId,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -221,7 +213,6 @@ export function useProjectCriticalActivities(projectId: string) {
       return raw as CriticalActivityResponse[];
     },
     enabled: !!projectId,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -242,7 +233,6 @@ export function useProjectDisbursements(projectId: string) {
       return raw as DisbursementMonthly[];
     },
     enabled: !!projectId,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -263,7 +253,6 @@ export function useProjectBudgetDistribution(projectId: string) {
       return raw as BudgetDistributionItem[];
     },
     enabled: !!projectId,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -284,7 +273,6 @@ export function useProjectFundingSources(projectId: string) {
       return raw as FundingSourceItem[];
     },
     enabled: !!projectId,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -305,7 +293,6 @@ export function useProjectMilestones(projectId: string) {
       return raw as MilestoneItem[];
     },
     enabled: !!projectId,
-
     refetchOnWindowFocus: false,
   });
 }
@@ -314,25 +301,42 @@ export function useProjectMilestones(projectId: string) {
 export function useCreateProject() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (dto: Partial<Projet>) => {
-      const { data } = await api.post<Projet>('/projects', dto)
+    mutationFn: async (payload: CreateProjectPayload) => {
+      const { data } = await api.post('/projects', payload)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
+    onSuccess: () => {
+      // Invalider uniquement les sous-arbres pertinents (P-02 : anti-query storm)
+      qc.invalidateQueries({ queryKey: projectKeys.list() })
+      qc.invalidateQueries({ queryKey: projectKeys.kpis() })
+      qc.invalidateQueries({ queryKey: projectKeys.referenceOptions() })
+    },
   })
 }
 
 // Mettre à jour un projet
-export function useUpdateProject(id: string) {
+export function useUpdateProject(hookId?: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (dto: Partial<Projet>) => {
-      const { data } = await api.patch<Projet>(`/projects/${id}`, dto)
-      return data
+    mutationFn: async (args: { id: string; payload: UpdateProjectPayload } | UpdateProjectPayload) => {
+      const targetId = 'id' in args && typeof args.id === 'string' ? args.id : hookId;
+      const payload = 'id' in args && 'payload' in args ? args.payload : args;
+      if (!targetId) throw new Error('ID du projet manquant pour la mise à jour');
+      const { data } = await api.patch(`/projects/${targetId}`, payload);
+      return { id: targetId, data };
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: projectKeys.detail(id) })
-      qc.invalidateQueries({ queryKey: projectKeys.all })
+    onSuccess: (result) => {
+      // Invalider précisément la fiche détaillée, la liste et les KPIs (P-02 : anti-query storm)
+      if (result?.id) {
+        qc.invalidateQueries({ queryKey: projectKeys.detail(result.id) });
+      } else if (hookId) {
+        qc.invalidateQueries({ queryKey: projectKeys.detail(hookId) });
+      }
+      qc.invalidateQueries({ queryKey: projectKeys.list() });
+      qc.invalidateQueries({ queryKey: projectKeys.kpis() });
+      // Les options de référence ne changent généralement pas lors d'une mise à jour,
+      // mais on les invalide par sécurité si un champ Secteur/Pays/Bailleur a changé.
+      qc.invalidateQueries({ queryKey: projectKeys.referenceOptions() });
     },
   })
 }
@@ -345,6 +349,68 @@ export function useDeleteProject() {
       await api.delete(`/projects/${id}`)
       return id
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
+    onSuccess: (deletedId) => {
+      // Invalider uniquement les sous-arbres pertinents (P-02 : anti-query storm)
+      qc.invalidateQueries({ queryKey: projectKeys.list() })
+      qc.invalidateQueries({ queryKey: projectKeys.kpis() })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(deletedId) })
+    },
   })
 }
+
+// ── Récupération des options de référence via endpoint dédié (Phase 19.5) ────────
+// Remplace l'ancienne approche qui téléchargeait 1000 projets complets côté client.
+export function useProjectsReferenceOptions() {
+  return useQuery({
+    queryKey: projectKeys.referenceOptions(),
+    queryFn: async () => {
+      const { data } = await api.get('/projects/reference-options');
+      const payload = data?.data ?? data;
+      return payload as { countries: string[]; sectors: string[]; donors: string[] };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// ── Récupération des KPIs via endpoint dédié (Phase 19.5) ────────────────────────
+// Remplace l'ancienne approche qui téléchargeait 10 000 projets complets côté client.
+export function useProjectsKPIs(filters?: Record<string, string | number | undefined>) {
+  const queryParams: Record<string, string | number | undefined> = {};
+  if (filters) {
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== '') {
+        if (key === 'status' || key === 'statut') {
+          queryParams.statut = statusToStatut(String(value));
+        } else if (key === 'donor' || key === 'bailleurPrincipal') {
+          queryParams.bailleurPrincipal = String(value);
+        } else if (key === 'sector' || key === 'secteur') {
+          queryParams.secteur = String(value);
+        } else if (key === 'country' || key === 'pays') {
+          queryParams.pays = String(value);
+        } else {
+          queryParams[key] = value;
+        }
+      }
+    }
+  }
+
+  return useQuery({
+    queryKey: projectKeys.kpis(queryParams),
+    queryFn: async () => {
+      const { data } = await api.get('/projects/summary/kpis', { params: queryParams });
+      const payload = data?.data ?? data;
+      return payload as {
+        total: number;
+        enBonneVoie: number;
+        aRisque: number;
+        enRetard: number;
+        clotured: number;
+        budgetPortefeuille: string;
+      };
+    },
+    staleTime: 30_000,
+  });
+}
+
+// Compatibilité : formatBudget est ré-exporté depuis l'adaptateur
+export { formatBudget };
