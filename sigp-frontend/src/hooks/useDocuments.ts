@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type {
   DocumentProjet, DocumentCategorie, TypeFichier,
   StatutDocument, ConfidentialiteDocument,
@@ -13,7 +14,8 @@ export const documentKeys = {
 };
 
 // ── Meta encoding (description field) ────────────────────────────────────────
-// Stores all frontend-only fields in backend.description as JSON.
+// Stores all frontend-only fields in backend.description as JSON — inchangé,
+// indépendant du backend (même colonne `description` côté Supabase).
 
 const PDOC_META_PREFIX = '__PDOC_META__:';
 
@@ -45,48 +47,49 @@ function decodeMeta(description: string | null | undefined): PDocMeta | null {
   }
 }
 
-// ── Backend DTO ───────────────────────────────────────────────────────────────
+// ── Ligne Supabase (colonnes snake_case de la table `documents_projet`) ───────
 
-interface DocumentDto {
+interface DocumentRow {
   id:          string;
-  projectId:   string;
-  livrableId:  string | null;
+  project_id:  string;
+  livrable_id: string | null;
   titre:       string;
   description: string | null;
   statut:      StatutDocument;
-  createdBy:   string | null;
-  updatedBy:   string | null;
-  createdAt:   string;
-  updatedAt:   string;
+  created_by:  string | null;
+  created_at:  string;
+  updated_at:  string;
 }
+
+const DOCUMENT_SELECT = 'id, project_id, livrable_id, titre, description, statut, created_by, created_at, updated_at';
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
 
-function adaptDocument(dto: DocumentDto): DocumentProjet {
-  const meta    = decodeMeta(dto.description);
-  const today   = dto.createdAt ? dto.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
-  const updated = dto.updatedAt ? dto.updatedAt.split('T')[0] : today;
+function adaptDocument(row: DocumentRow): DocumentProjet {
+  const meta    = decodeMeta(row.description);
+  const today   = row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
+  const updated = row.updated_at ? row.updated_at.split('T')[0] : today;
 
   return {
-    id:                dto.id,
-    projet_id:         dto.projectId,
-    code_document:     meta?.code_document    ?? `DOC-${dto.id.slice(0, 8).toUpperCase()}`,
-    titre:             dto.titre,
-    description:       meta ? undefined : (dto.description ?? undefined),
+    id:                row.id,
+    projet_id:         row.project_id,
+    code_document:     meta?.code_document    ?? `DOC-${row.id.slice(0, 8).toUpperCase()}`,
+    titre:             row.titre,
+    description:       meta ? undefined : (row.description ?? undefined),
     categorie:         meta?.categorie         ?? 'Autre',
     activite_liee:     meta?.activite_liee,
     version:           meta?.version           ?? '1.0',
-    auteur:            meta?.auteur            ?? (dto.createdBy ?? ''),
-    responsable:       meta?.responsable       ?? (dto.createdBy ?? ''),
+    auteur:            meta?.auteur            ?? (row.created_by ?? ''),
+    responsable:       meta?.responsable       ?? (row.created_by ?? ''),
     date_creation:     meta?.date_creation     ?? today,
     date_modification: meta?.date_modification ?? updated,
-    statut:            dto.statut,
+    statut:            row.statut,
     taille_ko:         meta?.taille_ko         ?? 0,
     type_fichier:      meta?.type_fichier      ?? 'Autre',
     mots_cles:         meta?.mots_cles         ?? [],
     confidentialite:   meta?.confidentialite   ?? 'INTERNE',
-    createdAt:         dto.createdAt,
-    updatedAt:         dto.updatedAt,
+    createdAt:         row.created_at,
+    updatedAt:         row.updated_at,
   };
 }
 
@@ -147,10 +150,15 @@ function buildUpdatePayload(
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchDocuments(projectId: string): Promise<DocumentProjet[]> {
-  const { data } = await api.get('/documents', { params: { projectId, limit: 100 } });
-  const raw: unknown = data?.data?.data ?? data?.data ?? data;
-  const dtos: DocumentDto[] = Array.isArray(raw) ? raw : [];
-  return dtos.map(adaptDocument);
+  const { data, error } = await supabase
+    .from('documents_projet')
+    .select(DOCUMENT_SELECT)
+    .eq('project_id', projectId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return (data as unknown as DocumentRow[]).map(adaptDocument);
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -160,7 +168,6 @@ export function useDocuments(projectId: string) {
     queryKey: documentKeys.project(projectId),
     queryFn:  () => fetchDocuments(projectId),
     enabled:  !!projectId,
-
   });
 }
 
@@ -169,8 +176,8 @@ export function useCreateDocument(projectId: string) {
   return useMutation({
     mutationFn: async (dto: PDocPayload) => {
       const payload = buildCreatePayload(projectId, dto);
-      const { data } = await api.post('/documents', payload);
-      return adaptDocument(data?.data ?? data);
+      const { data } = await invokeEdgeFunction<{ data: DocumentRow }>('documents-create', payload);
+      return adaptDocument(data);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: documentKeys.project(projectId) });
@@ -189,8 +196,8 @@ export function useUpdateDocument(projectId: string) {
       const cached  = qc.getQueryData<DocumentProjet[]>(documentKeys.project(projectId));
       const current = cached?.find(d => d.id === id);
       const payload = buildUpdatePayload(dto, current);
-      const { data: resp } = await api.patch(`/documents/${id}`, payload);
-      return adaptDocument(resp?.data ?? resp);
+      const { data: resp } = await invokeEdgeFunction<{ data: DocumentRow }>('documents-update', { id, ...payload });
+      return adaptDocument(resp);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: documentKeys.project(projectId) });
@@ -206,7 +213,7 @@ export function useDeleteDocument(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (documentId: string) => {
-      await api.delete(`/documents/${documentId}`);
+      await invokeEdgeFunction<{ message: string }>('documents-delete', { id: documentId });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: documentKeys.project(projectId) });

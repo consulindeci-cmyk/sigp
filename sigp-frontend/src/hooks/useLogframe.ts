@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { CadreLogique } from '@/types';
 
 // ── Cache keys ────────────────────────────────────────────────────────────────
@@ -31,8 +32,7 @@ const BE_TO_FE: Record<BELevel, FELevel> = {
   ACTIVITE:            'ACTIVITE',
 };
 
-// ── Meta encoding (description field) ────────────────────────────────────────
-// Stores frontend-only fields in the backend's description field as JSON.
+// ── Meta encoding (description field) — inchangé, même colonne côté Supabase ──
 
 const LF_META_PREFIX = '__LF_META__:';
 
@@ -57,68 +57,55 @@ function decodeMeta(description: string | null | undefined): LFMeta | null {
   }
 }
 
-// ── Backend DTOs ──────────────────────────────────────────────────────────────
+// ── Ligne Supabase (colonnes snake_case de `logframe_objectives`) ────────────
 
-export interface LogframeObjectiveDto {
+interface LogframeObjectiveRow {
   id: string;
-  projectId: string;
+  project_id: string;
   niveau: BELevel;
   code: string;
   libelle: string;
   description: string | null;
-  parentId: string | null;
+  parent_id: string | null;
   ordre: number;
   actif: boolean;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface LogframeIndicatorDto {
-  id: string;
-  objectiveId: string;
-  code: string;
-  libelle: string;
-  type: 'IMPACT' | 'OUTCOME' | 'OUTPUT' | 'PROCESS';
-  unite: string | null;
-  valeurBaseline: number | null;
-  valeurCible: number | null;
-  valeurActuelle: number | null;
-  sourceVerification: string | null;
-  periodicite: string | null;
-  actif: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+const OBJECTIVE_SELECT = 'id, project_id, niveau, code, libelle, description, parent_id, ordre, actif, created_at, updated_at';
 
-// ── Adapter: backend objective → CadreLogique ─────────────────────────────────
+// ── Adapter: ligne Supabase → CadreLogique ────────────────────────────────────
 
-function adaptObjective(dto: LogframeObjectiveDto): CadreLogique {
-  const meta = decodeMeta(dto.description);
-  const feNiveau: FELevel = meta?.feNiveau ?? BE_TO_FE[dto.niveau] ?? 'IMPACT';
+function adaptObjective(row: LogframeObjectiveRow): CadreLogique {
+  const meta = decodeMeta(row.description);
+  const feNiveau: FELevel = meta?.feNiveau ?? BE_TO_FE[row.niveau] ?? 'IMPACT';
 
   return {
-    id:                   dto.id,
-    projet_id:            dto.projectId,
-    parent_id:            dto.parentId ?? null,
+    id:                   row.id,
+    projet_id:            row.project_id,
+    parent_id:            row.parent_id ?? null,
     niveau_intervention:  feNiveau,
-    indicateur:           dto.libelle,
+    indicateur:           row.libelle,
     valeur_reference:     meta?.valeur_reference,
     cible:                meta?.cible,
     source_verification:  meta?.source_verification,
-    hypotheses:           meta?.hypotheses ?? (meta ? undefined : (dto.description ?? undefined)),
+    hypotheses:           meta?.hypotheses ?? (meta ? undefined : (row.description ?? undefined)),
   };
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchObjectives(projectId: string): Promise<CadreLogique[]> {
-  const { data } = await api.get('/logframe-objectives', {
-    params: { projectId, limit: 100 },
-  });
-  // Handle both paginated { data: [...] } and plain array responses
-  const raw: unknown = data?.data?.data ?? data?.data ?? data;
-  const dtos: LogframeObjectiveDto[] = Array.isArray(raw) ? raw : [];
-  return dtos.map(adaptObjective);
+  const { data, error } = await supabase
+    .from('logframe_objectives')
+    .select(OBJECTIVE_SELECT)
+    .eq('project_id', projectId)
+    .is('deleted_at', null)
+    .order('ordre', { ascending: true })
+    .limit(100);
+  if (error) throw error;
+  return (data as unknown as LogframeObjectiveRow[]).map(adaptObjective);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -185,7 +172,6 @@ export function useLogframe(projectId: string) {
     queryKey: logframeKeys.all(projectId),
     queryFn: () => fetchObjectives(projectId).then(data => ({ data })),
     enabled: !!projectId,
-
   });
 }
 
@@ -198,8 +184,8 @@ export function useCreateLogframe(projectId: string) {
       const cached: CadreLogique[] =
         (qc.getQueryData<{ data: CadreLogique[] }>(logframeKeys.all(projectId))?.data) ?? [];
       const payload = buildCreatePayload(projectId, dto, cached);
-      const { data } = await api.post('/logframe-objectives', payload);
-      return data?.data ?? data;
+      const { data } = await invokeEdgeFunction<{ data: LogframeObjectiveRow }>('logframe-objectives-create', payload);
+      return data;
     },
     onSuccess:  () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
     onError:    () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
@@ -214,8 +200,8 @@ export function useUpdateLogframe(projectId: string) {
         (qc.getQueryData<{ data: CadreLogique[] }>(logframeKeys.all(projectId))?.data) ?? [];
       const current = cached.find(i => i.id === id);
       const payload = buildUpdatePayload(data, current);
-      const { data: resp } = await api.patch(`/logframe-objectives/${id}`, payload);
-      return resp?.data ?? resp;
+      const { data: resp } = await invokeEdgeFunction<{ data: LogframeObjectiveRow }>('logframe-objectives-update', { id, ...payload });
+      return resp;
     },
     onSuccess:  () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
     onError:    () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
@@ -226,7 +212,7 @@ export function useDeleteLogframe(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/logframe-objectives/${id}`);
+      await invokeEdgeFunction<{ message: string }>('logframe-objectives-delete', { id });
     },
     onSuccess:  () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
     onError:    () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
@@ -252,8 +238,7 @@ export function useCreateLogframeIndicator(projectId?: string) {
       periodicite?: string;
     }) => {
       const code = dto.code ?? `IND-${Date.now().toString(36)}`.substring(0, 30).toUpperCase();
-      const { data } = await api.post('/logframe-indicators', { ...dto, code });
-      return data?.data ?? data;
+      return invokeEdgeFunction<{ data: unknown }>('logframe-indicators-create', { ...dto, code });
     },
     onSuccess: () => {
       if (projectId) qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) });
@@ -278,10 +263,7 @@ export function useUpdateLogframeIndicator(projectId?: string) {
       sourceVerification?: string;
       periodicite?: string;
       actif?: boolean;
-    }) => {
-      const { data } = await api.patch(`/logframe-indicators/${id}`, dto);
-      return data?.data ?? data;
-    },
+    }) => invokeEdgeFunction<{ data: unknown }>('logframe-indicators-update', { id, ...dto }),
     onSuccess: () => {
       if (projectId) qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) });
     },
@@ -292,7 +274,7 @@ export function useDeleteLogframeIndicator(projectId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/logframe-indicators/${id}`);
+      await invokeEdgeFunction<{ message: string }>('logframe-indicators-delete', { id });
     },
     onSuccess: () => {
       if (projectId) qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) });

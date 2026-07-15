@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, CalendarDays, User, MapPin, Banknote, Loader2 } from 'lucide-react';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
@@ -272,11 +272,13 @@ function ProjectFormContent({
   const { data: usersList, isLoading: isUsersLoading } = useQuery({
     queryKey: ['users', 'list'],
     queryFn: async () => {
-      const { data } = await api.get('/users', { params: { limit: 100 } }).catch(() => ({ data: [] }));
-      const raw = Array.isArray(data?.data?.data)
-        ? data.data.data
-        : (Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []));
-      return raw as Array<{ id: string; nom: string; prenom: string; role?: string }>;
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, nom, prenom, role')
+        .is('deleted_at', null)
+        .limit(100);
+      if (error) throw error;
+      return data as Array<{ id: string; nom: string; prenom: string; role?: string }>;
     },
     staleTime: 60_000,
   });

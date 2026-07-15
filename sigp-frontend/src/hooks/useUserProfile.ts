@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import api from '@/lib/axios';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { UserProfile } from '@/mocks/settingsMocks';
 
 // ── Role labels ───────────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ export function useCurrentUserProfile(): UserProfile {
   };
 }
 
-// ── Hook: update profile (nom, prenom, telephone) via PATCH /users/:id ────────
+// ── Hook: update profile (nom, prenom, telephone) via l'Edge Function users-update ─
 
 export interface UpdateProfilePayload {
   id:         string;
@@ -84,7 +84,7 @@ export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: UpdateProfilePayload) =>
-      api.patch(`/users/${id}`, data).then(r => r.data),
+      invokeEdgeFunction<{ data: unknown }>('users-update', { id, ...data }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
     onError:   () => qc.invalidateQueries({ queryKey: ['users'] }),
   });

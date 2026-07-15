@@ -1,27 +1,33 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { Livrable, StatutLivrable, LivrableCategorie, PrioriteLivrable } from '@/types';
 
-// ── Backend DTO ───────────────────────────────────────────────────────────────
+// ── Ligne Supabase (colonnes snake_case de la table `livrables`) ──────────────
 
-interface LivrableResponseDto {
+interface LivrableRow {
   id: string;
-  projectId: string;
-  wbsId: string | null;
+  project_id: string;
+  wbs_id: string | null;
   code: string | null;
   nom: string;
   description: string | null;
-  statut: string;  // LivrableStatus: NON_COMMENCE | EN_COURS | SOUMIS | VALIDE | REFUSE | CLOTURE
-  datePrevue: string | null;
-  dateSoumission: string | null;
-  dateValidation: string | null;
-  responsableId: string | null;
+  statut: string;  // NON_COMMENCE | EN_COURS | SOUMIS | EN_REVISION | VALIDE | REJETE | EN_RETARD
+  date_prevue: string | null;
+  date_soumission: string | null;
+  date_validation: string | null;
+  responsable_id: string | null;
   notes: string | null;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
 }
 
-// ── Extra metadata stored in backend `notes` field ───────────────────────────
+const LIVRABLE_SELECT = `
+  id, project_id, wbs_id, code, nom, description, statut, date_prevue,
+  date_soumission, date_validation, responsable_id, notes, created_at, updated_at
+`;
+
+// ── Extra metadata stored in `notes` (inchangé, indépendant du backend) ──────
 
 const LIV_META_PREFIX = '__LIV_META__:';
 
@@ -44,13 +50,23 @@ function decodeMeta(notes: string | null | undefined): LivMeta | null {
 }
 
 // ── Status mapping ─────────────────────────────────────────────────────────────
+// Corrigé : l'enum réel côté base (LivrableStatus) est
+// NON_COMMENCE | EN_COURS | SOUMIS | EN_REVISION | VALIDE | REJETE | EN_RETARD.
+// L'ancien mapping envoyait 'REFUSE' et 'CLOTURE', deux valeurs qui n'existent
+// PAS dans cet enum — un choix "Refusé" ou "Terminé" dans l'UI aurait fait
+// échouer la sauvegarde côté serveur (valeur d'enum invalide). Corrigé ici :
+// REFUSE ↔ REJETE, TERMINE ↔ VALIDE (pas d'état "clôturé" distinct de "validé"
+// dans l'enum réel). EN_REVISION/EN_RETARD n'ont pas d'équivalent direct côté
+// UI — approximés en SOUMIS/EN_COURS plutôt que silencieusement rangés en
+// "à faire" comme le faisait l'ancien fallback.
 
 function beStatutToFe(s: string): StatutLivrable {
-  if (s === 'EN_COURS') return 'EN_COURS';
-  if (s === 'SOUMIS')   return 'SOUMIS';
-  if (s === 'VALIDE')   return 'VALIDE';
-  if (s === 'REFUSE')   return 'REFUSE';
-  if (s === 'CLOTURE')  return 'TERMINE';
+  if (s === 'EN_COURS')    return 'EN_COURS';
+  if (s === 'SOUMIS')      return 'SOUMIS';
+  if (s === 'EN_REVISION') return 'SOUMIS';
+  if (s === 'VALIDE')      return 'VALIDE';
+  if (s === 'REJETE')      return 'REFUSE';
+  if (s === 'EN_RETARD')   return 'EN_COURS';
   return 'A_FAIRE'; // NON_COMMENCE
 }
 
@@ -58,8 +74,8 @@ function feStatutToBe(s: StatutLivrable): string {
   if (s === 'EN_COURS') return 'EN_COURS';
   if (s === 'SOUMIS')   return 'SOUMIS';
   if (s === 'VALIDE')   return 'VALIDE';
-  if (s === 'REFUSE')   return 'REFUSE';
-  if (s === 'TERMINE')  return 'CLOTURE';
+  if (s === 'REFUSE')   return 'REJETE';
+  if (s === 'TERMINE')  return 'VALIDE';
   return 'NON_COMMENCE'; // A_FAIRE
 }
 
@@ -69,26 +85,26 @@ function isoDate(val: string | null | undefined): string {
   catch { return ''; }
 }
 
-// ── Adapter: backend DTO → frontend Livrable ──────────────────────────────────
+// ── Adapter: ligne Supabase → frontend Livrable ───────────────────────────────
 
-function adaptLivrable(dto: LivrableResponseDto): Livrable {
-  const meta = decodeMeta(dto.notes);
+function adaptLivrable(row: LivrableRow): Livrable {
+  const meta = decodeMeta(row.notes);
   return {
-    id:            dto.id,
-    projet_id:     dto.projectId,
-    code_livrable: dto.code ?? `LIV-${dto.id.slice(0, 8).toUpperCase()}`,
-    nom:           dto.nom,
-    description:   dto.description ?? undefined,
+    id:            row.id,
+    projet_id:     row.project_id,
+    code_livrable: row.code ?? `LIV-${row.id.slice(0, 8).toUpperCase()}`,
+    nom:           row.nom,
+    description:   row.description ?? undefined,
     categorie:     meta?.categorie  ?? 'Autre',
     composante:    meta?.composante ?? undefined,
-    responsable:   meta?.responsable ?? (dto.responsableId ?? ''),
-    date_prevue:   isoDate(dto.datePrevue),
-    date_reelle:   isoDate(dto.dateValidation) || isoDate(dto.dateSoumission) || undefined,
+    responsable:   meta?.responsable ?? (row.responsable_id ?? ''),
+    date_prevue:   isoDate(row.date_prevue),
+    date_reelle:   isoDate(row.date_validation) || isoDate(row.date_soumission) || undefined,
     avancement:    meta?.avancement ?? 0,
-    statut:        beStatutToFe(dto.statut),
+    statut:        beStatutToFe(row.statut),
     priorite:      meta?.priorite   ?? 'MOYENNE',
-    createdAt:     dto.createdAt,
-    updatedAt:     dto.updatedAt,
+    createdAt:     row.created_at,
+    updatedAt:     row.updated_at,
   };
 }
 
@@ -132,12 +148,6 @@ function buildUpdatePayload(l: Partial<Livrable>, current?: Livrable) {
   return p;
 }
 
-function extractDtos(data: unknown): LivrableResponseDto[] {
-  const unwrapped = (data as any)?.data ?? data;
-  const list = Array.isArray(unwrapped) ? unwrapped : ((unwrapped as any)?.data ?? []);
-  return Array.isArray(list) ? list : [];
-}
-
 // ── Cache keys ────────────────────────────────────────────────────────────────
 
 export const deliverableKeys = {
@@ -150,12 +160,18 @@ export function useDeliverables(projectId: string) {
   return useQuery({
     queryKey: deliverableKeys.all(projectId),
     queryFn: async () => {
-      const { data } = await api.get('/livrables', { params: { projectId, limit: 100 } });
-      const livrables = extractDtos(data).map(adaptLivrable);
+      const { data, error } = await supabase
+        .from('livrables')
+        .select(LIVRABLE_SELECT)
+        .eq('project_id', projectId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      const livrables = (data as unknown as LivrableRow[]).map(adaptLivrable);
       return { data: livrables, meta: { total: livrables.length, page: 1, limit: 100, totalPages: 1 } };
     },
     enabled: !!projectId,
-
   });
 }
 
@@ -164,8 +180,8 @@ export function useCreateDeliverable(projectId: string) {
   return useMutation({
     mutationFn: async (dto: Omit<Livrable, 'id' | 'createdAt' | 'updatedAt'>) => {
       const payload = buildCreatePayload(projectId, dto);
-      const { data } = await api.post('/livrables', payload);
-      return adaptLivrable(data?.data ?? data);
+      const { data } = await invokeEdgeFunction<{ data: LivrableRow }>('livrables-create', payload);
+      return adaptLivrable(data);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: deliverableKeys.all(projectId) }),
   });
@@ -178,8 +194,8 @@ export function useUpdateDeliverable(projectId: string) {
       const cached = qc.getQueryData<{ data: Livrable[] }>(deliverableKeys.all(projectId));
       const current = cached?.data?.find(l => l.id === id);
       const payload = buildUpdatePayload(dto, current);
-      const { data } = await api.patch(`/livrables/${id}`, payload);
-      return adaptLivrable(data?.data ?? data);
+      const { data } = await invokeEdgeFunction<{ data: LivrableRow }>('livrables-update', { id, ...payload });
+      return adaptLivrable(data);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: deliverableKeys.all(projectId) }),
   });
@@ -189,7 +205,7 @@ export function useDeleteDeliverable(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (livrableId: string) => {
-      await api.delete(`/livrables/${livrableId}`);
+      await invokeEdgeFunction<{ message: string }>('livrables-delete', { id: livrableId });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: deliverableKeys.all(projectId) }),
   });

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type {
   PPMLigne,
   CategorieAchat,
@@ -9,7 +10,7 @@ import type {
   TypeRevue,
 } from '@/types';
 
-// ─── Backend DTO ──────────────────────────────────────────────────────────────
+// ─── Ligne Supabase (colonnes snake_case de la table `ppm_marches`) ───────────
 
 export interface PpmMarcheDto {
   id:                  string;
@@ -32,7 +33,58 @@ export interface PpmMarcheDto {
   updatedAt:           string;
 }
 
+interface PpmMarcheRow {
+  id: string;
+  project_id: string;
+  code: string;
+  intitule: string;
+  type: string;
+  statut: string;
+  montant_estime: number | null;
+  montant_signe: number | null;
+  date_lancement_prevu: string | null;
+  date_soumission_prevu: string | null;
+  date_attribution: string | null;
+  date_signature: string | null;
+  date_fin_prevue: string | null;
+  date_fin_effective: string | null;
+  titulaire: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const PPM_MARCHE_SELECT = `
+  id, project_id, code, intitule, type, statut, montant_estime, montant_signe,
+  date_lancement_prevu, date_soumission_prevu, date_attribution, date_signature,
+  date_fin_prevue, date_fin_effective, titulaire, notes, created_at, updated_at
+`;
+
+function rowToDto(row: PpmMarcheRow): PpmMarcheDto {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    code: row.code,
+    intitule: row.intitule,
+    type: row.type,
+    statut: row.statut,
+    montantEstime: row.montant_estime,
+    montantSigne: row.montant_signe,
+    dateLancementPrevu: row.date_lancement_prevu,
+    dateSoumissionPrevu: row.date_soumission_prevu,
+    dateAttribution: row.date_attribution,
+    dateSignature: row.date_signature,
+    dateFinPrevue: row.date_fin_prevue,
+    dateFinEffective: row.date_fin_effective,
+    titulaire: row.titulaire,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 // ─── Extra metadata: fields the backend doesn't have, serialized into `notes` ─
+// (inchangé, indépendant du backend — même colonne `notes` côté Supabase)
 
 const PPM_META = '__PPM_META__';
 
@@ -81,7 +133,7 @@ function serializeNotes(extra: PPMExtraMeta): string {
   return `${PPM_META}:${JSON.stringify(extra)}`;
 }
 
-// ─── Enum mappings ────────────────────────────────────────────────────────────
+// ─── Enum mappings (inchangés) ────────────────────────────────────────────────
 
 function typeToCategorie(type: string): CategorieAchat {
   switch (type) {
@@ -261,15 +313,6 @@ function ligneToUpdatePayload(l: Partial<PPMLigne>, existing: PPMLigne) {
   };
 }
 
-function extractList(data: unknown): PpmMarcheDto[] {
-  if (Array.isArray(data)) return data as PpmMarcheDto[];
-  if (data && typeof data === 'object') {
-    const d = (data as Record<string, unknown>).data;
-    if (Array.isArray(d)) return d as PpmMarcheDto[];
-  }
-  return [];
-}
-
 // ─── Query keys ───────────────────────────────────────────────────────────────
 
 export const ppmKeys = {
@@ -279,8 +322,15 @@ export const ppmKeys = {
 
 // Shared queryFn used by both usePPM and usePPMVersions (same queryKey → deduped)
 export async function fetchPpmMarcheList(projectId: string): Promise<PpmMarcheDto[]> {
-  const { data } = await api.get('/ppm', { params: { projectId, limit: 100 } });
-  return extractList(data);
+  const { data, error } = await supabase
+    .from('ppm_marches')
+    .select(PPM_MARCHE_SELECT)
+    .eq('project_id', projectId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return (data as unknown as PpmMarcheRow[]).map(rowToDto);
 }
 
 // ─── usePPM ───────────────────────────────────────────────────────────────────
@@ -312,8 +362,8 @@ export function usePPM(projectId: string, versionId?: string) {
   const addMutation = useMutation({
     mutationFn: async (payload: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => {
       const body = ligneToCreatePayload(projectId, payload as LigneInput);
-      const { data } = await api.post('/ppm', body);
-      return data as PpmMarcheDto;
+      const { data } = await invokeEdgeFunction<{ data: PpmMarcheRow }>('ppm-create', body);
+      return rowToDto(data);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ppmKeys.list(projectId) }),
   });
@@ -326,15 +376,15 @@ export function usePPM(projectId: string, versionId?: string) {
       const body = existingLigne
         ? ligneToUpdatePayload(updates, existingLigne)
         : ligneToUpdatePayload(updates, updates as PPMLigne);
-      const { data } = await api.patch(`/ppm/${id}`, body);
-      return data as PpmMarcheDto;
+      const { data } = await invokeEdgeFunction<{ data: PpmMarcheRow }>('ppm-update', { id, ...body });
+      return rowToDto(data);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ppmKeys.list(projectId) }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/ppm/${id}`);
+      await invokeEdgeFunction<{ message: string }>('ppm-delete', { id });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ppmKeys.list(projectId) }),
   });

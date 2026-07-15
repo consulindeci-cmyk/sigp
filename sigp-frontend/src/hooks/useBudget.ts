@@ -1,68 +1,71 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { Budget, BudgetVersion, BudgetLigne, StatutBudget } from '@/types/budget';
 
-// ─── Backend DTOs ─────────────────────────────────────────────────────────────
+// ─── Lignes Supabase (colonnes snake_case) ────────────────────────────────────
 
-interface BudgetVersionDto {
+interface BudgetVersionRow {
   id: string;
-  projectId: string;
+  project_id: string;
   version: number;
   nom: string;
   statut: string;
-  montantTotal: number | null;
-  approvePar: string | null;
-  approuveLe: string | null;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
+  montant_total: number | null;
+  approuve_par: string | null;
+  approuve_le: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-interface BudgetLineDto {
+interface BudgetLineRow {
   id: string;
-  versionId: string;
-  parentId: string | null;
-  codeLigne: string;
+  version_id: string;
+  parent_id: string | null;
+  code_ligne: string;
   libelle: string;
   categorie: string | null;
-  montantPrevu: number;
-  montantEngage: number;
-  montantPaye: number;
+  montant_prevu: number;
+  montant_engage: number;
+  montant_paye: number;
   ordre: number;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
 }
+
+const VERSION_SELECT = 'id, project_id, version, nom, statut, montant_total, approuve_par, approuve_le, created_at, updated_at';
+const LINE_SELECT = 'id, version_id, parent_id, code_ligne, libelle, categorie, montant_prevu, montant_engage, montant_paye, ordre, created_at, updated_at';
 
 // ─── Adapters ─────────────────────────────────────────────────────────────────
 
-function adaptVersionSummary(dto: BudgetVersionDto): BudgetVersion {
+function adaptVersionSummary(row: BudgetVersionRow): BudgetVersion {
   return {
-    id:                    dto.id,
-    budget_id:             dto.projectId + '-budget',
-    numero_version:        dto.nom || `v${dto.version}`,
-    statut:                dto.statut as StatutBudget,
-    montant_total_initial: dto.montantTotal ?? 0,
-    montant_total_revise:  dto.montantTotal ?? 0,
-    cree_le:               dto.createdAt,
-    approuve_le:           dto.approuveLe ?? undefined,
-    approuve_par:          dto.approvePar ?? undefined,
+    id:                    row.id,
+    budget_id:             row.project_id + '-budget',
+    numero_version:        row.nom || `v${row.version}`,
+    statut:                row.statut as StatutBudget,
+    montant_total_initial: row.montant_total ?? 0,
+    montant_total_revise:  row.montant_total ?? 0,
+    cree_le:               row.created_at,
+    approuve_le:           row.approuve_le ?? undefined,
+    approuve_par:          row.approuve_par ?? undefined,
     lignes:                undefined,
     revisions:             [],
   };
 }
 
-function adaptLine(dto: BudgetLineDto): BudgetLigne {
-  const prevu  = dto.montantPrevu  ?? 0;
-  const engage = dto.montantEngage ?? 0;
-  const paye   = dto.montantPaye   ?? 0;
+function adaptLine(row: BudgetLineRow): BudgetLigne {
+  const prevu  = row.montant_prevu  ?? 0;
+  const engage = row.montant_engage ?? 0;
+  const paye   = row.montant_paye   ?? 0;
   return {
-    id:                    dto.id,
-    budget_version_id:     dto.versionId,
+    id:                    row.id,
+    budget_version_id:     row.version_id,
     version:               1,
-    wbs_id:                dto.codeLigne,
+    wbs_id:                row.code_ligne,
     bailleur_id:           '',
-    source_financement_id: dto.categorie ?? '',
-    categorie_id:          dto.categorie ?? '',
+    source_financement_id: row.categorie ?? '',
+    categorie_id:          row.categorie ?? '',
     compte_comptable_id:   undefined,
     montant_initial:       prevu,
     montant_revise:        prevu,
@@ -72,15 +75,9 @@ function adaptLine(dto: BudgetLineDto): BudgetLigne {
     montant_decaisse:      paye,
     solde_disponible:      Math.max(0, prevu - engage),
     reste_a_payer:         Math.max(0, engage - paye),
-    wbs_nom:               dto.libelle,
+    wbs_nom:               row.libelle,
     bailleur_nom:          undefined,
   };
-}
-
-function extractList<T>(data: unknown): T[] {
-  if (Array.isArray(data)) return data as T[];
-  if (data && typeof data === 'object' && Array.isArray((data as any).data)) return (data as any).data as T[];
-  return [];
 }
 
 // Higher priority = preferred as active version
@@ -106,15 +103,21 @@ export function useBudget(projetId: string) {
   return useQuery({
     queryKey: budgetKeys.versions(projetId),
     queryFn: async (): Promise<Budget> => {
-      const { data } = await api.get('/budget-versions', { params: { projectId: projetId } });
-      const items = extractList<BudgetVersionDto>(data);
+      const { data, error } = await supabase
+        .from('budget_versions')
+        .select(VERSION_SELECT)
+        .eq('project_id', projetId)
+        .is('deleted_at', null);
+      if (error) throw error;
+
+      const items = data as unknown as BudgetVersionRow[];
       const versions: BudgetVersion[] = items.map(adaptVersionSummary);
 
       const active = [...items].sort((a, b) => {
         const pa = STATUT_PRIORITY[a.statut] ?? 0;
         const pb = STATUT_PRIORITY[b.statut] ?? 0;
         if (pa !== pb) return pb - pa;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       })[0];
 
       return {
@@ -122,7 +125,7 @@ export function useBudget(projetId: string) {
         projet_id:         projetId,
         devise_ref_id:     'XOF',
         cree_par:          '',
-        cree_le:           items[0]?.createdAt ?? new Date().toISOString(),
+        cree_le:           items[0]?.created_at ?? new Date().toISOString(),
         version_active_id: active?.id ?? '',
         versions,
       };
@@ -136,16 +139,15 @@ export function useBudgetVersion(projetId: string, versionId?: string) {
     queryKey: budgetKeys.version(versionId ?? ''),
     queryFn: async (): Promise<BudgetVersion> => {
       const [vRes, lRes] = await Promise.all([
-        api.get(`/budget-versions/${versionId}`),
-        api.get('/budget-lines', { params: { versionId } }),
+        supabase.from('budget_versions').select(VERSION_SELECT).eq('id', versionId as string).single(),
+        supabase.from('budget_lignes').select(LINE_SELECT).eq('version_id', versionId as string).is('deleted_at', null).order('ordre', { ascending: true }),
       ]);
-
-      const dto: BudgetVersionDto = vRes.data?.data ?? vRes.data;
-      const lineItems = extractList<BudgetLineDto>(lRes.data);
+      if (vRes.error) throw vRes.error;
+      if (lRes.error) throw lRes.error;
 
       return {
-        ...adaptVersionSummary(dto),
-        lignes: lineItems.map(adaptLine),
+        ...adaptVersionSummary(vRes.data as unknown as BudgetVersionRow),
+        lignes: (lRes.data as unknown as BudgetLineRow[]).map(adaptLine),
       };
     },
     enabled: !!projetId && !!versionId,
@@ -163,8 +165,7 @@ export function useBudgetWorkflow(projetId: string) {
       commentaire?:  string;
     }) => {
       const id = payload.versionId ?? payload.budgetId;
-      const { data } = await api.patch(`/budget-versions/${id}`, { statut: payload.nouveauStatut });
-      return data;
+      return invokeEdgeFunction<{ data: BudgetVersionRow }>('budget-versions-update', { id, statut: payload.nouveauStatut });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.versions(projetId) });
@@ -178,10 +179,8 @@ export function useBudgetWorkflow(projetId: string) {
 export function useCreateBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { versionId: string; codeLigne: string; libelle: string; categorie?: string; montantPrevu?: number; ordre?: number }) => {
-      const { data } = await api.post('/budget-lines', payload);
-      return data;
-    },
+    mutationFn: async (payload: { versionId: string; codeLigne: string; libelle: string; categorie?: string; montantPrevu?: number; ordre?: number }) =>
+      invokeEdgeFunction<{ data: BudgetLineRow }>('budget-lines-create', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });
       queryClient.invalidateQueries({ queryKey: budgetKeys.lines(versionId) });
@@ -192,10 +191,8 @@ export function useCreateBudgetLine(versionId: string) {
 export function useUpdateBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...payload }: { id: string; codeLigne?: string; libelle?: string; categorie?: string; montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number }) => {
-      const { data } = await api.patch(`/budget-lines/${id}`, payload);
-      return data;
-    },
+    mutationFn: async ({ id, ...payload }: { id: string; codeLigne?: string; libelle?: string; categorie?: string; montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number }) =>
+      invokeEdgeFunction<{ data: BudgetLineRow }>('budget-lines-update', { id, ...payload }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });
       queryClient.invalidateQueries({ queryKey: budgetKeys.lines(versionId) });
@@ -207,7 +204,7 @@ export function useDeleteBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/budget-lines/${id}`);
+      await invokeEdgeFunction<{ message: string }>('budget-lines-delete', { id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });
@@ -219,10 +216,8 @@ export function useDeleteBudgetLine(versionId: string) {
 export function useCreateBudgetVersion(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { projectId: string; nom: string; version?: number; statut?: string; montantTotal?: number; notes?: string }) => {
-      const { data } = await api.post('/budget-versions', payload);
-      return data;
-    },
+    mutationFn: async (payload: { projectId: string; nom: string; version?: number; statut?: string; montantTotal?: number; notes?: string }) =>
+      invokeEdgeFunction<{ data: BudgetVersionRow }>('budget-versions-create', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.versions(projectId) });
     },

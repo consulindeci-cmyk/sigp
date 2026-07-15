@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
 import { PPMLigne } from '@/types';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/forms/Button';
 
 interface PPMFormSlideOverProps {
@@ -89,12 +89,24 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
     setConfirmingDelete(false);
   }, [ligne, isOpen]);
 
-  // Fetch available budget for UI feedback
+  // Fetch available budget for UI feedback.
+  // NOTE : appelait /budget-lignes/:id/solde, une route qui n'a jamais existé
+  // côté NestJS — ce feedback était donc toujours silencieusement absent.
+  // Calcul réel ici, fidèle à la formule déjà établie dans useBudget.ts
+  // (solde_disponible = max(0, montant_prevu - montant_engage)).
   useEffect(() => {
     if (!budgetLigneId) { setSoldeDisponible(null); return; }
-    api.get<{ solde_disponible: number }>(`/budget-lignes/${budgetLigneId}/solde`)
-      .then(res => setSoldeDisponible(res.data.solde_disponible))
-      .catch(() => setSoldeDisponible(null));
+    supabase
+      .from('budget_lignes')
+      .select('montant_prevu, montant_engage')
+      .eq('id', budgetLigneId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error || !data) { setSoldeDisponible(null); return; }
+        const prevu = Number(data.montant_prevu ?? 0);
+        const engage = Number(data.montant_engage ?? 0);
+        setSoldeDisponible(Math.max(0, prevu - engage));
+      });
   }, [budgetLigneId]);
 
   const montantBase = montantDevise * tauxChange;

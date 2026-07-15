@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { PaginatedResponse } from '@/types';
 import {
   adaptUserDto,
@@ -11,7 +12,7 @@ import {
   type UsersKPIs,
 } from '@/lib/userAdapter';
 
-// ── Cache keys (Phase 20.1: Granular Keys — Anti-Query Storm) ─────────────────
+// ── Cache keys ────────────────────────────────────────────────────────────────
 
 export const userKeys = {
   all: ['users'] as const,
@@ -33,82 +34,115 @@ export interface UseUsersParams {
   status?: 'active' | 'inactive';
 }
 
+// ── Ligne Supabase (colonnes snake_case de la table `users`) ─────────────────
+// RLS (users_select) scope déjà la visibilité par organisation — pas de
+// filtre explicite d'organisation nécessaire ici.
+
+interface UserRowDb {
+  id: string;
+  nom: string;
+  prenom: string;
+  email: string;
+  role: UserRole;
+  actif: boolean;
+  telephone: string | null;
+  langue_preference: string;
+  avatar_url: string | null;
+  derniere_connexion: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const USER_SELECT = 'id, nom, prenom, email, role, actif, telephone, langue_preference, avatar_url, derniere_connexion, created_at, updated_at';
+
+function rowToDto(row: UserRowDb): UserApiDto {
+  return {
+    id: row.id,
+    nom: row.nom,
+    prenom: row.prenom,
+    email: row.email,
+    role: row.role,
+    actif: row.actif,
+    telephone: row.telephone,
+    languePreference: row.langue_preference ?? 'fr',
+    avatarUrl: row.avatar_url,
+    derniereConnexion: row.derniere_connexion,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Les Edge Functions users-create/update ne renvoient que le sous-ensemble de
+// colonnes utile à la gestion RBAC (pas langue_preference/avatar_url/
+// derniere_connexion) — complété ici avec des valeurs par défaut sûres avant
+// adaptUserDto (qui attend un UserApiDto complet).
+function edgeRowToDto(row: Partial<UserRowDb> & { id: string; nom: string; prenom: string; email: string; role: UserRole; actif: boolean }): UserApiDto {
+  return {
+    id: row.id,
+    nom: row.nom,
+    prenom: row.prenom,
+    email: row.email,
+    role: row.role,
+    actif: row.actif,
+    telephone: row.telephone ?? null,
+    languePreference: row.langue_preference ?? 'fr',
+    avatarUrl: row.avatar_url ?? null,
+    derniereConnexion: row.derniere_connexion ?? null,
+    createdAt: row.created_at ?? new Date().toISOString(),
+    updatedAt: row.updated_at ?? new Date().toISOString(),
+  };
+}
+
+const SORT_COLUMN_MAP: Record<string, string> = {
+  nom: 'nom', prenom: 'prenom', email: 'email', role: 'role', actif: 'actif',
+  createdAt: 'created_at', updatedAt: 'updated_at', derniereConnexion: 'derniere_connexion',
+};
+
 // ── Hook: Liste paginée, filtrée et triée côté serveur ───────────────────────
 
 export function useUsers(params?: UseUsersParams) {
   return useQuery({
     queryKey: userKeys.list(params),
     queryFn: async () => {
-      const queryParams: Record<string, string | number | boolean | undefined> = {
-        page: params?.page ?? 1,
-        limit: params?.limit ?? 20,
-      };
+      const page = params?.page ?? 1;
+      const limit = params?.limit ?? 20;
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
 
-      if (params?.search) queryParams.search = params.search;
-      if (params?.sortBy) queryParams.sortBy = params.sortBy;
-      if (params?.sortOrder) queryParams.sortOrder = params.sortOrder;
-      if (params?.role) queryParams.role = params.role;
-      if (params?.status) queryParams.status = params.status;
+      let query = supabase.from('users').select(USER_SELECT, { count: 'exact' }).is('deleted_at', null);
 
+      if (params?.search) {
+        query = query.or(`nom.ilike.%${params.search}%,prenom.ilike.%${params.search}%,email.ilike.%${params.search}%`);
+      }
+
+      let roleFilter = params?.role;
+      let statusFilter = params?.status;
       if (params?.filters) {
         for (const [key, value] of Object.entries(params.filters)) {
-          if (value !== undefined && value !== null && value !== '') {
-            if (key === 'role') {
-              queryParams.role = value as UserRole;
-            } else if (key === 'status') {
-              queryParams.status = value as 'active' | 'inactive';
-            } else {
-              queryParams[key] = value;
-            }
-          }
+          if (value === undefined || value === null || value === '') continue;
+          if (key === 'role') roleFilter = value as UserRole;
+          else if (key === 'status') statusFilter = value as 'active' | 'inactive';
         }
       }
+      if (roleFilter) query = query.eq('role', roleFilter);
+      if (statusFilter) query = query.eq('actif', statusFilter === 'active');
 
-      const { data } = await api.get('/users', { params: queryParams });
+      const sortCol = params?.sortBy && SORT_COLUMN_MAP[params.sortBy] ? SORT_COLUMN_MAP[params.sortBy] : 'created_at';
+      query = query.order(sortCol, { ascending: params?.sortOrder === 'asc' }).range(from, to);
 
-      // Shape 1: Wrapped by NestJS ResponseInterceptor -> { success: true, data: { data: [...], meta: { ... } } }
-      if (data && data.data && data.data.meta && Array.isArray(data.data.data)) {
-        const list = (data.data.data as UserApiDto[]).map(adaptUserDto);
-        return {
-          data: list,
-          meta: data.data.meta,
-        } as PaginatedResponse<UserRow>;
-      }
+      const { data, error, count } = await query;
+      if (error) throw error;
 
-      // Shape 2: Direct paginated response -> { data: [...], meta: { ... } }
-      if (data && data.meta && Array.isArray(data.data)) {
-        const list = (data.data as UserApiDto[]).map(adaptUserDto);
-        return {
-          data: list,
-          meta: data.meta,
-        } as PaginatedResponse<UserRow>;
-      }
-
-      // Shape 3 or fallback
-      const rawList = Array.isArray(data?.data?.data)
-        ? data.data.data
-        : Array.isArray(data?.data)
-          ? data.data
-          : Array.isArray(data)
-            ? data
-            : [];
-
-      const list = (rawList as UserApiDto[]).map(adaptUserDto);
-      const totalCount = data?.data?.meta?.total ?? data?.meta?.total ?? list.length;
-      const totalPagesCount =
-        (data?.data?.meta?.totalPages ??
-          data?.meta?.totalPages ??
-          Math.ceil(totalCount / (params?.limit ?? 20))) || 1;
+      const list = (data as unknown as UserRowDb[]).map(rowToDto).map(adaptUserDto);
+      const total = count ?? list.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
 
       return {
         data: list,
         meta: {
-          total: totalCount,
-          page: params?.page ?? 1,
-          limit: params?.limit ?? 20,
-          totalPages: totalPagesCount,
-          hasNextPage: (params?.page ?? 1) < totalPagesCount,
-          hasPreviousPage: (params?.page ?? 1) > 1,
+          total, page, limit, totalPages,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
         },
       } as PaginatedResponse<UserRow>;
     },
@@ -123,38 +157,63 @@ export function useUser(id: string) {
   return useQuery({
     queryKey: userKeys.detail(id),
     queryFn: async () => {
-      const { data } = await api.get(`/users/${id}`);
-      const payload = data?.data ?? data;
-      return adaptUserDto(payload as UserApiDto);
+      const { data, error } = await supabase.from('users').select(USER_SELECT).eq('id', id).is('deleted_at', null).single();
+      if (error) throw error;
+      return adaptUserDto(rowToDto(data as unknown as UserRowDb));
     },
     enabled: !!id,
     staleTime: 60_000,
   });
 }
 
-// ── Hook: KPIs du portefeuille utilisateurs (GET /users/summary/kpis) ─────────
+// ── Hook: KPIs du portefeuille utilisateurs ───────────────────────────────────
+// RLS scope déjà par organisation — pas besoin de recalculer l'organisationId
+// comme le faisait NestJS manuellement.
 
 export function useUsersKPIs() {
   return useQuery({
     queryKey: userKeys.kpis(),
-    queryFn: async () => {
-      const { data } = await api.get('/users/summary/kpis');
-      const payload = data?.data ?? data;
-      return payload as UsersKPIs;
+    queryFn: async (): Promise<UsersKPIs> => {
+      const base = () => supabase.from('users').select('*', { count: 'exact', head: true }).is('deleted_at', null);
+      const [total, active, inactive, admin, coord, chargeProgramme, financier, auditeur, viewer] = await Promise.all([
+        base(),
+        base().eq('actif', true),
+        base().eq('actif', false),
+        base().eq('role', 'ADMIN'),
+        base().eq('role', 'COORDINATEUR'),
+        base().eq('role', 'CHARGE_PROGRAMME'),
+        base().eq('role', 'FINANCIER'),
+        base().eq('role', 'AUDITEUR'),
+        base().eq('role', 'VIEWER'),
+      ]);
+      for (const res of [total, active, inactive, admin, coord, chargeProgramme, financier, auditeur, viewer]) {
+        if (res.error) throw res.error;
+      }
+      return {
+        totalUsers: total.count ?? 0,
+        activeUsers: active.count ?? 0,
+        inactiveUsers: inactive.count ?? 0,
+        administrators: admin.count ?? 0,
+        coordinators: coord.count ?? 0,
+        financiers: financier.count ?? 0,
+        auditors: auditeur.count ?? 0,
+        // Réplique fidèlement getPortfolioKpis côté NestJS : CHARGE_PROGRAMME
+        // est agrégé dans le même compteur que VIEWER.
+        viewers: (viewer.count ?? 0) + (chargeProgramme.count ?? 0),
+      };
     },
     staleTime: 30_000,
   });
 }
 
-// ── Mutations : Création / Modification / Suppression (Inval chirurgicales) ───
+// ── Mutations : Création / Modification / Suppression ─────────────────────────
 
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: CreateUserPayload) => {
-      const { data } = await api.post('/users', payload);
-      const resp = data?.data ?? data;
-      return adaptUserDto(resp as UserApiDto);
+      const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string; prenom: string; email: string; role: UserRole; actif: boolean } }>('users-create', { ...payload });
+      return adaptUserDto(edgeRowToDto(data));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: userKeys.list() });
@@ -167,9 +226,8 @@ export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data: payload }: { id: string; data: UpdateUserPayload }) => {
-      const { data } = await api.patch(`/users/${id}`, payload);
-      const resp = data?.data ?? data;
-      return adaptUserDto(resp as UserApiDto);
+      const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string; prenom: string; email: string; role: UserRole; actif: boolean } }>('users-update', { id, ...payload });
+      return adaptUserDto(edgeRowToDto(data));
     },
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: userKeys.list() });
@@ -183,7 +241,7 @@ export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/users/${id}`);
+      await invokeEdgeFunction<{ message: string }>('users-delete', { id });
       return id;
     },
     onSuccess: (deletedId) => {

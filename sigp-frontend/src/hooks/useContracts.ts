@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { Contract, ContractStatus } from '@/types/contract';
 
 // ── Cache keys ────────────────────────────────────────────────────────────────
@@ -8,31 +9,29 @@ export const contractKeys = {
   all: (projectId: string) => ['contracts', projectId] as const,
 };
 
-// ── Backend DTO ───────────────────────────────────────────────────────────────
+// ── Ligne Supabase (colonnes snake_case de la table `contracts`) ──────────────
 
-interface ContractDto {
+interface ContractRow {
   id: string;
-  projectId: string;
-  marcheId: string | null;
+  project_id: string;
   numero: string;
   intitule: string;
-  type: 'MARCHE' | 'CONVENTION' | 'PROTOCOLE' | 'LETTRE_ACCORD';
   statut: 'ACTIF' | 'SUSPENDU' | 'CLOTURE' | 'RESILIE';
   titulaire: string;
   montant: number;
   devise: string;
-  dateSignature: string | null;
-  dateDebut: string | null;
-  dateFin: string | null;
+  date_signature: string | null;
+  date_debut: string | null;
+  date_fin: string | null;
   notes: string | null;
-  createdBy: string | null;
-  updatedBy: string | null;
-  createdAt: string;
-  updatedAt: string;
+  updated_at: string;
 }
 
+const CONTRACT_SELECT = 'id, project_id, numero, intitule, statut, titulaire, montant, devise, date_signature, date_debut, date_fin, notes, updated_at';
+
 // ── Meta encoding (notes field) ───────────────────────────────────────────────
-// Frontend-only fields stored in backend.notes as JSON.
+// Frontend-only fields stored in backend.notes as JSON — inchangé, indépendant
+// du backend (NestJS ou Supabase partagent la même colonne `notes`).
 
 const CONTRACT_META_PREFIX = '__CONTRACT_META__:';
 
@@ -94,40 +93,40 @@ function beToFeStatus(be: string): ContractStatus {
   }
 }
 
-// ── Adapter: backend DTO → frontend Contract ──────────────────────────────────
+// ── Adapter: ligne Supabase → frontend Contract ───────────────────────────────
 
 function toIsoDate(val: string | null | undefined): string | undefined {
   if (!val) return undefined;
   return val.split('T')[0]; // strip time component
 }
 
-function adaptContract(dto: ContractDto): Contract {
-  const meta = decodeMeta(dto.notes);
-  const feStatut: ContractStatus = meta?.feStatut ?? beToFeStatus(dto.statut);
-  const montantDevise = Number(dto.montant);
+function adaptContract(row: ContractRow): Contract {
+  const meta = decodeMeta(row.notes);
+  const feStatut: ContractStatus = meta?.feStatut ?? beToFeStatus(row.statut);
+  const montantDevise = Number(row.montant);
   const taux = meta?.taux_change_contractuel ?? 1;
   const montantBase = meta?.montant_initial_base ?? montantDevise;
 
   return {
-    id:                        dto.id,
-    projet_id:                 dto.projectId,
+    id:                        row.id,
+    projet_id:                 row.project_id,
     wbs_id:                    meta?.wbs_id           ?? '',
     budget_ligne_id:           meta?.budget_ligne_id   ?? '',
     ppm_ligne_id:              meta?.ppm_ligne_id      ?? '',
     bailleur_id:               meta?.bailleur_id       ?? '',
-    fournisseur_id:            dto.titulaire,
-    reference:                 dto.numero,
-    intitule:                  dto.intitule,
+    fournisseur_id:            row.titulaire,
+    reference:                 row.numero,
+    intitule:                  row.intitule,
     statut:                    feStatut,
-    devise_code:               dto.devise,
+    devise_code:               row.devise,
     taux_change_contractuel:   taux,
     montant_initial_devise:    montantDevise,
     montant_initial_base:      montantBase,
-    date_signature:            toIsoDate(dto.dateSignature),
+    date_signature:            toIsoDate(row.date_signature),
     date_ordre_service:        meta?.date_ordre_service,
-    debut_prevu:               toIsoDate(dto.dateDebut),
+    debut_prevu:               toIsoDate(row.date_debut),
     debut_reel:                meta?.debut_reel,
-    fin_prevue:                toIsoDate(dto.dateFin),
+    fin_prevue:                toIsoDate(row.date_fin),
     fin_reelle:                meta?.fin_reelle,
     reception_provisoire:      meta?.reception_provisoire,
     reception_definitive:      meta?.reception_definitive,
@@ -135,7 +134,7 @@ function adaptContract(dto: ContractDto): Contract {
     garantie_avance_taux:      meta?.garantie_avance_taux,
     retenue_garantie_taux:     meta?.retenue_garantie_taux,
     date_expiration_garantie:  meta?.date_expiration_garantie,
-    version_hash:              dto.updatedAt,
+    version_hash:              row.updated_at,
   };
 }
 
@@ -216,10 +215,15 @@ function buildUpdatePayload(data: Partial<Contract>) {
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchContracts(projectId: string): Promise<Contract[]> {
-  const { data } = await api.get('/contracts', { params: { projectId, limit: 100 } });
-  const raw: unknown = data?.data?.data ?? data?.data ?? data;
-  const dtos: ContractDto[] = Array.isArray(raw) ? raw : [];
-  return dtos.map(adaptContract);
+  const { data, error } = await supabase
+    .from('contracts')
+    .select(CONTRACT_SELECT)
+    .eq('project_id', projectId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return (data as unknown as ContractRow[]).map(adaptContract);
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -229,12 +233,7 @@ export function useContracts(projectId: string) {
     queryKey: contractKeys.all(projectId),
     queryFn: () => fetchContracts(projectId),
     enabled: !!projectId,
-
   });
-}
-
-export function useContractVersions(_contractId: string) {
-  return { versions: [], isLoading: false };
 }
 
 export function useCreateContract(projectId: string) {
@@ -242,8 +241,8 @@ export function useCreateContract(projectId: string) {
   return useMutation({
     mutationFn: async (data: ContractFormData): Promise<Contract> => {
       const payload = buildCreatePayload(projectId, data);
-      const { data: resp } = await api.post('/contracts', payload);
-      return adaptContract(resp?.data ?? resp);
+      const { data: resp } = await invokeEdgeFunction<{ data: ContractRow }>('contracts-create', payload);
+      return adaptContract(resp);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: contractKeys.all(projectId) }),
     onError:   () => qc.invalidateQueries({ queryKey: contractKeys.all(projectId) }),
@@ -255,8 +254,8 @@ export function useUpdateContract(projectId: string) {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Contract> }) => {
       const payload = buildUpdatePayload(data);
-      const { data: resp } = await api.patch(`/contracts/${id}`, payload);
-      return adaptContract(resp?.data ?? resp);
+      const { data: resp } = await invokeEdgeFunction<{ data: ContractRow }>('contracts-update', { id, ...payload });
+      return adaptContract(resp);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: contractKeys.all(projectId) }),
     onError:   () => qc.invalidateQueries({ queryKey: contractKeys.all(projectId) }),
@@ -267,7 +266,7 @@ export function useDeleteContract(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (contractId: string) => {
-      await api.delete(`/contracts/${contractId}`);
+      await invokeEdgeFunction<{ message: string }>('contracts-delete', { id: contractId });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: contractKeys.all(projectId) }),
     onError:   () => qc.invalidateQueries({ queryKey: contractKeys.all(projectId) }),

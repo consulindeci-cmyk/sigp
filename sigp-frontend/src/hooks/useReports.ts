@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { RapportProjet, TypeRapport, StatutRapport, FormatRapport } from '@/types';
 
 // ── Cache keys ────────────────────────────────────────────────────────────────
@@ -9,65 +10,74 @@ export const reportKeys = {
   project: (pid: string) => ['reports', pid] as const,
 };
 
-// ── Backend DTO (NestJS camelCase response) ───────────────────────────────────
+// ── Ligne Supabase (colonnes snake_case de `rapports_projet`) ────────────────
 
-interface ReportDto {
-  id:                 string;
-  projectId:          string;
-  codeRapport:        string;
-  titre:              string;
-  description:        string | null;
-  type:               TypeRapport;
-  format:             FormatRapport;
-  statut:             StatutRapport;
-  periode:            string;
-  dateGeneration:     string;
-  dateTelechargement: string | null;
-  version:            string;
-  auteur:             string;
-  tailleKo:           number;
-  nbTelechargements:  number;
-  commentaires:       string | null;
-  createdBy:          string | null;
-  updatedBy:          string | null;
-  createdAt:          string;
-  updatedAt:          string;
+interface RapportRow {
+  id: string;
+  project_id: string;
+  code_rapport: string;
+  titre: string;
+  description: string | null;
+  type: TypeRapport;
+  format: FormatRapport;
+  statut: StatutRapport;
+  periode: string;
+  date_generation: string;
+  date_telechargement: string | null;
+  version: string;
+  auteur: string;
+  taille_ko: number;
+  nb_telechargements: number;
+  commentaires: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-// ── Adapter ReportDto → RapportProjet ─────────────────────────────────────────
+const REPORT_SELECT = `
+  id, project_id, code_rapport, titre, description, type, format, statut,
+  periode, date_generation, date_telechargement, version, auteur, taille_ko,
+  nb_telechargements, commentaires, created_at, updated_at
+`;
 
-function adaptReport(dto: ReportDto): RapportProjet {
+// ── Adapter ───────────────────────────────────────────────────────────────────
+
+function adaptReport(row: RapportRow): RapportProjet {
   return {
-    id:                  dto.id,
-    projet_id:           dto.projectId,
-    code_rapport:        dto.codeRapport,
-    titre:               dto.titre,
-    description:         dto.description ?? undefined,
-    type:                dto.type,
-    format:              dto.format,
-    statut:              dto.statut,
-    periode:             dto.periode,
-    date_generation:     dto.dateGeneration?.slice(0, 10) ?? '',
-    date_telechargement: dto.dateTelechargement?.slice(0, 10) ?? undefined,
-    version:             dto.version,
-    auteur:              dto.auteur,
-    taille_ko:           dto.tailleKo,
-    nb_telechargements:  dto.nbTelechargements,
-    commentaires:        dto.commentaires ?? undefined,
-    createdAt:           dto.createdAt,
-    updatedAt:           dto.updatedAt,
+    id:                  row.id,
+    projet_id:           row.project_id,
+    code_rapport:        row.code_rapport,
+    titre:               row.titre,
+    description:         row.description ?? undefined,
+    type:                row.type,
+    format:              row.format,
+    statut:              row.statut,
+    periode:             row.periode,
+    date_generation:     row.date_generation?.slice(0, 10) ?? '',
+    date_telechargement: row.date_telechargement?.slice(0, 10) ?? undefined,
+    version:             row.version,
+    auteur:              row.auteur,
+    taille_ko:           row.taille_ko,
+    nb_telechargements:  row.nb_telechargements,
+    commentaires:        row.commentaires ?? undefined,
+    createdAt:           row.created_at,
+    updatedAt:           row.updated_at,
   };
 }
 
-// ── Fetch ─────────────────────────────────────────────────────────────────────
+// ── Fetch (global ou par projet) ───────────────────────────────────────────────
 
 async function fetchReports(projectId?: string): Promise<RapportProjet[]> {
-  const params: Record<string, string | number> = { limit: 100 };
-  if (projectId) params.projectId = projectId;
-  const { data } = await api.get('/reports', { params });
-  const raw: unknown = data?.data?.data ?? data?.data ?? data;
-  const dtos: ReportDto[] = Array.isArray(raw) ? raw : [];
-  return dtos.map(adaptReport);
+  let query = supabase
+    .from('rapports_projet')
+    .select(REPORT_SELECT)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (projectId) query = query.eq('project_id', projectId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data as unknown as RapportRow[]).map(adaptReport);
 }
 
 // ── Read hook (global or per-project) ────────────────────────────────────────
@@ -77,11 +87,10 @@ export function useReports(projectId?: string) {
     queryKey:  projectId ? reportKeys.project(projectId) : reportKeys.all(),
     queryFn:   () => fetchReports(projectId),
     enabled:   projectId !== undefined ? !!projectId : true,
-
   });
 }
 
-// ── DTO builders (FE snake_case → BE camelCase) ───────────────────────────────
+// ── DTO builders (FE snake_case → payload camelCase Edge Function) ────────────
 
 export interface ReportSaveFEPayload {
   projet_id:           string;
@@ -101,7 +110,7 @@ export interface ReportSaveFEPayload {
   date_telechargement?: string;
 }
 
-function toCreateDto(p: ReportSaveFEPayload) {
+function toCreatePayload(p: ReportSaveFEPayload) {
   return {
     projectId:          p.projet_id,
     codeRapport:        p.code_rapport,
@@ -121,7 +130,7 @@ function toCreateDto(p: ReportSaveFEPayload) {
   };
 }
 
-function toUpdateDto(payload: Partial<RapportProjet>): Record<string, unknown> {
+function toUpdatePayload(payload: Partial<RapportProjet>): Record<string, unknown> {
   const dto: Record<string, unknown> = {};
   if (payload.code_rapport      !== undefined) dto.codeRapport        = payload.code_rapport;
   if (payload.titre             !== undefined) dto.titre              = payload.titre;
@@ -151,8 +160,8 @@ export function useCreateReport(projectId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: ReportSaveFEPayload) => {
-      const { data } = await api.post('/reports', toCreateDto(payload));
-      return adaptReport(data?.data ?? data);
+      const { data } = await invokeEdgeFunction<{ data: RapportRow }>('reports-create', toCreatePayload(payload));
+      return adaptReport(data);
     },
     onSuccess: () => invalidate(qc, projectId),
     onError:   () => invalidate(qc, projectId),
@@ -163,8 +172,8 @@ export function useUpdateReport(projectId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...payload }: Partial<RapportProjet> & { id: string }) => {
-      const { data } = await api.patch(`/reports/${id}`, toUpdateDto(payload));
-      return adaptReport(data?.data ?? data);
+      const { data } = await invokeEdgeFunction<{ data: RapportRow }>('reports-update', { id, ...toUpdatePayload(payload) });
+      return adaptReport(data);
     },
     onSuccess: () => invalidate(qc, projectId),
     onError:   () => invalidate(qc, projectId),
@@ -175,7 +184,7 @@ export function useDeleteReport(projectId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (reportId: string) => {
-      await api.delete(`/reports/${reportId}`);
+      await invokeEdgeFunction<{ message: string }>('reports-delete', { id: reportId });
     },
     onSuccess: () => invalidate(qc, projectId),
     onError:   () => invalidate(qc, projectId),

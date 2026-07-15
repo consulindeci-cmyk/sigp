@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
 import { Eye, Edit, Copy, Archive, Trash2 } from 'lucide-react';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
 import { ContentLayout } from '@/components/layout/ContentLayout';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { type DataTableFilter } from '@/components/ui/data-table/types';
@@ -47,9 +47,9 @@ export default function ProjectsPage() {
   const { data: programmesData } = useQuery({
     queryKey: ['programmes'],
     queryFn: async () => {
-      const { data } = await api.get('/programmes');
-      const list = data?.data?.data ?? data?.data ?? data ?? [];
-      return list as Array<{ id: string }>;
+      const { data, error } = await supabase.from('programmes').select('id');
+      if (error) throw error;
+      return data as Array<{ id: string }>;
     },
     staleTime: 5 * 60 * 1000,
   });

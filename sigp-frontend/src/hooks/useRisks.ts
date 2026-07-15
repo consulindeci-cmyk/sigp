@@ -1,29 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '@/lib/axios'
+import { supabase } from '@/lib/supabaseClient'
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions'
 import type { Risque, NiveauRisque, StatutRisque, RisqueCategorie } from '@/types'
 
-// ── Backend DTO ───────────────────────────────────────────────────────────────
+// ── Ligne Supabase (colonnes snake_case de la table `risques`) ────────────────
 
-interface RisqueResponseDto {
+interface RisqueRow {
   id: string
-  projectId: string
-  wbsId: string | null
+  project_id: string
+  wbs_id: string | null
   code: string | null
   description: string
   categorie: string | null
-  probabilite: string  // RiskProbability: FAIBLE | POSSIBLE | PROBABLE | QUASI_CERTAIN
-  impact: string       // RiskImpact: FAIBLE | MODERE | IMPORTANT | CRITIQUE
-  niveauCriticite: string
-  statut: string       // RiskStatus: OUVERT | EN_COURS | RESOLU | ACCEPTE | FERME
-  planAction: string | null
-  responsableId: string | null
-  dateDetection: string | null
-  dateEcheance: string | null
-  createdAt: string
-  updatedAt: string
+  probabilite: string  // FAIBLE | POSSIBLE | PROBABLE | QUASI_CERTAIN
+  impact: string        // FAIBLE | MODERE | IMPORTANT | CRITIQUE
+  niveau_criticite: string
+  statut: string        // OUVERT | EN_COURS | RESOLU | ACCEPTE | FERME
+  plan_action: string | null
+  responsable_id: string | null
+  date_detection: string | null
+  date_echeance: string | null
+  created_at: string
+  updated_at: string
 }
 
-// ── Enum mappings ─────────────────────────────────────────────────────────────
+const RISQUE_SELECT = `
+  id, project_id, wbs_id, code, description, categorie, probabilite, impact,
+  niveau_criticite, statut, plan_action, responsable_id, date_detection,
+  date_echeance, created_at, updated_at
+`
+
+// ── Enum mappings (inchangés — indépendants de la source de données) ─────────
 
 function probToNumber(p: string): 1 | 2 | 3 {
   if (p === 'FAIBLE' || p === 'POSSIBLE') return 1
@@ -76,32 +83,32 @@ function isoDate(val: string | null | undefined): string | undefined {
   catch { return undefined }
 }
 
-// ── Adapter: backend DTO → frontend Risque ────────────────────────────────────
+// ── Adapter: ligne Supabase → Risque frontend ─────────────────────────────────
 
-function adaptRisque(dto: RisqueResponseDto): Risque {
-  const prob = probToNumber(dto.probabilite)
-  const imp  = impactToNumber(dto.impact)
+function adaptRisque(row: RisqueRow): Risque {
+  const prob = probToNumber(row.probabilite)
+  const imp = impactToNumber(row.impact)
   return {
-    id:                   dto.id,
-    projet_id:            dto.projectId,
-    code_risque:          dto.code ?? `RSQ-${dto.id.slice(0, 8).toUpperCase()}`,
-    description:          dto.description,
-    categorie:            (dto.categorie ?? 'Technique') as RisqueCategorie,
+    id:                   row.id,
+    projet_id:            row.project_id,
+    code_risque:          row.code ?? `RSQ-${row.id.slice(0, 8).toUpperCase()}`,
+    description:          row.description,
+    categorie:            (row.categorie ?? 'Technique') as RisqueCategorie,
     probabilite:          prob,
     impact:               imp,
     criticite:            prob * imp,
-    niveau_criticite:     niveauToFe(dto.niveauCriticite),
-    statut:               beStatutToFe(dto.statut),
-    responsable:          dto.responsableId ?? '',
-    plan_mitigation:      dto.planAction ?? undefined,
-    date_identification:  isoDate(dto.dateDetection) ?? isoDate(dto.createdAt) ?? '',
-    date_revision_prevue: isoDate(dto.dateEcheance),
-    createdAt:            dto.createdAt,
-    updatedAt:            dto.updatedAt,
+    niveau_criticite:     niveauToFe(row.niveau_criticite),
+    statut:               beStatutToFe(row.statut),
+    responsable:          row.responsable_id ?? '',
+    plan_mitigation:      row.plan_action ?? undefined,
+    date_identification:  isoDate(row.date_detection) ?? isoDate(row.created_at) ?? '',
+    date_revision_prevue: isoDate(row.date_echeance),
+    createdAt:            row.created_at,
+    updatedAt:            row.updated_at,
   }
 }
 
-// ── Payload builders ──────────────────────────────────────────────────────────
+// ── Payload builders (inchangés) ──────────────────────────────────────────────
 
 function buildCreatePayload(projectId: string, dto: Partial<Risque>) {
   return {
@@ -132,31 +139,24 @@ function buildUpdatePayload(dto: Partial<Risque>) {
   return p
 }
 
-function extractDtos(data: unknown): RisqueResponseDto[] {
-  const unwrapped = (data as any)?.data ?? data
-  const list = Array.isArray(unwrapped) ? unwrapped : ((unwrapped as any)?.data ?? [])
-  return Array.isArray(list) ? list : []
-}
-
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
 export function useRisks(projectId: string) {
   return useQuery({
     queryKey: ['risks', projectId],
     queryFn: async () => {
-      const { data } = await api.get('/risques', { params: { projectId, limit: 100 } })
-      const risques = extractDtos(data).map(adaptRisque)
+      const { data, error } = await supabase
+        .from('risques')
+        .select(RISQUE_SELECT)
+        .eq('project_id', projectId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (error) throw error
+      const risques = (data as unknown as RisqueRow[]).map(adaptRisque)
       return { data: risques, meta: { total: risques.length, page: 1, limit: 100, totalPages: 1 } }
     },
     enabled: !!projectId,
-  })
-}
-
-export function useRiskMatrix(_projectId: string) {
-  return useQuery({
-    queryKey: ['risks-matrix', _projectId],
-    queryFn: async () => null,
-    enabled: false,
   })
 }
 
@@ -165,8 +165,8 @@ export function useCreateRisk(projectId: string) {
   return useMutation({
     mutationFn: async (dto: Partial<Risque>) => {
       const payload = buildCreatePayload(projectId, dto)
-      const { data } = await api.post('/risques', payload)
-      return adaptRisque(data?.data ?? data)
+      const { data } = await invokeEdgeFunction<{ data: RisqueRow }>('risques-create', payload)
+      return adaptRisque(data)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
   })
@@ -177,8 +177,8 @@ export function useUpdateRisk(projectId: string) {
   return useMutation({
     mutationFn: async ({ id, ...dto }: Partial<Risque> & { id: string }) => {
       const payload = buildUpdatePayload(dto)
-      const { data } = await api.patch(`/risques/${id}`, payload)
-      return adaptRisque(data?.data ?? data)
+      const { data } = await invokeEdgeFunction<{ data: RisqueRow }>('risques-update', { id, ...payload })
+      return adaptRisque(data)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
   })
@@ -188,7 +188,7 @@ export function useDeleteRisk(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (riskId: string) => {
-      await api.delete(`/risques/${riskId}`)
+      await invokeEdgeFunction<{ message: string }>('risques-delete', { id: riskId })
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
   })

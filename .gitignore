@@ -1,6 +1,8 @@
-# Vercel CLI local project links (contiennent des IDs de projet, pas des secrets,
-# mais ne doivent pas être commités — chaque environnement local se relie lui-même)
+# Vercel / Supabase CLI local project links (contiennent des IDs de projet,
+# pas des secrets, mais ne doivent pas être commités — chaque environnement
+# local se relie lui-même)
 .vercel/
+supabase/.temp/
 
 # OS / éditeurs
 .DS_Store
@@ -8,6 +10,10 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Ancien backend NestJS — décommissionné, remplacé par Supabase (voir supabase/).
+# Gardé localement pour référence historique, plus jamais suivi par Git.
+sigp-backend-v1/
 
 # Divers
 *.log

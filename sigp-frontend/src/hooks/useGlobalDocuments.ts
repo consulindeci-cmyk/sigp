@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type {
   DocumentGlobal, CategorieGlobalDoc, StatutGlobalDoc,
   ConfidentialiteGlobalDoc, TypeFichier, VersionGlobalDoc,
@@ -11,9 +12,7 @@ export const globalDocumentKeys = {
   all: () => ['global-documents'] as const,
 };
 
-// ── Meta encoding (description field) ────────────────────────────────────────
-// Stores all frontend-only fields in backend.description as JSON.
-// PUBLIE/EXPIRE (FE) have no backend equivalent → stored in feStatut.
+// ── Meta encoding (description field) — inchangé, même colonne côté Supabase ─
 
 const GDOC_META_PREFIX = '__GDOC_META__:';
 
@@ -49,10 +48,7 @@ function decodeMeta(description: string | null | undefined): GDocMeta | null {
   }
 }
 
-// ── Status mapping ────────────────────────────────────────────────────────────
-// Backend: BROUILLON | EN_VALIDATION | VALIDE | ARCHIVE
-// Frontend: PUBLIE | BROUILLON | EN_VALIDATION | ARCHIVE | EXPIRE
-// PUBLIE → VALIDE (BE),  EXPIRE → ARCHIVE (BE)
+// ── Status mapping (inchangé) ─────────────────────────────────────────────────
 
 type BEStatus = 'BROUILLON' | 'EN_VALIDATION' | 'VALIDE' | 'ARCHIVE';
 
@@ -66,39 +62,38 @@ function feToBeStatut(fe: StatutGlobalDoc): BEStatus {
   return fe as BEStatus;
 }
 
-// ── Backend DTO ───────────────────────────────────────────────────────────────
+// ── Ligne Supabase (table `documents_projet`, sans filtre de projet ici) ─────
 
-interface GlobalDocumentDto {
-  id:          string;
-  projectId:   string;
-  livrableId:  string | null;
-  titre:       string;
+interface DocumentRow {
+  id: string;
   description: string | null;
-  statut:      BEStatus;
-  createdBy:   string | null;
-  updatedBy:   string | null;
-  createdAt:   string;
-  updatedAt:   string;
+  titre: string;
+  statut: BEStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
+
+const DOCUMENT_SELECT = 'id, titre, description, statut, created_by, created_at, updated_at';
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
 
-function adaptGlobalDocument(dto: GlobalDocumentDto): DocumentGlobal {
-  const meta    = decodeMeta(dto.description);
-  const today   = dto.createdAt ? dto.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
-  const updated = dto.updatedAt ? dto.updatedAt.split('T')[0] : today;
+function adaptGlobalDocument(row: DocumentRow): DocumentGlobal {
+  const meta    = decodeMeta(row.description);
+  const today   = row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
+  const updated = row.updated_at ? row.updated_at.split('T')[0] : today;
 
   return {
-    id:                 dto.id,
-    code_document:      meta?.code_document      ?? `GDOC-${dto.id.slice(0, 8).toUpperCase()}`,
-    titre:              dto.titre,
-    description:        meta ? '' : (dto.description ?? ''),
+    id:                 row.id,
+    code_document:      meta?.code_document      ?? `GDOC-${row.id.slice(0, 8).toUpperCase()}`,
+    titre:              row.titre,
+    description:        meta ? '' : (row.description ?? ''),
     categorie:          meta?.categorie           ?? 'Administration',
     type:               meta?.type                ?? 'Autre',
-    statut:             meta?.feStatut            ?? beToFeStatut(dto.statut),
+    statut:             meta?.feStatut            ?? beToFeStatut(row.statut),
     version:            meta?.version             ?? '1.0',
     confidentialite:    meta?.confidentialite     ?? 'INTERNE',
-    auteur:             meta?.auteur              ?? (dto.createdBy ?? ''),
+    auteur:             meta?.auteur              ?? (row.created_by ?? ''),
     service:            meta?.service             ?? '',
     mots_cles:          meta?.mots_cles           ?? [],
     taille_ko:          meta?.taille_ko           ?? 0,
@@ -108,12 +103,12 @@ function adaptGlobalDocument(dto: GlobalDocumentDto): DocumentGlobal {
     date_expiration:    meta?.date_expiration,
     nb_commentaires:    meta?.nb_commentaires     ?? 0,
     versions:           meta?.versions            ?? [],
-    createdAt:          dto.createdAt,
-    updatedAt:          dto.updatedAt,
+    createdAt:          row.created_at,
+    updatedAt:          row.updated_at,
   };
 }
 
-// ── Payload builder for update ────────────────────────────────────────────────
+// ── Payload builder for update (inchangé) ─────────────────────────────────────
 
 function buildUpdateMeta(
   changes: Partial<GDocMeta>,
@@ -125,7 +120,7 @@ function buildUpdateMeta(
     type:               changes.type               ?? current.type,
     version:            changes.version            ?? current.version,
     auteur:             changes.auteur             ?? current.auteur,
-    service:            changes.service            ?? current.service,
+    service:            changes.service             ?? current.service,
     mots_cles:          changes.mots_cles          ?? current.mots_cles,
     confidentialite:    changes.confidentialite    ?? current.confidentialite,
     feStatut:           changes.feStatut           ?? current.statut,
@@ -140,12 +135,19 @@ function buildUpdateMeta(
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
+// Pas de filtre project_id : "bibliothèque globale" = tous les documents
+// visibles pour l'utilisateur (RLS org-scope déjà), tous projets confondus —
+// fidèle au comportement d'origine (GET /documents sans projectId).
 
 async function fetchGlobalDocuments(): Promise<DocumentGlobal[]> {
-  const { data } = await api.get('/documents', { params: { limit: 100 } });
-  const raw: unknown = data?.data?.data ?? data?.data ?? data;
-  const dtos: GlobalDocumentDto[] = Array.isArray(raw) ? raw : [];
-  return dtos.map(adaptGlobalDocument);
+  const { data, error } = await supabase
+    .from('documents_projet')
+    .select(DOCUMENT_SELECT)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return (data as unknown as DocumentRow[]).map(adaptGlobalDocument);
 }
 
 // ── Read hook ─────────────────────────────────────────────────────────────────
@@ -154,7 +156,6 @@ export function useGlobalDocuments() {
   return useQuery({
     queryKey: globalDocumentKeys.all(),
     queryFn:  fetchGlobalDocuments,
-
   });
 }
 
@@ -178,16 +179,16 @@ export interface GlobalDocumentPayload {
 }
 
 // ── Mutation hooks ────────────────────────────────────────────────────────────
-// CREATE: backend requires projectId which is not available for global library
-//   → returns a local-only object (won't persist across sessions)
-// UPDATE / DELETE: fully connected to backend
+// CREATE : la table `documents_projet` exige un project_id NOT NULL — un
+// document "global" (sans projet) ne peut littéralement pas y être inséré.
+// Comportement d'origine fidèlement conservé : stub local, ne persiste jamais
+// réellement (déjà le cas côté NestJS, pas une régression introduite ici).
+// UPDATE / DELETE : réellement connectés (documents-update/delete existants).
 
 export function useCreateGlobalDocument() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (_payload: GlobalDocumentPayload): Promise<DocumentGlobal> => {
-      // Global documents have no projectId — backend create is not supported.
-      // The caller handles optimistic local state; we just resolve.
       return Promise.resolve({} as DocumentGlobal);
     },
     onSuccess: () => {
@@ -209,12 +210,13 @@ export function useUpdateGlobalDocument() {
       current: DocumentGlobal;
     }) => {
       const meta = buildUpdateMeta(changes, current);
-      const { data: resp } = await api.patch(`/documents/${id}`, {
+      const { data: resp } = await invokeEdgeFunction<{ data: DocumentRow }>('documents-update', {
+        id,
         titre:       current.titre,
         description: encodeMeta(meta),
         statut:      feToBeStatut(meta.feStatut),
       });
-      return adaptGlobalDocument(resp?.data ?? resp);
+      return adaptGlobalDocument(resp);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),
     onError:   () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),
@@ -225,7 +227,7 @@ export function useDeleteGlobalDocument() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/documents/${id}`);
+      await invokeEdgeFunction<{ message: string }>('documents-delete', { id });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),
     onError:   () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),

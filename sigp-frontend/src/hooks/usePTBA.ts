@@ -1,8 +1,32 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
+import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type { PTBA, PTBALigne, StatutPTBA } from '@/types/ptba';
 
-// ─── Backend DTO ──────────────────────────────────────────────────────────────
+// ─── Ligne Supabase (colonnes snake_case de la table `ptba_activites`) ────────
+
+interface PtbaActiviteRow {
+  id: string;
+  project_id: string;
+  wbs_id: string | null;
+  logframe_ref_id: string | null;
+  code: string;
+  libelle: string;
+  description: string | null;
+  statut: string; // NON_DEMARRE | EN_COURS | TERMINE | ANNULE | EN_RETARD
+  annee: number;
+  trimestre: number;
+  date_debut_prevue: string | null;
+  date_fin_prevue: string | null;
+  date_debut_reelle: string | null;
+  date_fin_reelle: string | null;
+  montant_prevu: number | null;
+  montant_realise: number | null;
+  taux_realisation: number | null;
+  responsable_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 interface PtbaActiviteDto {
   id: string;
@@ -12,7 +36,6 @@ interface PtbaActiviteDto {
   code: string;
   libelle: string;
   description: string | null;
-  // Backend PtbaStatut: NON_DEMARRE | EN_COURS | TERMINE | ANNULE | EN_RETARD
   statut: string;
   annee: number;
   trimestre: number;
@@ -28,7 +51,39 @@ interface PtbaActiviteDto {
   updatedAt: string;
 }
 
-// ─── Statut mapping ───────────────────────────────────────────────────────────
+const PTBA_ACTIVITE_SELECT = `
+  id, project_id, wbs_id, logframe_ref_id, code, libelle, description, statut,
+  annee, trimestre, date_debut_prevue, date_fin_prevue, date_debut_reelle,
+  date_fin_reelle, montant_prevu, montant_realise, taux_realisation,
+  responsable_id, created_at, updated_at
+`;
+
+function rowToDto(row: PtbaActiviteRow): PtbaActiviteDto {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    wbsId: row.wbs_id,
+    logframeIndicatorId: row.logframe_ref_id,
+    code: row.code,
+    libelle: row.libelle,
+    description: row.description,
+    statut: row.statut,
+    annee: row.annee,
+    trimestre: row.trimestre,
+    dateDebutPrevue: row.date_debut_prevue,
+    dateFinPrevue: row.date_fin_prevue,
+    dateDebutReelle: row.date_debut_reelle,
+    dateFinReelle: row.date_fin_reelle,
+    montantPrevu: row.montant_prevu,
+    montantRealise: row.montant_realise,
+    tauxRealisation: row.taux_realisation,
+    responsableId: row.responsable_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ─── Statut mapping (inchangé) ────────────────────────────────────────────────
 
 function frontendStatutToBackend(statut: StatutPTBA): string {
   switch (statut) {
@@ -52,7 +107,7 @@ function deriveContainerStatut(activites: PtbaActiviteDto[]): StatutPTBA {
   return 'BROUILLON';
 }
 
-// ─── Budget distribution ──────────────────────────────────────────────────────
+// ─── Budget distribution (inchangé) ───────────────────────────────────────────
 
 type MonthKey =
   | 'm1_montant' | 'm2_montant'  | 'm3_montant'
@@ -153,15 +208,6 @@ function synthesizePtba(projectId: string, annee: number, activites: PtbaActivit
   };
 }
 
-function extractList(data: unknown): PtbaActiviteDto[] {
-  if (Array.isArray(data)) return data as PtbaActiviteDto[];
-  if (data && typeof data === 'object') {
-    const d = (data as Record<string, unknown>).data;
-    if (Array.isArray(d)) return d as PtbaActiviteDto[];
-  }
-  return [];
-}
-
 // ─── Query keys ───────────────────────────────────────────────────────────────
 
 export const ptbaKeys = {
@@ -175,10 +221,15 @@ export function usePTBA(projectId: string, annee: number) {
   return useQuery({
     queryKey: ptbaKeys.list(projectId, annee),
     queryFn: async () => {
-      const { data } = await api.get('/ptba', {
-        params: { projectId, annee, limit: 100 },
-      });
-      const items = extractList(data);
+      const { data, error } = await supabase
+        .from('ptba_activites')
+        .select(PTBA_ACTIVITE_SELECT)
+        .eq('project_id', projectId)
+        .eq('annee', annee)
+        .is('deleted_at', null)
+        .limit(100);
+      if (error) throw error;
+      const items = (data as unknown as PtbaActiviteRow[]).map(rowToDto);
       return { data: synthesizePtba(projectId, annee, items) };
     },
     enabled: !!projectId && !!annee,
@@ -202,7 +253,7 @@ export function useWorkflowPTBA(projectId: string) {
       const backendStatut = frontendStatutToBackend(nouveauStatut);
       if (activityIds?.length) {
         await Promise.all(
-          activityIds.map(id => api.patch(`/ptba/${id}`, { statut: backendStatut }))
+          activityIds.map(id => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', { id, statut: backendStatut }))
         );
       }
       return { success: true, ptbaId };
@@ -234,10 +285,7 @@ export function useCreatePtbaActivite(projectId: string, annee: number) {
       montantPrevu?:    number;
       description?:     string;
       statut?:          string;
-    }) => {
-      const { data } = await api.post('/ptba', payload);
-      return data;
-    },
+    }) => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-create', payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
     },
@@ -262,10 +310,7 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
       dateFinReelle?:   string;
       wbsId?:           string;
       responsableId?:   string;
-    }) => {
-      const { data } = await api.patch(`/ptba/${id}`, payload);
-      return data;
-    },
+    }) => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', { id, ...payload }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
     },
@@ -276,7 +321,7 @@ export function useDeletePtbaActivite(projectId: string, annee: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/ptba/${id}`);
+      await invokeEdgeFunction<{ message: string }>('ptba-delete', { id });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });

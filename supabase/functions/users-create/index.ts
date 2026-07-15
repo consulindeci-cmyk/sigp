@@ -1,0 +1,141 @@
+import { corsHeaders, json } from '../_shared/cors.ts';
+import { authorize, requireRole } from '../_shared/authorize.ts';
+
+interface CreateUserBody {
+  nom: string;
+  prenom: string;
+  email: string;
+  password: string;
+  role?: 'ADMIN' | 'COORDINATEUR' | 'CHARGE_PROGRAMME' | 'FINANCIER' | 'AUDITEUR' | 'VIEWER';
+  telephone?: string;
+  organisationId?: string;
+}
+
+// Réplique PASSWORD_REGEX de CreateUserDto : min 8, 1 maj, 1 min, 1 chiffre, 1 spécial.
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Méthode non autorisée' }, 405);
+
+  try {
+    const { admin, profile } = await authorize(req);
+    requireRole(profile, ['ADMIN']);
+
+    const body: CreateUserBody = await req.json();
+    if (!body.nom?.trim()) return json({ error: 'Le nom est obligatoire' }, 400);
+    if (!body.prenom?.trim()) return json({ error: 'Le prénom est obligatoire' }, 400);
+    if (!body.email?.trim() || !EMAIL_REGEX.test(body.email.trim())) {
+      return json({ error: "L'adresse email est invalide" }, 400);
+    }
+    if (!body.password || body.password.length < 8 || body.password.length > 128) {
+      return json({ error: 'Le mot de passe doit contenir entre 8 et 128 caractères' }, 400);
+    }
+    if (!PASSWORD_REGEX.test(body.password)) {
+      return json(
+        { error: 'Le mot de passe doit contenir au moins une majuscule, une minuscule, un chiffre et un caractère spécial' },
+        400,
+      );
+    }
+
+    const email = body.email.trim().toLowerCase();
+
+    // Pré-check : email déjà utilisé par un compte actif (réplique findByEmail).
+    const { data: existing, error: existingError } = await admin
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existing) return json({ error: 'Cet email est déjà utilisé par un compte actif' }, 409);
+
+    // 1. SQL d'abord — un échec ici ne laisse aucun état orphelin.
+    const { data: newUser, error: insertError } = await admin
+      .from('users')
+      .insert({
+        id: crypto.randomUUID(),
+        nom: body.nom.trim(),
+        prenom: body.prenom.trim(),
+        email,
+        mot_de_passe: 'SUPABASE_AUTH_MANAGED', // legacy NOT NULL, jamais utilisé pour l'auth réelle
+        role: body.role ?? 'VIEWER',
+        telephone: body.telephone?.trim() ?? null,
+        organisation_id: body.organisationId ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .select('id, nom, prenom, email, role, actif, telephone, organisation_id, created_at')
+      .single();
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        return json({ error: 'Cet email est déjà utilisé (ou associé à un compte supprimé/désactivé)' }, 409);
+      }
+      throw insertError;
+    }
+
+    // 2. GoTrue ensuite — best-effort, surfacé si échec, jamais de rollback silencieux du profil.
+    const { data: authUser, error: authError } = await admin.auth.admin.createUser({
+      email,
+      password: body.password,
+      email_confirm: true,
+      user_metadata: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
+    });
+
+    if (authError || !authUser?.user) {
+      console.error('[users-create] GoTrue createUser failed', authError);
+      return json(
+        {
+          data: newUser,
+          warning:
+            `Profil créé mais la création du compte de connexion a échoué : ${authError?.message ?? 'erreur inconnue'}. ` +
+            'Le profil reste utilisable après provisioning manuel du compte Supabase Auth (auth_user_id à lier).',
+        },
+        201,
+      );
+    }
+
+    // 3. Liaison — simple UPDATE par PK, retry unique en cas d'échec transitoire.
+    let linkError = (await admin
+      .from('users')
+      .update({ auth_user_id: authUser.user.id, updated_at: new Date().toISOString() })
+      .eq('id', newUser.id)).error;
+
+    if (linkError) {
+      linkError = (await admin
+        .from('users')
+        .update({ auth_user_id: authUser.user.id, updated_at: new Date().toISOString() })
+        .eq('id', newUser.id)).error;
+    }
+
+    if (linkError) {
+      console.error('[users-create] auth_user_id linking failed after retry', linkError);
+      return json(
+        {
+          data: newUser,
+          warning:
+            `Compte de connexion créé (auth_user_id=${authUser.user.id}) mais la liaison au profil ` +
+            `(id=${newUser.id}) a échoué après un nouvel essai : ${linkError.message}. Liaison manuelle requise.`,
+        },
+        201,
+      );
+    }
+
+    await admin.from('historique').insert({
+      id: crypto.randomUUID(),
+      project_id: null,
+      user_id: profile.id,
+      action: 'CREATE',
+      table_cible: 'users',
+      enregistrement_id: newUser.id,
+      apres: newUser,
+    });
+
+    return json({ data: { ...newUser, auth_user_id: authUser.user.id } }, 201);
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 500;
+    console.error('[users-create]', err);
+    return json({ error: (err as Error).message ?? 'Erreur interne' }, status);
+  }
+});

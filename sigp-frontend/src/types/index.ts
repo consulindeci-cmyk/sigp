@@ -1,10 +1,17 @@
 // Types alignés avec le schéma Prisma SIGP Backend
 export * from './ptba';
+// Valeurs réelles de l'enum UserRole (Prisma/Postgres) — celles utilisées par
+// authStore, les RLS et les Edge Functions Supabase.
+export type BackendRole = 'ADMIN' | 'COORDINATEUR' | 'CHARGE_PROGRAMME' | 'FINANCIER' | 'AUDITEUR' | 'VIEWER';
+
+// Anciennes valeurs, encore utilisées par le module Users/Settings (non migré
+// dans ce pilote) — à retirer une fois ce module migré vers Supabase à son tour.
 export type Role =
+  | BackendRole
   | 'SUPER_ADMIN' | 'ADMIN_PROJET' | 'COORDONNATEUR_PROJET'
   | 'RESPONSABLE_FINANCIER' | 'RESPONSABLE_TECHNIQUE'
   | 'RESPONSABLE_PASSATION_MARCHES' | 'RESPONSABLE_SUIVI_EVALUATION'
-  | 'BAILLEUR' | 'AUDITEUR' | 'OBSERVATEUR';
+  | 'BAILLEUR' | 'OBSERVATEUR';
 
 export type StatutProjet = 'PREPARATION' | 'ACTIF' | 'SUSPENDU' | 'CLOTURE' | 'ANNULE';
 
