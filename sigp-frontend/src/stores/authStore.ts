@@ -14,27 +14,34 @@ interface AuthState {
 // Reconstruit le User applicatif depuis le profil public.users lié à la
 // session Supabase Auth courante (RLS autorise toujours la lecture de sa
 // propre ligne — cf. policy users_select).
+// Ne laisse jamais une erreur réseau/transitoire se propager : un échec ici
+// doit résoudre vers "non connecté", jamais bloquer indéfiniment l'appelant
+// (cf. ProtectedRoute qui attend cette promesse pour sortir de son spinner).
 async function userFromSupabaseSession(): Promise<User | null> {
-  const { data } = await supabase.auth.getSession()
-  const authUserId = data.session?.user?.id
-  if (!authUserId) return null
+  try {
+    const { data } = await supabase.auth.getSession()
+    const authUserId = data.session?.user?.id
+    if (!authUserId) return null
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('id, nom, prenom, email, role, actif, telephone')
-    .eq('auth_user_id', authUserId)
-    .maybeSingle()
-  if (!profile) return null
+    const { data: profile } = await supabase
+      .from('users')
+      .select('id, nom, prenom, email, role, actif, telephone')
+      .eq('auth_user_id', authUserId)
+      .maybeSingle()
+    if (!profile) return null
 
-  return {
-    id: profile.id,
-    email: profile.email,
-    prenom: profile.prenom,
-    nom: profile.nom,
-    telephone: profile.telephone ?? undefined,
-    role: profile.role as Role,
-    actif: profile.actif,
-    createdAt: new Date().toISOString(),
+    return {
+      id: profile.id,
+      email: profile.email,
+      prenom: profile.prenom,
+      nom: profile.nom,
+      telephone: profile.telephone ?? undefined,
+      role: profile.role as Role,
+      actif: profile.actif,
+      createdAt: new Date().toISOString(),
+    }
+  } catch {
+    return null
   }
 }
 
@@ -47,6 +54,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     const user = await userFromSupabaseSession()
+    if (!user) throw new Error('Profil utilisateur introuvable après authentification.')
     set({ user, isAuthenticated: true, isAuthChecked: true })
   },
 
