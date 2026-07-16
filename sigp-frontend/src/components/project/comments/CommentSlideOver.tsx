@@ -3,7 +3,7 @@ import { X, Paperclip, Reply } from 'lucide-react';
 import type { CommentaireProjet, ModuleCommentaire, StatutCommentaire, PrioriteCommentaire } from '@/types';
 import {
   MODULE_OPTIONS, STATUT_OPTIONS, PRIORITE_OPTIONS, STATUT_COMMENTAIRE_LABEL,
-  PRIORITE_COMMENTAIRE_LABEL, ELEMENTS_PAR_MODULE, UTILISATEURS_MENTION,
+  PRIORITE_COMMENTAIRE_LABEL,
 } from '@/mocks/commentsMocks';
 import {
   SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
@@ -21,8 +21,6 @@ interface FormState {
   module:       ModuleCommentaire;
   element_id:   string;
   element_nom:  string;
-  auteur:       string;
-  role:         string;
   message:      string;
   statut:       StatutCommentaire;
   priorite:     PrioriteCommentaire;
@@ -31,21 +29,18 @@ interface FormState {
   mention:      string;
 }
 
+// L'auteur (auteur_id) est résolu côté serveur depuis la session — plus de
+// champ auteur/role saisi à la main comme dans l'ancien mock.
 export interface CommentSavePayload {
   module:         ModuleCommentaire;
   element_id:     string;
   element_nom:    string;
-  auteur:         string;
-  role:           string;
   message:        string;
   statut:         StatutCommentaire;
   priorite:       PrioriteCommentaire;
   parent_id:      string | null;
   piece_jointe:   string | null;
   mention:        string | null;
-  date_creation:  string;
-  date_modification: string;
-  lu:             boolean;
 }
 
 export interface CommentSlideOverProps {
@@ -59,6 +54,8 @@ export interface CommentSlideOverProps {
   onSave:        (payload: CommentSavePayload, id?: string) => void;
   onDelete?:     (id: string) => void;
   onReply?:      (parent: CommentaireProjet) => void;
+  /** Le commentaire appartient-il à l'utilisateur connecté (ou est-il ADMIN) ? Contrôle l'affichage des actions modifier/supprimer. */
+  canManage?: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -86,10 +83,8 @@ function fmtDate(iso: string): string {
 
 const INIT: FormState = {
   module:       'Projet',
-  element_id:   'PRJ-001',
-  element_nom:  'Informations générales',
-  auteur:       'Amadou Diallo',
-  role:         'Coordonnateur de Projet',
+  element_id:   '',
+  element_nom:  '',
   message:      '',
   statut:       'OUVERT',
   priorite:     'NORMALE',
@@ -113,7 +108,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function CommentSlideOver({
   open, onOpenChange, mode, commentaire, parentRef, replies = [],
-  defaultParentId, onSave, onDelete, onReply,
+  defaultParentId, onSave, onDelete, onReply, canManage = true,
 }: CommentSlideOverProps) {
   const [form, setForm]               = useState<FormState>(INIT);
   const [errors, setErrors]           = useState<Partial<Record<keyof FormState, string>>>({});
@@ -128,8 +123,6 @@ export function CommentSlideOver({
         module:       commentaire.module,
         element_id:   commentaire.element_id,
         element_nom:  commentaire.element_nom,
-        auteur:       commentaire.auteur,
-        role:         commentaire.role,
         message:      commentaire.message,
         statut:       commentaire.statut,
         priorite:     commentaire.priorite,
@@ -149,50 +142,27 @@ export function CommentSlideOver({
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: undefined }));
   }
 
-  function handleModuleChange(module: ModuleCommentaire) {
-    const elements = ELEMENTS_PAR_MODULE[module];
-    setForm(prev => ({
-      ...prev,
-      module,
-      element_id:  elements[0]?.id  ?? '',
-      element_nom: elements[0]?.nom ?? '',
-    }));
-    if (errors.module) setErrors(prev => ({ ...prev, module: undefined }));
-  }
-
-  function handleElementChange(eid: string) {
-    const elements = ELEMENTS_PAR_MODULE[form.module];
-    const found    = elements.find(e => e.id === eid);
-    setForm(prev => ({ ...prev, element_id: eid, element_nom: found?.nom ?? eid }));
-  }
-
   function validate(): boolean {
     const e: Partial<Record<keyof FormState, string>> = {};
     if (!form.message.trim()) e.message = 'Le message est requis.';
-    if (!form.auteur.trim())  e.auteur  = "L'auteur est requis.";
+    if (!form.element_id.trim()) e.element_id = "L'élément référencé est requis.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
   function handleSave() {
     if (!validate()) return;
-    const today = new Date().toISOString().slice(0, 10);
     onSave(
       {
         module:           form.module,
-        element_id:       form.element_id,
-        element_nom:      form.element_nom,
-        auteur:           form.auteur.trim(),
-        role:             form.role.trim(),
+        element_id:       form.element_id.trim(),
+        element_nom:      form.element_nom.trim() || form.element_id.trim(),
         message:          form.message.trim(),
         statut:           form.statut,
         priorite:         form.priorite,
         parent_id:        form.parent_id.trim() || null,
         piece_jointe:     form.piece_jointe.trim() || null,
         mention:          form.mention.trim() || null,
-        date_creation:    commentaire?.date_creation ?? today,
-        date_modification: today,
-        lu:               true,
       },
       commentaire?.id,
     );
@@ -210,7 +180,6 @@ export function CommentSlideOver({
     mode === 'edit' ? 'Modifier le commentaire' :
     'Détail du commentaire';
 
-  const elementOptions = ELEMENTS_PAR_MODULE[form.module] ?? [];
   const initials = commentaire
     ? commentaire.auteur.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
     : '';
@@ -224,7 +193,7 @@ export function CommentSlideOver({
             <SlideOverTitle>{title}</SlideOverTitle>
             {commentaire && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                {commentaire.id} · {fmtDate(commentaire.date_creation)}
+                {fmtDate(commentaire.date_creation)}
               </p>
             )}
           </div>
@@ -262,7 +231,7 @@ export function CommentSlideOver({
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   <span className="font-medium">{commentaire.module}</span>
                   {commentaire.parent_id && (
-                    <span> · ↩ Réponse à {commentaire.parent_id}</span>
+                    <span> · ↩ réponse</span>
                   )}
                 </p>
               </div>
@@ -323,22 +292,35 @@ export function CommentSlideOver({
                   <Select
                     id="cmt-module"
                     value={form.module}
-                    onChange={e => handleModuleChange(e.target.value as ModuleCommentaire)}
+                    onChange={e => set('module', e.target.value as ModuleCommentaire)}
                     disabled={readOnly}
                   >
                     {MODULE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-element">Élément</label>
-                  <Select
-                    id="cmt-element"
+                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-element-nom">
+                    Élément référencé <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    id="cmt-element-nom"
+                    value={form.element_nom}
+                    onChange={e => set('element_nom', e.target.value)}
+                    placeholder="Ex : Ligne budgétaire n°3"
+                  />
+                </div>
+                <div className="space-y-1.5 col-span-2">
+                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-element-id">
+                    Code / identifiant de l'élément <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    id="cmt-element-id"
                     value={form.element_id}
-                    onChange={e => handleElementChange(e.target.value)}
-                    disabled={readOnly}
-                  >
-                    {elementOptions.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                  </Select>
+                    onChange={e => set('element_id', e.target.value)}
+                    placeholder="Ex : RSQ-003, BL-012…"
+                    error={!!errors.element_id}
+                  />
+                  {errors.element_id && <p className="text-xs text-destructive">{errors.element_id}</p>}
                 </div>
               </div>
             )}
@@ -406,40 +388,7 @@ export function CommentSlideOver({
             </div>
           )}
 
-          {/* Section: Auteur */}
-          {!readOnly && (
-            <div className="space-y-4 pt-1 border-t border-border">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-3">
-                Auteur
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-auteur">
-                    Nom <span className="text-destructive">*</span>
-                  </label>
-                  <Input
-                    id="cmt-auteur"
-                    value={form.auteur}
-                    onChange={e => set('auteur', e.target.value)}
-                    placeholder="Nom complet"
-                    error={!!errors.auteur}
-                  />
-                  {errors.auteur && <p className="text-xs text-destructive">{errors.auteur}</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-role">Rôle</label>
-                  <Input
-                    id="cmt-role"
-                    value={form.role}
-                    onChange={e => set('role', e.target.value)}
-                    placeholder="Rôle dans le projet"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Section: Auteur (view) */}
+          {/* Section: Auteur (view uniquement — résolu depuis la session) */}
           {readOnly && commentaire && (
             <div className="space-y-1 pt-1 border-t border-border">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-3 mb-3">
@@ -478,18 +427,14 @@ export function CommentSlideOver({
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground" htmlFor="cmt-mention">
-                    Mention utilisateur
+                    Mention (nom d'utilisateur)
                   </label>
                   <Input
                     id="cmt-mention"
                     value={form.mention}
                     onChange={e => set('mention', e.target.value)}
-                    placeholder={UTILISATEURS_MENTION[0]}
-                    list="mention-list"
+                    placeholder="Ex : Amadou Diallo"
                   />
-                  <datalist id="mention-list">
-                    {UTILISATEURS_MENTION.map(u => <option key={u} value={u} />)}
-                  </datalist>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground" htmlFor="cmt-pj">
@@ -504,17 +449,6 @@ export function CommentSlideOver({
                       placeholder="Ex : rapport_mars.pdf"
                     />
                   </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-parent">
-                    Réponse à (ID commentaire parent)
-                  </label>
-                  <Input
-                    id="cmt-parent"
-                    value={form.parent_id}
-                    onChange={e => set('parent_id', e.target.value)}
-                    placeholder="Ex : cmt-001"
-                  />
                 </div>
               </div>
             </div>
@@ -550,7 +484,7 @@ export function CommentSlideOver({
           )}
 
           {/* Supprimer (edit) */}
-          {mode === 'edit' && commentaire && onDelete && (
+          {mode === 'edit' && commentaire && onDelete && canManage && (
             <div className="pt-2 border-t border-border">
               {confirmDelete ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">

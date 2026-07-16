@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
@@ -12,9 +13,12 @@ import {
 } from 'lucide-react';
 import type { ConfigurationProjet, CategorieParametre, StatutParametre } from '@/types';
 import {
-  MOCK_CONFIGURATIONS, CATEGORIE_PARAM_OPTIONS, STATUT_PARAM_OPTIONS,
-  STATUT_PARAM_LABEL, AUTEURS_PARAM,
+  CATEGORIE_PARAM_OPTIONS, STATUT_PARAM_OPTIONS, STATUT_PARAM_LABEL,
 } from '@/mocks/settingsMocks';
+import { useUIStore } from '@/stores/uiStore';
+import {
+  useProjectSettings, useCreateProjectSetting, useUpdateProjectSetting, useDeleteProjectSetting,
+} from '@/hooks/useProjectSettings';
 import { SettingSlideOver } from './settings/SettingSlideOver';
 import type { SettingSavePayload } from './settings/SettingSlideOver';
 import { DataTable }  from '@/components/ui/data-table/DataTable';
@@ -53,7 +57,15 @@ const PIE_COLORS = [
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TabSettings() {
-  const [configs, setConfigs]         = useState<ConfigurationProjet[]>(MOCK_CONFIGURATIONS);
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const activeProjectId = useUIStore(s => s.activeProjectId);
+  const projectId = urlProjectId || activeProjectId || '';
+
+  const { data: configs = [] } = useProjectSettings(projectId);
+  const createMutation = useCreateProjectSetting(projectId);
+  const updateMutation = useUpdateProjectSetting(projectId);
+  const deleteMutation = useDeleteProjectSetting(projectId);
+
   const [slideOpen, setSlideOpen]     = useState(false);
   const [slideMode, setSlideMode]     = useState<'new' | 'edit' | 'view'>('new');
   const [slideCfg,  setSlideCfg]      = useState<ConfigurationProjet | null>(null);
@@ -125,9 +137,10 @@ export default function TabSettings() {
 
   // ── Filtres ──────────────────────────────────────────────────────────────────
 
-  const auteurOptions = useMemo(() =>
-    AUTEURS_PARAM.map(a => ({ label: a, value: a })),
-  []);
+  const auteurOptions = useMemo(() => {
+    const unique = [...new Set(configs.map(c => c.modifie_par))].sort();
+    return unique.map(a => ({ label: a, value: a }));
+  }, [configs]);
 
   const moisOptions = useMemo(() => {
     const months = [...new Set(configs.map(c => c.date_modification.slice(0, 7)))].sort().reverse();
@@ -163,79 +176,36 @@ export default function TabSettings() {
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleSave = useCallback((payload: SettingSavePayload, id?: string) => {
-    const now = new Date().toISOString();
     if (id) {
-      setConfigs(prev => prev.map(c =>
-        c.id === id ? { ...c, ...payload, updatedAt: now } : c,
-      ));
+      updateMutation.mutate({ id, ...payload });
     } else {
-      setConfigs(prev => {
-        const max = prev.reduce((m, cfg) => {
-          const n = parseInt(cfg.id.replace('prm-', ''), 10);
-          return isNaN(n) ? m : Math.max(m, n);
-        }, 0);
-        const cats = prev.filter(c => c.categorie === payload.categorie);
-        const catMax = cats.reduce((m, c) => {
-          const suffix = parseInt(c.code_param.split('-')[1] ?? '0', 10);
-          return isNaN(suffix) ? m : Math.max(m, suffix);
-        }, 0);
-        const catCode = payload.categorie.slice(0, 3).toUpperCase();
-        const newCfg: ConfigurationProjet = {
-          id:         `prm-${String(max + 1).padStart(3, '0')}`,
-          projet_id:  'mock-proj-01',
-          code_param: `${catCode}-${String(catMax + 1).padStart(3, '0')}`,
-          ...payload,
-          createdAt:  now,
-          updatedAt:  now,
-        };
-        return [newCfg, ...prev];
-      });
+      createMutation.mutate(payload);
     }
-  }, []);
+  }, [createMutation, updateMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    setConfigs(prev => prev.filter(c => c.id !== deleteTarget.id));
+    deleteMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
-  }, [deleteTarget]);
+  }, [deleteTarget, deleteMutation]);
 
   const handleRestore = useCallback((cfg: ConfigurationProjet) => {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    setConfigs(prev => prev.map(c =>
-      c.id === cfg.id
-        ? { ...c, statut: 'ACTIF', date_modification: today, updatedAt: now }
-        : c,
-    ));
-  }, []);
+    updateMutation.mutate({ id: cfg.id, statut: 'ACTIF' });
+  }, [updateMutation]);
 
   const handleDuplicate = useCallback((cfg: ConfigurationProjet) => {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    setConfigs(prev => {
-      const max = prev.reduce((m, c) => {
-        const n = parseInt(c.id.replace('prm-', ''), 10);
-        return isNaN(n) ? m : Math.max(m, n);
-      }, 0);
-      const cats = prev.filter(c => c.categorie === cfg.categorie);
-      const catMax = cats.reduce((m, c) => {
-        const suffix = parseInt(c.code_param.split('-')[1] ?? '0', 10);
-        return isNaN(suffix) ? m : Math.max(m, suffix);
-      }, 0);
-      const catCode = cfg.categorie.slice(0, 3).toUpperCase();
-      const copy: ConfigurationProjet = {
-        ...cfg,
-        id:                `prm-${String(max + 1).padStart(3, '0')}`,
-        code_param:        `${catCode}-${String(catMax + 1).padStart(3, '0')}`,
-        nom:               `${cfg.nom} (copie)`,
-        statut:            'EN_ATTENTE',
-        date_modification: today,
-        createdAt:         now,
-        updatedAt:         now,
-      };
-      return [copy, ...prev];
+    createMutation.mutate({
+      categorie: cfg.categorie,
+      nom: `${cfg.nom} (copie)`,
+      description: cfg.description,
+      valeur: cfg.valeur,
+      valeurDefaut: cfg.valeur_defaut,
+      typeValeur: cfg.type_valeur,
+      requis: cfg.requis,
+      modifiable: cfg.modifiable,
+      statut: 'EN_ATTENTE',
     });
-  }, []);
+  }, [createMutation]);
 
   const openNew  = useCallback(() => {
     setSlideCfg(null); setSlideMode('new'); setSlideOpen(true);

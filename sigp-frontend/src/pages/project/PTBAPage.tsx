@@ -252,7 +252,7 @@ export default function PTBAPage() {
   const { data: ptbaResponse, isLoading, error } = usePTBA(resolvedProjectId, annee);
   const workflowMutation = useWorkflowPTBA(resolvedProjectId);
 
-  const { data: tasksData } = useTasks(resolvedProjectId);
+  const { data: tasksData } = useTasks(resolvedProjectId, { annee });
   const activities: Activity[] = ((tasksData as { data?: Tache[] })?.data
     ?? (Array.isArray(tasksData) ? tasksData as Tache[] : [])
   ).map(adaptTache);

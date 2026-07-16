@@ -3,7 +3,7 @@ import { X, Copy } from 'lucide-react';
 import type { ConfigurationProjet, CategorieParametre, StatutParametre } from '@/types';
 import {
   CATEGORIE_PARAM_OPTIONS, STATUT_PARAM_OPTIONS, TYPE_VALEUR_OPTIONS,
-  STATUT_PARAM_LABEL, AUTEURS_PARAM,
+  STATUT_PARAM_LABEL,
 } from '@/mocks/settingsMocks';
 import {
   SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
@@ -27,9 +27,10 @@ interface FormState {
   requis:        string;
   modifiable:    string;
   statut:        StatutParametre;
-  modifie_par:   string;
 }
 
+// modifie_par/date_modification sont résolus côté serveur depuis la session
+// et l'horodatage réel — plus de saisie manuelle comme dans l'ancien mock.
 export interface SettingSavePayload {
   categorie:      CategorieParametre;
   nom:            string;
@@ -40,8 +41,6 @@ export interface SettingSavePayload {
   requis:         boolean;
   modifiable:     boolean;
   statut:         StatutParametre;
-  date_modification: string;
-  modifie_par:    string;
 }
 
 export interface SettingSlideOverProps {
@@ -80,7 +79,6 @@ const INIT: FormState = {
   requis:        'false',
   modifiable:    'true',
   statut:        'ACTIF',
-  modifie_par:   'Amadou Diallo',
 };
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -116,7 +114,6 @@ export function SettingSlideOver({
         requis:        setting.requis    ? 'true' : 'false',
         modifiable:    setting.modifiable ? 'true' : 'false',
         statut:        setting.statut,
-        modifie_par:   setting.modifie_par,
       });
     } else {
       setForm(INIT);
@@ -140,20 +137,17 @@ export function SettingSlideOver({
 
   function handleSave() {
     if (!validate()) return;
-    const today = new Date().toISOString().slice(0, 10);
     onSave(
       {
-        categorie:        form.categorie,
-        nom:              form.nom.trim(),
-        description:      form.description.trim(),
-        valeur:           form.valeur.trim(),
-        valeur_defaut:    form.valeur_defaut.trim(),
-        type_valeur:      form.type_valeur,
-        requis:           form.requis    === 'true',
-        modifiable:       form.modifiable === 'true',
-        statut:           form.statut,
-        date_modification: today,
-        modifie_par:      form.modifie_par.trim() || 'Amadou Diallo',
+        categorie:     form.categorie,
+        nom:           form.nom.trim(),
+        description:   form.description.trim(),
+        valeur:        form.valeur.trim(),
+        valeur_defaut: form.valeur_defaut.trim(),
+        type_valeur:   form.type_valeur,
+        requis:        form.requis    === 'true',
+        modifiable:    form.modifiable === 'true',
+        statut:        form.statut,
       },
       setting?.id,
     );
@@ -366,29 +360,17 @@ export function SettingSlideOver({
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground" htmlFor="prm-statut">Statut</label>
-                    <Select
-                      id="prm-statut"
-                      value={form.statut}
-                      onChange={e => set('statut', e.target.value as StatutParametre)}
-                    >
-                      {STATUT_PARAM_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground" htmlFor="prm-modifie-par">Modifié par</label>
-                    <Select
-                      id="prm-modifie-par"
-                      value={form.modifie_par}
-                      onChange={e => set('modifie_par', e.target.value)}
-                    >
-                      {AUTEURS_PARAM.map(a => <option key={a} value={a}>{a}</option>)}
-                    </Select>
-                  </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground" htmlFor="prm-statut">Statut</label>
+                  <Select
+                    id="prm-statut"
+                    value={form.statut}
+                    onChange={e => set('statut', e.target.value as StatutParametre)}
+                  >
+                    {STATUT_PARAM_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </Select>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">

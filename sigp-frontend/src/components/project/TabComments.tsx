@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, LineChart, Line,
@@ -11,9 +12,11 @@ import {
 } from 'lucide-react';
 import type { CommentaireProjet, StatutCommentaire, PrioriteCommentaire, ModuleCommentaire } from '@/types';
 import {
-  MOCK_COMMENTAIRES, MODULES_COMMENTAIRE, STATUT_COMMENTAIRE_LABEL,
+  MODULES_COMMENTAIRE, STATUT_COMMENTAIRE_LABEL,
   PRIORITE_COMMENTAIRE_LABEL, STATUT_OPTIONS, PRIORITE_OPTIONS, MODULE_OPTIONS,
 } from '@/mocks/commentsMocks';
+import { useUIStore } from '@/stores/uiStore';
+import { useComments, useCreateComment, useUpdateComment, useDeleteComment } from '@/hooks/useComments';
 import { CommentSlideOver } from './comments/CommentSlideOver';
 import type { CommentSavePayload } from './comments/CommentSlideOver';
 import { DataTable }  from '@/components/ui/data-table/DataTable';
@@ -52,7 +55,15 @@ function prioriteVariant(p: PrioriteCommentaire): 'default' | 'success' | 'warni
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TabComments() {
-  const [commentaires, setCommentaires] = useState<CommentaireProjet[]>(MOCK_COMMENTAIRES);
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const activeProjectId = useUIStore(s => s.activeProjectId);
+  const projectId = urlProjectId || activeProjectId || '';
+
+  const { data: commentaires = [] } = useComments(projectId);
+  const createMutation = useCreateComment(projectId);
+  const updateMutation = useUpdateComment(projectId);
+  const deleteMutation = useDeleteComment(projectId);
+
   const [slideOpen,   setSlideOpen]     = useState(false);
   const [slideMode,   setSlideMode]     = useState<'new' | 'edit' | 'view'>('new');
   const [slideCmt,    setSlideCmt]      = useState<CommentaireProjet | null>(null);
@@ -154,36 +165,35 @@ export default function TabComments() {
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleSave = useCallback((payload: CommentSavePayload, id?: string) => {
-    const now = new Date().toISOString();
     if (id) {
-      setCommentaires(prev => prev.map(c =>
-        c.id === id ? { ...c, ...payload, updatedAt: now } : c,
-      ));
+      updateMutation.mutate({
+        id,
+        message: payload.message,
+        statut: payload.statut,
+        priorite: payload.priorite,
+        pieceJointe: payload.piece_jointe,
+        mention: payload.mention,
+      });
     } else {
-      setCommentaires(prev => {
-        const max = prev.reduce((m, cm) => {
-          const n = parseInt(cm.id.replace('cmt-', ''), 10);
-          return isNaN(n) ? m : Math.max(m, n);
-        }, 0);
-        const newCmt: CommentaireProjet = {
-          id: `cmt-${String(max + 1).padStart(3, '0')}`,
-          projet_id: 'mock-proj-01',
-          ...payload,
-          createdAt: now,
-          updatedAt: now,
-        };
-        return [newCmt, ...prev];
+      createMutation.mutate({
+        module: payload.module,
+        elementId: payload.element_id,
+        elementNom: payload.element_nom,
+        message: payload.message,
+        statut: payload.statut,
+        priorite: payload.priorite,
+        parentId: payload.parent_id,
+        pieceJointe: payload.piece_jointe,
+        mention: payload.mention,
       });
     }
-  }, []);
+  }, [createMutation, updateMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    setCommentaires(prev => prev.filter(c =>
-      c.id !== deleteTarget.id && c.parent_id !== deleteTarget.id,
-    ));
+    deleteMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
-  }, [deleteTarget]);
+  }, [deleteTarget, deleteMutation]);
 
   const openNew  = useCallback(() => {
     setSlideCmt(null); setDefaultPid(''); setSlideMode('new'); setSlideOpen(true);

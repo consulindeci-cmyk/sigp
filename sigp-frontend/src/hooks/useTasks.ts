@@ -99,7 +99,7 @@ export const taskKeys = {
 
 // Liste des tâches d'un projet
 export function useTasks(projectId: string, params?: {
-  page?: number; limit?: number; statut?: string; wbs_id?: string
+  page?: number; limit?: number; statut?: string; wbs_id?: string; annee?: number
 }) {
   return useQuery({
     queryKey: taskKeys.list(projectId, params),
@@ -108,6 +108,7 @@ export function useTasks(projectId: string, params?: {
         .eq('project_id', projectId).is('deleted_at', null);
       if (params?.wbs_id) query = query.eq('wbs_id', params.wbs_id);
       if (params?.statut) query = query.eq('statut', feStatutToBe(params.statut as StatutTache));
+      if (params?.annee) query = query.eq('annee', params.annee);
 
       const limit = params?.limit ?? 100;
       const page = params?.page ?? 1;
