@@ -221,11 +221,11 @@ export default function ProjectsPage() {
       }
       setSlideOverOpen(false);
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { message?: string; error?: { message?: string } } }; message?: string };
+      const errObj = err as { response?: { data?: { message?: string; error?: { message?: string } } }; message?: string };
       const msg =
-        axiosErr?.response?.data?.error?.message ||
-        axiosErr?.response?.data?.message ||
-        axiosErr?.message ||
+        errObj?.response?.data?.error?.message ||
+        errObj?.response?.data?.message ||
+        errObj?.message ||
         'Une erreur est survenue. Veuillez réessayer.';
       setSaveError(msg);
     }
@@ -285,8 +285,8 @@ export default function ProjectsPage() {
         filters: queryParams.filters,
       });
     } catch (e: unknown) {
-      const axiosErr = e as { message?: string };
-      setExportError(axiosErr?.message ?? 'Échec de l\'export CSV. Veuillez réessayer.');
+      const errObj = e as { message?: string };
+      setExportError(errObj?.message ?? 'Échec de l\'export CSV. Veuillez réessayer.');
     } finally {
       setIsExporting(false);
     }
