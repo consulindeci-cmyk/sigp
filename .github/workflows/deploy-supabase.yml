@@ -24,10 +24,15 @@ jobs:
         with:
           version: latest
 
-      - name: Application des nouvelles migrations SQL (db push)
+      - name: Liaison au projet et Application des nouvelles migrations SQL (db push)
         run: |
-          echo "Vérification et application des migrations vers le projet $SUPABASE_PROJECT_ID..."
-          supabase db push --project-ref $SUPABASE_PROJECT_ID
+          echo "Liaison au projet $SUPABASE_PROJECT_ID et vérification des migrations..."
+          supabase link --project-ref $SUPABASE_PROJECT_ID --password "${{ secrets.SUPABASE_DB_PASSWORD }}" || echo "ℹ️ Note: Liaison effectuée avec le jeton ou la configuration par défaut."
+          if [ -n "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            supabase db push --db-url "${{ secrets.SUPABASE_DB_URL }}"
+          else
+            supabase db push --linked --password "${{ secrets.SUPABASE_DB_PASSWORD }}"
+          fi
 
       - name: Déploiement des Edge Functions (backend Deno)
         run: |
