@@ -31,6 +31,8 @@ export interface User {
   nom: string;
   email: string;
   telephone?: string;
+  poste?: string;
+  bio?: string;
   role: Role;
   actif: boolean;
   createdAt: string;

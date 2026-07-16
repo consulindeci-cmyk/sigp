@@ -11,10 +11,15 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
 
     const body: DeleteUserBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
+
+    // Un utilisateur peut supprimer son propre compte ("Zone dangereuse") ;
+    // supprimer un AUTRE utilisateur reste réservé à ADMIN (page Utilisateurs).
+    if (body.id !== profile.id) {
+      requireRole(profile, ['ADMIN']);
+    }
 
     const { data: existing, error: findError } = await admin
       .from('users')

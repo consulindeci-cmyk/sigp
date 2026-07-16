@@ -85,7 +85,7 @@ export function DataTable<TData, TValue>({
                     const meta = header.column.columnDef.meta as { align?: string; isSticky?: boolean; isStickyRight?: boolean } | undefined;
                     const align = meta?.align ?? 'left';
                     const isStickyLeft = false; // Désactivé (défilement horizontal libre de tout le tableau)
-                    const isStickyRight = meta?.isStickyRight === true;
+                    const isStickyRight = false; // Désactivé (défilement horizontal libre de la dernière colonne)
 
                     return (
                       <th
@@ -141,7 +141,7 @@ export function DataTable<TData, TValue>({
                       const meta = cell.column.columnDef.meta as { align?: string; isSticky?: boolean; isStickyRight?: boolean } | undefined;
                       const align = meta?.align ?? 'left';
                       const isStickyLeft = false; // Désactivé (défilement horizontal libre)
-                      const isStickyRight = meta?.isStickyRight === true;
+                      const isStickyRight = false; // Désactivé (défilement horizontal libre)
 
                       return (
                         <td

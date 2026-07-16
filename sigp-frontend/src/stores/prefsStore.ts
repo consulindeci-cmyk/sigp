@@ -25,6 +25,14 @@ export interface PrefsA11y {
   textSize: string
 }
 
+export interface PrefsArchivage {
+  autoArchive: boolean
+  corbeille: boolean
+  autoDelete: boolean
+  retentionAns: string
+  deleteAfterJours: string
+}
+
 export interface NotifAlert {
   enabled: boolean
   threshold?: string
@@ -59,6 +67,7 @@ export interface PrefsState {
   region: PrefsRegion
   display: PrefsDisplay
   a11y: PrefsA11y
+  archivage: PrefsArchivage
   notifs: NotifsState
   setTheme: (theme: Theme) => void
   setPrefs: (prefs: Partial<Omit<PrefsState, 'setTheme' | 'setPrefs' | 'setNotifs'>>) => void
@@ -104,6 +113,13 @@ export const usePrefsStore = create<PrefsState>()(
         highContrast: false,
         textSize: 'Standard',
       },
+      archivage: {
+        autoArchive: true,
+        corbeille: true,
+        autoDelete: false,
+        retentionAns: '10',
+        deleteAfterJours: '30',
+      },
       notifs: defaultNotifs,
 
       setTheme: (theme) => set({ theme }),
@@ -118,6 +134,7 @@ export const usePrefsStore = create<PrefsState>()(
         region:  state.region,
         display: state.display,
         a11y:    state.a11y,
+        archivage: state.archivage,
         notifs:  state.notifs,
       }),
     },

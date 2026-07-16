@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   type PaginationState,
   type SortingState,
@@ -163,6 +164,16 @@ export default function ProjectsPage() {
     setSlideOverMode('new');
     setSlideOverOpen(true);
   }
+
+  // Ouverture directe depuis le raccourci "Nouveau projet" du Dashboard (?new=1)
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      openNew();
+      setSearchParams(prev => { prev.delete('new'); return prev; }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function openView(project: ProjectRow) {
     setSelectedProject(project);

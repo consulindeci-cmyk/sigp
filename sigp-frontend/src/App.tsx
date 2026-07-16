@@ -9,7 +9,6 @@ import { usePrefsStore, applyThemeClass } from './stores/prefsStore';
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ProjectsPage  = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
-const ProjectForm   = lazy(() => import('./pages/ProjectForm'));
 const SettingsPage  = lazy(() => import('./pages/SettingsPage'));
 const LoginPage     = lazy(() => import('./pages/LoginPage'));
 const UsersPage     = lazy(() => import('./pages/UsersPage'));
@@ -71,7 +70,6 @@ export default function App() {
             <Route path="/" element={<Navigate to={homeRoute} replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/projects"  element={<ProjectsPage />} />
-            <Route path="/projects/new" element={<ProjectForm />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/settings"  element={<SettingsPage />} />
             <Route path="/users"     element={<UsersPage />} />

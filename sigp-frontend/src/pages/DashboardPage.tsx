@@ -259,7 +259,7 @@ export default function DashboardPage() {
       </Button>
       <Button
         leftIcon={<Plus className="h-4 w-4" aria-hidden="true" />}
-        onClick={() => navigate('/projects/new')}
+        onClick={() => navigate('/projects?new=1')}
         aria-label="Créer un nouveau projet"
       >
         Nouveau Projet

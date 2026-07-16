@@ -64,6 +64,8 @@ export function useCurrentUserProfile(): UserProfile {
     nom:             user.nom,
     initiales,
     email:           user.email,
+    poste:           user.poste ?? '',
+    bio:             user.bio ?? '',
     role:            user.role,
     roleLabel:       ROLE_LABELS[user.role] ?? user.role,
     actif:           user.actif,
@@ -71,13 +73,20 @@ export function useCurrentUserProfile(): UserProfile {
   };
 }
 
-// ── Hook: update profile (nom, prenom, telephone) via l'Edge Function users-update ─
+// ── Hook: update profile (nom, prenom, telephone, poste, bio) via l'Edge Function users-update ─
+// email volontairement exclu : changer l'email Auth nécessite le flux de
+// confirmation dédié de Supabase (supabase.auth.updateUser), pas une simple
+// colonne — non implémenté, le champ reste affiché en lecture seule.
 
 export interface UpdateProfilePayload {
   id:         string;
   prenom?:    string;
   nom?:       string;
   telephone?: string;
+  poste?:     string;
+  bio?:       string;
+  /** Auto-désactivation uniquement ("Zone dangereuse") — jamais `true` en self-service. */
+  actif?:     boolean;
 }
 
 export function useUpdateProfile() {

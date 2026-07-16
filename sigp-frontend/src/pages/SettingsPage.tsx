@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import {
   User, Shield, Bell, Palette, Building2, Database, Archive,
   Lock, SlidersHorizontal, Plug, Info, AlertTriangle,
   Save, CheckCircle2, Key, Laptop,
   LogOut, RotateCcw, UserX, Trash2, Eye, EyeOff, Copy,
-  Download, RefreshCw, Calendar, Globe, Mail, Phone,
+  Download, Globe, Mail, Phone,
   ExternalLink, ChevronRight, Sun, Moon, Monitor,
 } from 'lucide-react';
 import { Button }   from '@/components/ui/forms/Button';
@@ -30,7 +32,10 @@ import {
 } from '@/mocks/settingsMocks';
 import { useCurrentUserProfile, useUpdateProfile } from '@/hooks/useUserProfile';
 import { useLoginHistory } from '@/hooks/useLoginHistory';
+import { useOrganisation, useUpdateOrganisation, type Organisation } from '@/hooks/useOrganisation';
+import { useDeleteUser } from '@/hooks/useUsers';
 import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 
 // ─── Types nav ────────────────────────────────────────────────────────────────
 
@@ -138,18 +143,38 @@ interface MonCompteSectionProps {
   onSave: (p: UserProfile) => void;
 }
 
+interface MfaEnrollment { factorId: string; qrCode: string; secret: string }
+
 function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
   const [form, setForm]     = useState<UserProfile>({ ...profile });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
-  const [twoFactor, setTwoFactor] = useState(false);
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
   const [pwError, setPwError] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
   const [pwDone,   setPwDone]   = useState(false);
 
+  const [twoFactor, setTwoFactor]           = useState(false);
+  const [mfaLoading, setMfaLoading]         = useState(true);
+  const [verifiedFactorId, setVerifiedFactorId] = useState<string | null>(null);
+  const [enrollment, setEnrollment]         = useState<MfaEnrollment | null>(null);
+  const [mfaCode, setMfaCode]               = useState('');
+  const [mfaError, setMfaError]             = useState('');
+  const [mfaBusy, setMfaBusy]               = useState(false);
+
   useEffect(() => { setForm({ ...profile }); }, [profile]);
   const avatarStyle = userAvatarStyle(profile.initiales);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.mfa.listFactors();
+      const verified = data?.totp?.find(f => f.status === 'verified');
+      if (!cancelled && verified) { setTwoFactor(true); setVerifiedFactorId(verified.id); }
+      if (!cancelled) setMfaLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   function set<K extends keyof UserProfile>(key: K, value: UserProfile[K]) {
     setForm(f => ({ ...f, [key]: value }));
@@ -160,16 +185,68 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
     setTimeout(() => { onSave(form); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 3000); }, 800);
   }
 
-  function handlePasswordChange() {
+  async function handlePasswordChange() {
     if (!pwForm.current)            { setPwError('Mot de passe actuel requis.'); return; }
     if (pwForm.next.length < 8)     { setPwError('Minimum 8 caractères.'); return; }
     if (pwForm.next !== pwForm.confirm) { setPwError('Les mots de passe ne correspondent pas.'); return; }
     setPwError(''); setPwSaving(true);
-    setTimeout(() => {
-      setPwSaving(false); setPwDone(true);
-      setPwForm({ current: '', next: '', confirm: '' });
-      setTimeout(() => setPwDone(false), 4000);
-    }, 1200);
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: profile.email, password: pwForm.current,
+    });
+    if (signInError) {
+      setPwSaving(false);
+      setPwError('Mot de passe actuel incorrect.');
+      return;
+    }
+    const { error: updateError } = await supabase.auth.updateUser({ password: pwForm.next });
+    setPwSaving(false);
+    if (updateError) { setPwError(updateError.message); return; }
+    setPwDone(true);
+    setPwForm({ current: '', next: '', confirm: '' });
+    setTimeout(() => setPwDone(false), 4000);
+  }
+
+  async function handleToggle2FA(v: boolean) {
+    setMfaError('');
+    if (v) {
+      setMfaBusy(true);
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+      setMfaBusy(false);
+      if (error || !data) { setMfaError(error?.message ?? "Erreur lors de l'enrôlement."); return; }
+      setEnrollment({ factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret });
+    } else {
+      if (verifiedFactorId) {
+        setMfaBusy(true);
+        await supabase.auth.mfa.unenroll({ factorId: verifiedFactorId });
+        setMfaBusy(false);
+        setVerifiedFactorId(null);
+      }
+      setTwoFactor(false);
+      setEnrollment(null);
+    }
+  }
+
+  async function handleVerifyMfa() {
+    if (!enrollment) return;
+    setMfaBusy(true); setMfaError('');
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: enrollment.factorId, code: mfaCode });
+    setMfaBusy(false);
+    if (error) { setMfaError('Code invalide.'); return; }
+    setVerifiedFactorId(enrollment.factorId);
+    setTwoFactor(true);
+    setEnrollment(null);
+    setMfaCode('');
+  }
+
+  async function handleCancelEnrollment() {
+    if (enrollment) {
+      setMfaBusy(true);
+      await supabase.auth.mfa.unenroll({ factorId: enrollment.factorId });
+      setMfaBusy(false);
+    }
+    setEnrollment(null);
+    setMfaCode('');
+    setMfaError('');
   }
 
   return (
@@ -215,8 +292,11 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
               <Input id="mc-nom" value={form.nom} onChange={e => set('nom', e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="mc-email">Email</label>
-              <Input id="mc-email" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+              <label className="text-sm font-medium text-foreground">Email</label>
+              <div className="flex items-center h-9 rounded-md border border-border bg-muted/50 px-3 text-sm text-muted-foreground select-none">
+                {profile.email}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Non modifiable depuis cette page.</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-foreground" htmlFor="mc-tel">Téléphone</label>
@@ -256,7 +336,7 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
             </div>
             <div>
               <CardTitle className="text-base">Changer le mot de passe</CardTitle>
-              <CardDescription className="text-[11px]">Minimum 8 caractères. ⚠️ Simulation — nécessite le backend.</CardDescription>
+              <CardDescription className="text-[11px]">Minimum 8 caractères. ✅ Fonctionnel — via Supabase Auth.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -264,7 +344,7 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
           {pwDone ? (
             <div className="flex items-center gap-2 text-success text-sm bg-success/10 rounded-md px-4 py-3 border border-success/20" aria-live="polite">
               <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Mot de passe modifié (simulation).
+              Mot de passe modifié avec succès.
             </div>
           ) : (
             <div className="flex flex-col gap-4">
@@ -302,7 +382,7 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
             </div>
             <div>
               <CardTitle className="text-base">Double authentification (2FA)</CardTitle>
-              <CardDescription className="text-[11px]">⚠️ Simulation — nécessite le backend.</CardDescription>
+              <CardDescription className="text-[11px]">✅ Fonctionnel — TOTP réel via Supabase Auth.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -311,22 +391,36 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
             <div className="flex flex-col gap-0.5">
               <p className="text-sm font-medium text-foreground">Activer la 2FA</p>
               <p className="text-[11px] text-muted-foreground">
-                {twoFactor ? "2FA active. Scannez le QR code avec votre application." : "Protégez votre compte avec Google Authenticator, Authy…"}
+                {twoFactor ? '2FA active sur votre compte.' : 'Protégez votre compte avec Google Authenticator, Authy…'}
               </p>
             </div>
-            <SettingsSwitch id="mc-2fa" checked={twoFactor} onChange={setTwoFactor} />
+            <SettingsSwitch id="mc-2fa" checked={twoFactor} onChange={handleToggle2FA} disabled={mfaLoading || mfaBusy || !!enrollment} />
           </div>
-          {twoFactor && (
+          {mfaError && <p className="text-xs text-destructive mb-3" role="alert">{mfaError}</p>}
+          {enrollment && (
             <div className="flex flex-col items-center gap-3 border border-border rounded-lg p-5 bg-muted/20">
-              <div className="h-32 w-32 border-2 border-border rounded-md bg-background grid grid-cols-5 gap-0.5 p-2"
-                role="img" aria-label="QR code 2FA simulé">
-                {Array.from({ length: 25 }).map((_, i) => (
-                  <div key={i} className={i % 3 === 0 || i % 7 === 0 ? 'bg-foreground rounded-sm' : 'bg-transparent'} />
-                ))}
+              <img
+                src={enrollment.qrCode} alt="QR code 2FA"
+                className="h-32 w-32 border-2 border-border rounded-md bg-background"
+              />
+              <code className="font-mono text-[12px] bg-muted px-2 py-0.5 rounded text-foreground">{enrollment.secret}</code>
+              <div className="flex flex-col gap-1.5 w-full max-w-[220px]">
+                <label className="text-xs font-medium text-foreground" htmlFor="mfa-code">Code à 6 chiffres</label>
+                <Input
+                  id="mfa-code" value={mfaCode} onChange={e => setMfaCode(e.target.value)}
+                  maxLength={6} placeholder="123456" className="font-mono text-center"
+                />
               </div>
-              <code className="font-mono text-[12px] bg-muted px-2 py-0.5 rounded text-foreground">JBSWY3DPEHPK3PXP</code>
-              <Badge variant="success" className="text-xs">2FA activée</Badge>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleCancelEnrollment} disabled={mfaBusy}>Annuler</Button>
+                <Button size="sm" onClick={handleVerifyMfa} disabled={mfaBusy || mfaCode.length !== 6}>
+                  {mfaBusy ? 'Vérification...' : 'Vérifier et activer'}
+                </Button>
+              </div>
             </div>
+          )}
+          {twoFactor && !enrollment && (
+            <Badge variant="success" className="text-xs">2FA activée</Badge>
           )}
         </CardContent>
       </Card>
@@ -730,75 +824,78 @@ function ApparenceSection() {
 
 // ─── Section: Organisation ────────────────────────────────────────────────────
 
-interface OrgForm {
-  nom: string; adresse: string; ville: string; pays: string;
-  telephone: string; email: string; siteWeb: string;
-}
-
-const DEFAULT_ORG: OrgForm = {
-  nom:       'SIGP — Système Intégré de Gestion de Projets',
-  adresse:   '123 Avenue Cheikh Anta Diop',
-  ville:     'Dakar',
-  pays:      'Sénégal',
-  telephone: '+221 33 123 45 67',
-  email:     'contact@sigp.org',
-  siteWeb:   'https://sigp.org',
+const EMPTY_ORG: Organisation = {
+  id: '', nom: '', adresse: '', ville: '', pays: '', telephone: '', email: '', siteWeb: '',
 };
 
 function OrgSection() {
-  const [form, setForm]     = useState<OrgForm>({ ...DEFAULT_ORG });
-  const [saving, setSaving] = useState(false);
+  const { data: organisation, isLoading } = useOrganisation();
+  const updateMutation = useUpdateOrganisation();
+  const [form, setForm]     = useState<Organisation>(EMPTY_ORG);
   const [saved,  setSaved]  = useState(false);
 
-  function set<K extends keyof OrgForm>(k: K, v: string) { setForm(f => ({ ...f, [k]: v })); }
+  useEffect(() => { if (organisation) setForm(organisation); }, [organisation]);
+
+  function set<K extends keyof Organisation>(k: K, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
   function handleSave() {
-    setSaving(true); setSaved(false);
-    setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 3000); }, 700);
+    setSaved(false);
+    updateMutation.mutate({
+      nom: form.nom, adresse: form.adresse, ville: form.ville, pays: form.pays,
+      telephone: form.telephone, email: form.email, siteWeb: form.siteWeb,
+    }, {
+      onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 3000); },
+    });
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <SectionHeader title="Organisation" description="Informations officielles. ⚠️ Simulation — nécessite le backend." />
+      <SectionHeader title="Organisation" description="Informations officielles. ✅ Fonctionnel — table organisations, réservé aux ADMIN." />
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="org-nom">Nom de l'organisation</label>
-              <Input id="org-nom" value={form.nom} onChange={e => set('nom', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="org-adr">Adresse</label>
-              <Input id="org-adr" value={form.adresse} onChange={e => set('adresse', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="org-ville">Ville</label>
-              <Input id="org-ville" value={form.ville} onChange={e => set('ville', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="org-pays">Pays</label>
-              <Input id="org-pays" value={form.pays} onChange={e => set('pays', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="org-tel">
-                <Phone className="inline h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />Téléphone
-              </label>
-              <Input id="org-tel" type="tel" value={form.telephone} onChange={e => set('telephone', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="org-email">
-                <Mail className="inline h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />Email
-              </label>
-              <Input id="org-email" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="org-web">
-                <Globe className="inline h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />Site Web
-              </label>
-              <Input id="org-web" type="url" value={form.siteWeb} onChange={e => set('siteWeb', e.target.value)} />
-            </div>
-          </div>
-          <SaveRow saving={saving} saved={saved} onSave={handleSave} label="Mettre à jour" />
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Chargement…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="org-nom">Nom de l'organisation</label>
+                  <Input id="org-nom" value={form.nom} onChange={e => set('nom', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="org-adr">Adresse</label>
+                  <Input id="org-adr" value={form.adresse} onChange={e => set('adresse', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-foreground" htmlFor="org-ville">Ville</label>
+                  <Input id="org-ville" value={form.ville} onChange={e => set('ville', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-foreground" htmlFor="org-pays">Pays</label>
+                  <Input id="org-pays" value={form.pays} onChange={e => set('pays', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-foreground" htmlFor="org-tel">
+                    <Phone className="inline h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />Téléphone
+                  </label>
+                  <Input id="org-tel" type="tel" value={form.telephone} onChange={e => set('telephone', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-foreground" htmlFor="org-email">
+                    <Mail className="inline h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />Email
+                  </label>
+                  <Input id="org-email" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="org-web">
+                    <Globe className="inline h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />Site Web
+                  </label>
+                  <Input id="org-web" type="url" value={form.siteWeb} onChange={e => set('siteWeb', e.target.value)} />
+                </div>
+              </div>
+              <SaveRow saving={updateMutation.isPending} saved={saved} onSave={handleSave} label="Mettre à jour" />
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -807,54 +904,74 @@ function OrgSection() {
 
 // ─── Section: Sauvegarde ──────────────────────────────────────────────────────
 
-function SauvegardeSection() {
-  const [freq,    setFreq]    = useState('quotidienne');
-  const [creating, setCreating] = useState(false);
-  const [created,  setCreated]  = useState(false);
+// Une vraie sauvegarde/restauration de base de données Postgres n'est pas
+// déclenchable depuis le frontend avec les clés Supabase disponibles ici
+// (c'est une opération d'administration de projet). À la place : un vrai
+// export JSON de toutes les données de l'organisation (projets, documents,
+// rapports) — réservé ADMIN puisqu'il couvre TOUTE l'organisation, pas
+// seulement l'utilisateur courant.
+function SauvegardeSection({ role }: { role: string }) {
+  const [exporting, setExporting]     = useState(false);
+  const [exportDone, setExportDone]   = useState(false);
+  const [exportError, setExportError] = useState('');
+  const isAdmin = role === 'ADMIN';
 
-  function handleCreate() {
-    setCreating(true); setCreated(false);
-    setTimeout(() => { setCreating(false); setCreated(true); setTimeout(() => setCreated(false), 4000); }, 1500);
+  async function handleExportOrg() {
+    setExporting(true); setExportError('');
+    try {
+      const [projectsRes, documentsRes, rapportsRes] = await Promise.all([
+        supabase.from('projects').select('*').is('deleted_at', null),
+        supabase.from('documents_projet').select('*').is('deleted_at', null),
+        supabase.from('rapports_projet').select('*').is('deleted_at', null),
+      ]);
+      const firstError = projectsRes.error ?? documentsRes.error ?? rapportsRes.error;
+      if (firstError) throw firstError;
+
+      const payload = {
+        exporteLe: new Date().toISOString(),
+        projets:   projectsRes.data,
+        documents: documentsRes.data,
+        rapports:  rapportsRes.data,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = `sigp-export-organisation-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+      URL.revokeObjectURL(url);
+      setExportDone(true);
+      setTimeout(() => setExportDone(false), 4000);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Erreur lors de l'export.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <SectionHeader title="Sauvegarde" description="Sauvegardes automatiques et manuelles. ⚠️ Simulation — nécessite le backend." />
+      <SectionHeader
+        title="Sauvegarde"
+        description="Une vraie sauvegarde de base de données n'est pas déclenchable depuis le frontend — à la place : ✅ un export JSON réel et complet des données de l'organisation."
+      />
       <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            {[
-              { label: 'Dernière sauvegarde', value: '04/07/2026 02:00' },
-              { label: 'Taille',              value: '2,4 Go' },
-              { label: 'Statut',              value: null },
-            ].map(item => (
-              <div key={item.label} className="rounded-lg border border-border bg-card p-3">
-                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-1">{item.label}</p>
-                {item.value
-                  ? <p className="text-sm font-semibold text-foreground">{item.value}</p>
-                  : <Badge variant="success" className="text-xs">Succès</Badge>
-                }
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Exporter les données de l'organisation</CardTitle>
+          <CardDescription className="text-[11px]">Projets, documents et rapports — au format JSON.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!isAdmin ? (
+            <p className="text-sm text-muted-foreground">Réservé aux administrateurs.</p>
+          ) : (
+            <>
+              {exportError && <p className="text-sm text-destructive mb-3" role="alert">{exportError}</p>}
+              <div className="flex items-center gap-3">
+                {exportDone && <span className="text-sm text-success flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" />Fichier téléchargé</span>}
+                <Button variant="default" onClick={handleExportOrg} disabled={exporting} leftIcon={<Database className="h-4 w-4" />}>
+                  {exporting ? 'Préparation...' : 'Exporter les données'}
+                </Button>
               </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-1.5 mb-5 max-w-xs">
-            <label className="text-sm font-medium text-foreground" htmlFor="bk-freq">Fréquence automatique</label>
-            <Select id="bk-freq" value={freq} onChange={e => setFreq(e.target.value)}>
-              <option value="horaire">Toutes les heures</option>
-              <option value="quotidienne">Quotidienne</option>
-              <option value="hebdomadaire">Hebdomadaire</option>
-              <option value="mensuelle">Mensuelle</option>
-            </Select>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {created && <span className="text-sm text-success flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" />Sauvegarde créée</span>}
-            <Button variant="default" onClick={handleCreate} disabled={creating} leftIcon={<Database className="h-4 w-4" />}>
-              {creating ? 'Création...' : 'Créer une sauvegarde'}
-            </Button>
-            <Button variant="outline" leftIcon={<Download className="h-4 w-4" />}>Télécharger</Button>
-            <Button variant="outline" leftIcon={<RefreshCw className="h-4 w-4" />}>Restaurer</Button>
-            <Button variant="outline" leftIcon={<Calendar className="h-4 w-4" />}>Programmer</Button>
-          </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -863,28 +980,108 @@ function SauvegardeSection() {
 
 // ─── Section: Archivage — persisté dans prefsStore ────────────────────────────
 
+async function countDeleted(table: string): Promise<number> {
+  const { count, error } = await supabase
+    .from(table)
+    .select('id', { count: 'exact', head: true })
+    .not('deleted_at', 'is', null);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+function useArchivedCounts() {
+  return useQuery({
+    queryKey: ['archived-counts'],
+    queryFn: async () => {
+      const [documents, projets, rapports] = await Promise.all([
+        countDeleted('documents_projet'),
+        countDeleted('projects'),
+        countDeleted('rapports_projet'),
+      ]);
+      return { documents, projets, rapports, corbeille: documents + projets + rapports };
+    },
+  });
+}
+
+// ─── Restaurer des éléments — vraie liste + restauration réelle ──────────────
+
+type TrashItemType = 'document' | 'projet' | 'rapport';
+interface TrashItem { id: string; type: TrashItemType; titre: string; deletedAt: string | null }
+
+const RESTORE_FUNCTION: Record<TrashItemType, string> = {
+  document: 'documents-restore',
+  projet:   'projects-restore',
+  rapport:  'reports-restore',
+};
+
+function useTrashItems() {
+  return useQuery({
+    queryKey: ['trash-items'],
+    queryFn: async (): Promise<TrashItem[]> => {
+      const [docs, projets, rapports] = await Promise.all([
+        supabase.from('documents_projet').select('id, titre, deleted_at').not('deleted_at', 'is', null),
+        supabase.from('projects').select('id, nom, deleted_at').not('deleted_at', 'is', null),
+        supabase.from('rapports_projet').select('id, titre, deleted_at').not('deleted_at', 'is', null),
+      ]);
+      const firstError = docs.error ?? projets.error ?? rapports.error;
+      if (firstError) throw firstError;
+
+      const items: TrashItem[] = [
+        ...(docs.data ?? []).map(d => ({ id: d.id, type: 'document' as const, titre: d.titre, deletedAt: d.deleted_at })),
+        ...(projets.data ?? []).map(p => ({ id: p.id, type: 'projet' as const, titre: p.nom, deletedAt: p.deleted_at })),
+        ...(rapports.data ?? []).map(r => ({ id: r.id, type: 'rapport' as const, titre: r.titre, deletedAt: r.deleted_at })),
+      ];
+      return items.sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
+    },
+  });
+}
+
+function useRestoreItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (item: TrashItem) => {
+      await invokeEdgeFunction(RESTORE_FUNCTION[item.type], { id: item.id });
+      return item;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['trash-items'] });
+      qc.invalidateQueries({ queryKey: ['archived-counts'] });
+    },
+  });
+}
+
+const TRASH_TYPE_LABEL: Record<TrashItemType, string> = {
+  document: 'Document', projet: 'Projet', rapport: 'Rapport',
+};
+
 function ArchivageSection() {
-  const { display, setPrefs } = usePrefsStore();
-  const [autoArchive, setAutoArchive] = useState(true);
-  const [corbeille,   setCorbeille]   = useState(true);
-  const [autoDelete,  setAutoDelete]  = useState(false);
-  const [retentionAns, setRetentionAns] = useState('10');
-  const [deleteAfter,  setDeleteAfter]  = useState('30');
+  const { archivage, setPrefs } = usePrefsStore();
+  const { data: counts, isLoading: countsLoading } = useArchivedCounts();
+  const { data: trashItems = [], isLoading: trashLoading } = useTrashItems();
+  const restoreMutation = useRestoreItem();
   const [viderOpen, setViderOpen] = useState(false);
   const [viderDone, setViderDone] = useState(false);
+  const [restoreListOpen, setRestoreListOpen] = useState(false);
+  const [restoreError, setRestoreError] = useState('');
   const [saved,     setSaved]     = useState(false);
-
-  // La pagination (lignes/page) est partagée avec "Préférences"
-  const pagination = display.pagination;
 
   function flash() { setSaved(true); setTimeout(() => setSaved(false), 2000); }
 
-  function handleAutoArchive(v: boolean) { setAutoArchive(v); flash(); }
-  function handleCorbeille(v: boolean)   { setCorbeille(v);   flash(); }
-  function handleAutoDelete(v: boolean)  { setAutoDelete(v);  flash(); }
-  function handleRetention(v: string)    { setRetentionAns(v); setPrefs({ display: { ...display, pagination } }); flash(); }
+  function setArchivageField<K extends keyof typeof archivage>(k: K, v: typeof archivage[K]) {
+    setPrefs({ archivage: { ...archivage, [k]: v } });
+    flash();
+  }
 
   function handleVider() { setViderOpen(false); setViderDone(true); setTimeout(() => setViderDone(false), 4000); }
+
+  async function handleRestoreItem(item: TrashItem) {
+    setRestoreError('');
+    try {
+      await restoreMutation.mutateAsync(item);
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : 'Erreur lors de la restauration.');
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -906,11 +1103,11 @@ function ArchivageSection() {
                 <p className="text-sm font-medium text-foreground">Archivage automatique</p>
                 <p className="text-[11px] text-muted-foreground">Archiver les éléments inactifs automatiquement</p>
               </div>
-              <SettingsSwitch id="arc-auto" checked={autoArchive} onChange={handleAutoArchive} />
+              <SettingsSwitch id="arc-auto" checked={archivage.autoArchive} onChange={v => setArchivageField('autoArchive', v)} />
             </div>
             <div className="flex flex-col gap-1.5 py-3 border-b border-border">
               <label className="text-sm font-medium text-foreground" htmlFor="arc-ret">Durée de conservation</label>
-              <Select id="arc-ret" value={retentionAns} onChange={e => handleRetention(e.target.value)} className="max-w-xs">
+              <Select id="arc-ret" value={archivage.retentionAns} onChange={e => setArchivageField('retentionAns', e.target.value)} className="max-w-xs">
                 {['1','2','3','5','7','10','15','20'].map(v => <option key={v} value={v}>{v} {v === '1' ? 'an' : 'ans'}</option>)}
               </Select>
             </div>
@@ -919,19 +1116,19 @@ function ArchivageSection() {
                 <p className="text-sm font-medium text-foreground">Corbeille</p>
                 <p className="text-[11px] text-muted-foreground">Conserver les éléments supprimés avant suppression définitive</p>
               </div>
-              <SettingsSwitch id="arc-corbeille" checked={corbeille} onChange={handleCorbeille} />
+              <SettingsSwitch id="arc-corbeille" checked={archivage.corbeille} onChange={v => setArchivageField('corbeille', v)} />
             </div>
             <div className="flex items-center justify-between gap-4 py-3 border-b border-border">
               <div>
                 <p className="text-sm font-medium text-foreground">Suppression automatique de la corbeille</p>
                 <p className="text-[11px] text-muted-foreground">Vider automatiquement la corbeille après le délai</p>
               </div>
-              <SettingsSwitch id="arc-autodel" checked={autoDelete} onChange={handleAutoDelete} />
+              <SettingsSwitch id="arc-autodel" checked={archivage.autoDelete} onChange={v => setArchivageField('autoDelete', v)} />
             </div>
-            {autoDelete && (
+            {archivage.autoDelete && (
               <div className="flex flex-col gap-1.5 py-3">
                 <label className="text-sm font-medium text-foreground" htmlFor="arc-days">Supprimer après</label>
-                <Select id="arc-days" value={deleteAfter} onChange={e => { setDeleteAfter(e.target.value); flash(); }} className="max-w-xs">
+                <Select id="arc-days" value={archivage.deleteAfterJours} onChange={e => setArchivageField('deleteAfterJours', e.target.value)} className="max-w-xs">
                   {['7','14','30','60','90'].map(v => <option key={v} value={v}>{v} jours</option>)}
                 </Select>
               </div>
@@ -941,24 +1138,30 @@ function ArchivageSection() {
       </Card>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">Éléments archivés</CardTitle></CardHeader>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Éléments archivés</CardTitle>
+          <CardDescription className="text-[11px]">✅ Compteurs réels (deleted_at renseigné, toutes suppressions sont des soft-delete).</CardDescription>
+        </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
             {[
-              { label: 'Documents', count: 142 },
-              { label: 'Projets',   count: 8 },
-              { label: 'Rapports',  count: 67 },
-              { label: 'Corbeille', count: 23 },
+              { label: 'Documents', count: counts?.documents },
+              { label: 'Projets',   count: counts?.projets },
+              { label: 'Rapports',  count: counts?.rapports },
+              { label: 'Corbeille', count: counts?.corbeille },
             ].map(item => (
               <div key={item.label} className="rounded-lg border border-border bg-card p-3 text-center">
-                <p className="text-2xl font-bold text-foreground">{item.count}</p>
+                <p className="text-2xl font-bold text-foreground">{countsLoading ? '—' : item.count}</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">{item.label}</p>
               </div>
             ))}
           </div>
+          <p className="text-[10px] text-muted-foreground mb-2">⚠️ "Vider la corbeille" reste une simulation (purge irréversible à l'échelle de l'organisation) — "Restaurer" est réel.</p>
           <div className="flex items-center gap-3 flex-wrap">
-            {viderDone && <span className="text-sm text-success flex items-center gap-1.5" aria-live="polite"><CheckCircle2 className="h-4 w-4" />Corbeille vidée</span>}
-            <Button variant="outline" leftIcon={<RotateCcw className="h-4 w-4" />}>Restaurer des éléments</Button>
+            {viderDone && <span className="text-sm text-success flex items-center gap-1.5" aria-live="polite"><CheckCircle2 className="h-4 w-4" />Corbeille vidée (simulation)</span>}
+            <Button variant="outline" leftIcon={<RotateCcw className="h-4 w-4" />} onClick={() => setRestoreListOpen(true)}>
+              Restaurer des éléments
+            </Button>
             <Button variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10"
               leftIcon={<Trash2 className="h-4 w-4" />} onClick={() => setViderOpen(true)}>
               Vider la corbeille
@@ -971,11 +1174,55 @@ function ArchivageSection() {
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Vider la corbeille ?</ModalTitle>
-            <ModalDescription>Les 23 éléments dans la corbeille seront supprimés définitivement.</ModalDescription>
+            <ModalDescription>Les {counts?.corbeille ?? 0} éléments dans la corbeille seront supprimés définitivement (simulation — aucune suppression réelle pour l'instant).</ModalDescription>
           </ModalHeader>
           <ModalFooter>
             <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
             <Button variant="destructive" onClick={handleVider} leftIcon={<Trash2 className="h-4 w-4" />}>Vider définitivement</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal open={restoreListOpen} onOpenChange={o => { if (!o) { setRestoreListOpen(false); setRestoreError(''); } }}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Restaurer des éléments</ModalTitle>
+            <ModalDescription>Documents, projets et rapports supprimés — restauration réelle et immédiate.</ModalDescription>
+          </ModalHeader>
+          <div className="px-6 pb-2 max-h-[320px] overflow-y-auto">
+            {restoreError && <p className="text-sm text-destructive mb-2" role="alert">{restoreError}</p>}
+            {trashLoading ? (
+              <p className="text-sm text-muted-foreground py-4">Chargement…</p>
+            ) : trashItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">La corbeille est vide.</p>
+            ) : (
+              <div className="flex flex-col divide-y divide-border">
+                {trashItems.map(item => {
+                  const isRestoring = restoreMutation.isPending && restoreMutation.variables?.id === item.id;
+                  return (
+                    <div key={`${item.type}-${item.id}`} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{item.titre}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {TRASH_TYPE_LABEL[item.type]} · supprimé le {item.deletedAt ? new Date(item.deletedAt).toLocaleDateString('fr-FR') : '—'}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline" size="sm" className="shrink-0 gap-1.5"
+                        leftIcon={<RotateCcw className="h-3.5 w-3.5" />}
+                        disabled={isRestoring}
+                        onClick={() => handleRestoreItem(item)}
+                      >
+                        {isRestoring ? 'Restauration...' : 'Restaurer'}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <ModalFooter>
+            <ModalClose asChild><Button variant="outline">Fermer</Button></ModalClose>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -1399,11 +1646,16 @@ function AProposSection() {
 // ─── Section: Zone dangereuse — reset prefsStore ──────────────────────────────
 
 interface ZoneDangereuseProps {
+  profile: UserProfile;
   onResetAll: () => void;
   onTerminateAllSessions: () => Promise<void>;
 }
 
-function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereuseProps) {
+function ZoneDangereuse({ profile, onResetAll, onTerminateAllSessions }: ZoneDangereuseProps) {
+  const navigate = useNavigate();
+  const updateProfileMutation = useUpdateProfile();
+  const deleteUserMutation    = useDeleteUser();
+
   const [resetOpen,      setResetOpen]      = useState(false);
   const [sessionsOpen,   setSessionsOpen]   = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
@@ -1413,6 +1665,13 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
   const [sessionsDone, setSessionsDone] = useState(false);
   const [exportDone,   setExportDone]   = useState(false);
   const [exporting,    setExporting]    = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+  const [deactivateError, setDeactivateError] = useState('');
+  const [deleting, setDeleting]         = useState(false);
+  const [deleteError, setDeleteError]   = useState('');
+
+  const prefs = usePrefsStore();
+  const { data: history = [], isLoading: historyLoading } = useLoginHistory(profile.id);
 
   function handleReset() {
     onResetAll(); setResetOpen(false); setResetDone(true);
@@ -1424,9 +1683,48 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
     setTimeout(() => setSessionsDone(false), 4000);
   }
 
+  async function handleDeactivate() {
+    setDeactivating(true); setDeactivateError('');
+    try {
+      await updateProfileMutation.mutateAsync({ id: profile.id, actif: false });
+      await supabase.auth.signOut();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      setDeactivating(false);
+      setDeactivateError(err instanceof Error ? err.message : 'Erreur lors de la désactivation.');
+    }
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true); setDeleteError('');
+    try {
+      await deleteUserMutation.mutateAsync(profile.id);
+      await supabase.auth.signOut();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      setDeleting(false);
+      setDeleteError(err instanceof Error ? err.message : 'Erreur lors de la suppression.');
+    }
+  }
+
   function handleExport() {
     setExporting(true);
-    setTimeout(() => { setExporting(false); setExportDone(true); setTimeout(() => setExportDone(false), 4000); }, 1500);
+    const payload = {
+      exporteLe: new Date().toISOString(),
+      profil: profile,
+      preferences: {
+        theme: prefs.theme, region: prefs.region, display: prefs.display,
+        a11y: prefs.a11y, archivage: prefs.archivage, notifs: prefs.notifs,
+      },
+      historiqueConnexions: history,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `sigp-mes-donnees-${profile.id}.json`; a.click();
+    URL.revokeObjectURL(url);
+    setExporting(false); setExportDone(true);
+    setTimeout(() => setExportDone(false), 4000);
   }
 
   return (
@@ -1445,14 +1743,14 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
             <div className="h-7 w-7 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0"><Download className="h-3.5 w-3.5" /></div>
             <div>
               <CardTitle className="text-base">Exporter toutes mes données</CardTitle>
-              <CardDescription className="text-[11px]">Profil, préférences, historique — JSON + CSV. ⚠️ Simulation.</CardDescription>
+              <CardDescription className="text-[11px]">✅ Fonctionnel — export JSON réel (profil, préférences, historique de connexions).</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            {exportDone && <span className="text-sm text-success flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" />Export simulé</span>}
-            <Button variant="default" onClick={handleExport} disabled={exporting} leftIcon={<Download className="h-4 w-4" />}>
+            {exportDone && <span className="text-sm text-success flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" />Fichier téléchargé</span>}
+            <Button variant="default" onClick={handleExport} disabled={exporting || historyLoading} leftIcon={<Download className="h-4 w-4" />}>
               {exporting ? 'Préparation...' : 'Exporter mes données'}
             </Button>
           </div>
@@ -1510,7 +1808,7 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
             <div className="h-7 w-7 rounded-md bg-destructive/10 text-destructive flex items-center justify-center shrink-0"><UserX className="h-3.5 w-3.5" /></div>
             <div>
               <CardTitle className="text-base text-destructive">Désactiver mon compte</CardTitle>
-              <CardDescription className="text-[11px]">⚠️ Simulation — nécessite le backend.</CardDescription>
+              <CardDescription className="text-[11px]">✅ Fonctionnel — vous déconnecte immédiatement ; seul un ADMIN peut réactiver le compte.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -1526,7 +1824,7 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
             <div className="h-7 w-7 rounded-md bg-destructive/20 text-destructive flex items-center justify-center shrink-0"><Trash2 className="h-3.5 w-3.5" /></div>
             <div>
               <CardTitle className="text-base text-destructive">Supprimer définitivement mon compte</CardTitle>
-              <CardDescription className="text-[11px]">⚠️ Simulation — nécessite le backend.</CardDescription>
+              <CardDescription className="text-[11px]">✅ Fonctionnel — suppression (soft-delete, comme partout dans l'app) + déconnexion immédiate.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -1564,32 +1862,39 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
         </ModalContent>
       </Modal>
 
-      <Modal open={deactivateOpen} onOpenChange={setDeactivateOpen}>
+      <Modal open={deactivateOpen} onOpenChange={o => { if (!o) { setDeactivateOpen(false); setDeactivateError(''); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Désactiver le compte ?</ModalTitle>
-            <ModalDescription>Votre compte sera suspendu. Vos données sont conservées.</ModalDescription>
+            <ModalDescription>
+              Votre compte sera suspendu et vous serez déconnecté immédiatement. Vos données sont
+              conservées — seul un administrateur peut réactiver le compte ensuite.
+            </ModalDescription>
           </ModalHeader>
+          {deactivateError && <p className="px-6 pb-2 text-sm text-destructive" role="alert">{deactivateError}</p>}
           <ModalFooter>
-            <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
-            <ModalClose asChild><Button variant="destructive" leftIcon={<UserX className="h-4 w-4" />}>Désactiver</Button></ModalClose>
+            <ModalClose asChild><Button variant="outline" disabled={deactivating}>Annuler</Button></ModalClose>
+            <Button variant="destructive" onClick={handleDeactivate} disabled={deactivating} leftIcon={<UserX className="h-4 w-4" />}>
+              {deactivating ? 'Désactivation...' : 'Désactiver'}
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      <Modal open={deleteOpen} onOpenChange={o => { if (!o) { setDeleteOpen(false); setDeleteConfirm(''); } }}>
+      <Modal open={deleteOpen} onOpenChange={o => { if (!o) { setDeleteOpen(false); setDeleteConfirm(''); setDeleteError(''); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Supprimer définitivement le compte ?</ModalTitle>
-            <ModalDescription>Toutes vos données seront effacées. Tapez <strong>SUPPRIMER</strong> pour confirmer.</ModalDescription>
+            <ModalDescription>Votre compte sera supprimé et vous serez déconnecté immédiatement. Tapez <strong>SUPPRIMER</strong> pour confirmer.</ModalDescription>
           </ModalHeader>
           <div className="px-6 pb-2">
             <Input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder="SUPPRIMER" className="font-mono" />
           </div>
+          {deleteError && <p className="px-6 pb-2 text-sm text-destructive" role="alert">{deleteError}</p>}
           <ModalFooter>
-            <ModalClose asChild><Button variant="outline" onClick={() => setDeleteConfirm('')}>Annuler</Button></ModalClose>
-            <Button variant="destructive" disabled={deleteConfirm !== 'SUPPRIMER'} leftIcon={<Trash2 className="h-4 w-4" />}>
-              Supprimer définitivement
+            <ModalClose asChild><Button variant="outline" disabled={deleting} onClick={() => setDeleteConfirm('')}>Annuler</Button></ModalClose>
+            <Button variant="destructive" onClick={handleDeleteAccount} disabled={deleteConfirm !== 'SUPPRIMER' || deleting} leftIcon={<Trash2 className="h-4 w-4" />}>
+              {deleting ? 'Suppression...' : 'Supprimer définitivement'}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -1673,6 +1978,7 @@ export default function SettingsPage() {
       region:  { lang: 'fr', timezone: 'UTC+0 - Abidjan', dateFormat: 'JJ/MM/AAAA', timeFormat: '24h', currency: 'XOF (Franc CFA)', numberFormat: '1 234 567,89' },
       display: { homePage: 'Tableau de bord', density: 'Confortable', pagination: '25' },
       a11y:    { reduceMotion: false, highContrast: false, textSize: 'Standard' },
+      archivage: { autoArchive: true, corbeille: true, autoDelete: false, retentionAns: '10', deleteAfterJours: '30' },
     });
     setNotifs({
       channels:  { email: true, push: true, sms: false },
@@ -1697,7 +2003,11 @@ export default function SettingsPage() {
   function handleSaveProfile(p: UserProfile) {
     setProfile(p);
     if (p.id) {
-      updateProfileMutation.mutate({ id: p.id, prenom: p.prenom, nom: p.nom, telephone: p.telephone || undefined });
+      updateProfileMutation.mutate({
+        id: p.id, prenom: p.prenom, nom: p.nom,
+        telephone: p.telephone || undefined,
+        poste: p.poste || undefined, bio: p.bio || undefined,
+      });
     }
   }
 
@@ -1719,7 +2029,7 @@ export default function SettingsPage() {
       case 'organisation':
         return <OrgSection />;
       case 'sauvegarde':
-        return <SauvegardeSection />;
+        return <SauvegardeSection role={profile.role} />;
       case 'archivage':
         return <ArchivageSection />;
       case 'confidentialite':
@@ -1733,6 +2043,7 @@ export default function SettingsPage() {
       case 'danger':
         return (
           <ZoneDangereuse
+            profile={profile}
             onResetAll={handleResetAll}
             onTerminateAllSessions={handleTerminateOthers}
           />
