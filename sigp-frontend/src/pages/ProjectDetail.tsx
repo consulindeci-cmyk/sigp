@@ -28,7 +28,7 @@ import TabHistory from '../components/project/TabHistory';
 import TabComments from '../components/project/TabComments';
 import TabSettings from '../components/project/TabSettings';
 
-import { useProject, useProjectSummary } from '@/hooks/useProjects';
+import { useProject, useProjectSummary, useProjectRowAggregation } from '@/hooks/useProjects';
 import { adaptProjectDto, type Project } from '@/lib/projectAdapter';
 
 const PAD = 'px-4 sm:px-6 lg:px-8 py-6';
@@ -42,6 +42,7 @@ export default function ProjectDetail() {
 
   const { data: apiProject, isLoading } = useProject(id ?? '');
   const { data: summary } = useProjectSummary(id ?? '');
+  const { data: rowAgg } = useProjectRowAggregation(id ?? '');
 
   const project: Project | undefined = useMemo(() => {
     if (!apiProject) return undefined;
@@ -50,8 +51,11 @@ export default function ProjectDetail() {
       progressScore: summary?.progressScore ?? 0,
       tauxDecaissement: summary?.tauxDecaissement ?? 0,
       profileScore: summary?.profileScore ?? 0,
+      composantes: rowAgg?.composantes ?? 0,
+      activites: rowAgg?.activites ?? 0,
+      livrables: rowAgg?.livrables ?? 0,
     };
-  }, [apiProject, summary]);
+  }, [apiProject, summary, rowAgg]);
 
   // Set default tab on load and reset when navigating to a different project
   useEffect(() => {

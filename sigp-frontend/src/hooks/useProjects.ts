@@ -233,7 +233,12 @@ export function useProjects(params?: UseProjectsParams) {
   });
 }
 
-// Détail d'un projet (ligne enrichie, même agrégation que la liste)
+// Détail d'un projet — ligne brute uniquement (rapide, une seule requête).
+// Les compteurs agrégés (progressScore, composantes, activites, livrables...)
+// viennent de useProjectSummary/useProjectRowAggregation, qui partagent tous
+// le même appel à project-detail-summary via useProjectDetailSummary — ne pas
+// le ré-invoquer ici, ça doublait ce call coûteux à chaque ouverture de fiche
+// projet pour un résultat de toute façon écrasé par le summary en aval.
 export function useProject(id: string) {
   return useQuery({
     queryKey: projectKeys.detail(id),
@@ -241,9 +246,7 @@ export function useProject(id: string) {
       const { data, error } = await supabase.from('projects').select(PROJECT_SELECT).eq('id', id).is('deleted_at', null).maybeSingle()
       if (error) throw error
       if (!data) throw new Error('Projet introuvable')
-      const row = flatten(data as unknown as RawRow)
-      const detail = await invokeEdgeFunction<ProjectDetailSummary>('project-detail-summary', { projectId: id })
-      return { ...row, ...detail.rowAggregation } as ProjectApiDto
+      return flatten(data as unknown as RawRow)
     },
     enabled: !!id,
     refetchOnWindowFocus: false,
@@ -282,6 +285,12 @@ function useProjectDetailSummary(projectId: string) {
 export function useProjectSummary(id: string) {
   const query = useProjectDetailSummary(id)
   return { ...query, data: query.data?.summary }
+}
+
+// Compteurs bruts (composantes WBS, activités, livrables)
+export function useProjectRowAggregation(id: string) {
+  const query = useProjectDetailSummary(id)
+  return { ...query, data: query.data?.rowAggregation }
 }
 
 // Top 5 risques actifs
