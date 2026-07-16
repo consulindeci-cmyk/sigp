@@ -12,10 +12,14 @@
 -- référencent bien un upload réel) — l'ajout de la contrainte est sans risque
 -- sur les données actuelles.
 
-ALTER TABLE public.document_projet_versions
-  ADD CONSTRAINT document_projet_versions_upload_id_fkey
-  FOREIGN KEY (upload_id) REFERENCES public.uploads(id)
-  ON UPDATE CASCADE ON DELETE RESTRICT;
+DO $$ BEGIN
+  ALTER TABLE public.document_projet_versions
+    ADD CONSTRAINT document_projet_versions_upload_id_fkey
+    FOREIGN KEY (upload_id) REFERENCES public.uploads(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT;
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
 
 -- Force PostgREST à recharger son cache de schéma immédiatement (sinon il
 -- peut mettre plusieurs minutes à détecter la nouvelle relation tout seul).
