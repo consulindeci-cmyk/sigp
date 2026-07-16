@@ -1,0 +1,35 @@
+name: Deploy Supabase (Migrations & Edge Functions)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/deploy-supabase.yml'
+  workflow_dispatch: # Permet aussi de lancer le déploiement manuellement depuis un bouton sur GitHub
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: alwueihbddrupomwiwmv
+    steps:
+      - name: Checkout du code source
+        uses: actions/checkout@v4
+
+      - name: Installation de la CLI Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Application des nouvelles migrations SQL (db push)
+        run: |
+          echo "Vérification et application des migrations vers le projet $SUPABASE_PROJECT_ID..."
+          supabase db push --project-ref $SUPABASE_PROJECT_ID
+
+      - name: Déploiement des Edge Functions (backend Deno)
+        run: |
+          echo "Déploiement de toutes les Edge Functions vers le projet $SUPABASE_PROJECT_ID..."
+          supabase functions deploy --project-ref $SUPABASE_PROJECT_ID
