@@ -5,6 +5,7 @@ export function useDashboard() {
   return useQuery({
     queryKey: ['dashboard-global'],
     queryFn: () => invokeEdgeFunction<Record<string, unknown>>('dashboard-summary', {}),
-    staleTime: 1000 * 60, // 1 min
+    staleTime: 1000 * 60 * 5, // 5 min
+    refetchOnWindowFocus: false,
   })
 }

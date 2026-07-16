@@ -116,22 +116,15 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   if (projects.length === 0) return result
   const projectIds = projects.map((p) => p.id)
 
-  const [ptbaRes, livrablesRes, wbsRes, versionsRes] = await Promise.all([
+  const [ptbaRes, livrablesRes, wbsRes, budgetLignesRes] = await Promise.all([
     supabase.from('ptba_activites').select('project_id, statut, taux_realisation').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('livrables').select('project_id').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('wbs_nodes').select('project_id').is('deleted_at', null).is('parent_id', null).in('project_id', projectIds),
-    supabase.from('budget_versions').select('id, project_id').is('deleted_at', null).in('project_id', projectIds),
+    supabase.from('budget_lignes').select('montant_prevu, montant_paye, version:budget_versions!inner(project_id)').is('deleted_at', null).in('version.project_id', projectIds),
   ])
   if (ptbaRes.error) throw ptbaRes.error
   if (livrablesRes.error) throw livrablesRes.error
   if (wbsRes.error) throw wbsRes.error
-  if (versionsRes.error) throw versionsRes.error
-
-  const versionIds = (versionsRes.data ?? []).map((v) => v.id)
-  const versionToProject = new Map((versionsRes.data ?? []).map((v) => [v.id, v.project_id]))
-  const budgetLignesRes = versionIds.length
-    ? await supabase.from('budget_lignes').select('version_id, montant_prevu, montant_paye').is('deleted_at', null).in('version_id', versionIds)
-    : { data: [] as { version_id: string; montant_prevu: number; montant_paye: number }[], error: null }
   if (budgetLignesRes.error) throw budgetLignesRes.error
 
   const activitesMap = new Map<string, { count: number; sumTaux: number }>()
@@ -145,8 +138,8 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   const composantesMap = new Map<string, number>()
   for (const w of wbsRes.data ?? []) composantesMap.set(w.project_id, (composantesMap.get(w.project_id) ?? 0) + 1)
   const budgetMap = new Map<string, { prevu: number; paye: number }>()
-  for (const bl of budgetLignesRes.data ?? []) {
-    const pid = versionToProject.get(bl.version_id)
+  for (const bl of (budgetLignesRes.data ?? [])) {
+    const pid = Array.isArray(bl.version) ? bl.version[0]?.project_id : (bl.version as { project_id?: string })?.project_id
     if (!pid) continue
     const e = budgetMap.get(pid) ?? { prevu: 0, paye: 0 }
     e.prevu += Number(bl.montant_prevu ?? 0); e.paye += Number(bl.montant_paye ?? 0)
@@ -229,7 +222,7 @@ export function useProjects(params?: UseProjectsParams) {
       } as PaginatedResponse<ProjectApiDto>
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 3 * 60 * 1000, // 3 min
   });
 }
 
@@ -387,30 +380,27 @@ export function useDeleteProject() {
   })
 }
 
-// ── Options de référence (Phase 19.5) — distinct calculé côté client (petit volume) ──
+// ── Options de référence (Phase 19.5) — distinct calculé côté client (petit volume, 1 seule requête) ──
 export function useProjectsReferenceOptions() {
   return useQuery({
     queryKey: projectKeys.referenceOptions(),
     queryFn: async () => {
-      const [secteurRes, paysRes, bailleurRes] = await Promise.all([
-        supabase.from('projects').select('secteur').is('deleted_at', null).not('secteur', 'is', null),
-        supabase.from('projects').select('pays').is('deleted_at', null).not('pays', 'is', null),
-        supabase.from('projects').select('bailleur_principal').is('deleted_at', null).not('bailleur_principal', 'is', null),
-      ])
-      if (secteurRes.error) throw secteurRes.error
-      if (paysRes.error) throw paysRes.error
-      if (bailleurRes.error) throw bailleurRes.error
+      const { data, error } = await supabase
+        .from('projects')
+        .select('secteur, pays, bailleur_principal')
+        .is('deleted_at', null);
+      if (error) throw error;
 
-      const sectors = [...new Set((secteurRes.data ?? []).map((r) => r.secteur as string))].sort()
-      const countries = [...new Set((paysRes.data ?? []).map((r) => r.pays as string))].sort()
-      const donors = [...new Set((bailleurRes.data ?? []).map((r) => r.bailleur_principal as string))].sort()
+      const sectors = [...new Set((data ?? []).map((r) => r.secteur as string).filter(Boolean))].sort();
+      const countries = [...new Set((data ?? []).map((r) => r.pays as string).filter(Boolean))].sort();
+      const donors = [...new Set((data ?? []).map((r) => r.bailleur_principal as string).filter(Boolean))].sort();
       return { sectors, countries, donors };
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 min
   });
 }
 
-// ── KPIs portefeuille (Phase 19.5) — RLS gère déjà l'isolation multi-tenant ──
+// ── KPIs portefeuille (Phase 19.5) — 1 seule requête optimisée au lieu de 8 count() simultanés ──
 export function useProjectsKPIs(filters?: Record<string, string | number | undefined>) {
   const queryParams: Record<string, string | number | undefined> = {};
   if (filters) {
@@ -439,37 +429,43 @@ export function useProjectsKPIs(filters?: Record<string, string | number | undef
       }
       const now = new Date().toISOString()
 
-      const [enCoursRes, suspenduRes, clotureRes, annuleRes, enPreparationRes, enRetardRes, budgetRes, deviseRes] = await Promise.all([
-        applyFilters(supabase.from('projects').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'EN_COURS')),
-        applyFilters(supabase.from('projects').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'SUSPENDU')),
-        applyFilters(supabase.from('projects').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'CLOTURE')),
-        applyFilters(supabase.from('projects').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'ANNULE')),
-        applyFilters(supabase.from('projects').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'EN_PREPARATION')),
-        applyFilters(supabase.from('projects').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'EN_COURS').lt('date_fin_prevue', now)),
-        applyFilters(supabase.from('projects').select('budget_total').is('deleted_at', null)),
-        applyFilters(supabase.from('projects').select('devise').is('deleted_at', null).order('created_at', { ascending: true }).limit(1)),
-      ])
-      for (const res of [enCoursRes, suspenduRes, clotureRes, annuleRes, enPreparationRes, enRetardRes, budgetRes, deviseRes]) {
-        if (res.error) throw res.error
+      const { data, error } = await applyFilters(
+        supabase.from('projects').select('statut, budget_total, devise, date_fin_prevue').is('deleted_at', null)
+      );
+      if (error) throw error;
+
+      const rows = (data ?? []) as { statut: string; budget_total: number | null; devise: string | null; date_fin_prevue: string | null }[];
+      let enCours = 0, suspendu = 0, clotured = 0, enRetard = 0, total = rows.length, budgetTotal = 0;
+      let devise = 'XOF';
+      if (rows.length > 0 && rows[0].devise) devise = rows[0].devise;
+
+      for (const p of rows) {
+        if (p.statut === 'EN_COURS') {
+          enCours++;
+          if (p.date_fin_prevue && p.date_fin_prevue < now) enRetard++;
+        } else if (p.statut === 'SUSPENDU') {
+          suspendu++;
+        } else if (p.statut === 'CLOTURE' || p.statut === 'ANNULE') {
+          clotured++;
+        }
+        budgetTotal += Number(p.budget_total ?? 0);
       }
 
-      const budgetTotal = (budgetRes.data ?? []).reduce((s: number, p: { budget_total: number | null }) => s + Number(p.budget_total ?? 0), 0)
-      const devise = deviseRes.data?.[0]?.devise ?? 'XOF'
-      const sym = devise === 'EUR' ? '€' : devise === 'XOF' ? ' FCFA' : '$'
+      const sym = devise === 'EUR' ? '€' : devise === 'XOF' ? ' FCFA' : '$';
       const budgetPortefeuille = budgetTotal >= 1_000_000
         ? `${(budgetTotal / 1_000_000).toFixed(1)}M${sym}`
-        : `${budgetTotal.toLocaleString('fr-FR')}${sym}`
+        : `${budgetTotal.toLocaleString('fr-FR')}${sym}`;
 
       return {
-        total: (enCoursRes.count ?? 0) + (suspenduRes.count ?? 0) + (clotureRes.count ?? 0) + (annuleRes.count ?? 0) + (enPreparationRes.count ?? 0),
-        enBonneVoie: enCoursRes.count ?? 0,
-        aRisque: suspenduRes.count ?? 0,
-        enRetard: enRetardRes.count ?? 0,
-        clotured: (clotureRes.count ?? 0) + (annuleRes.count ?? 0),
+        total,
+        enBonneVoie: enCours,
+        aRisque: suspendu,
+        enRetard,
+        clotured,
         budgetPortefeuille,
       };
     },
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1000, // 5 min
   });
 }
 
