@@ -18,22 +18,25 @@ import {
 // Project sub-navigation data
 // ---------------------------------------------------------------------------
 
+// Tous les modules sont désormais réellement branchés sur Supabase (migration
+// terminée le 2026-07-17) — le statut n'a plus vocation à distinguer
+// réel/mock, gardé uniquement comme repère visuel neutre par groupe.
 export const PROJECT_NAV_GROUPS = [
   {
     title: "Aperçu & Cadrage",
     items: [
-      { id: "overview",   label: "Informations Générales", status: "success"     },
-      { id: "governance", label: "Gouvernance",             status: "warning"     },
-      { id: "logframe",   label: "Cadre Logique",           status: "destructive" },
-      { id: "wbs",        label: "Structure (WBS)",         status: "warning"     },
+      { id: "overview",   label: "Informations Générales", status: "success" },
+      { id: "governance", label: "Gouvernance",             status: "success" },
+      { id: "logframe",   label: "Cadre Logique",           status: "success" },
+      { id: "wbs",        label: "Structure (WBS)",         status: "success" },
     ],
   },
   {
     title: "Planification & Opérations",
     items: [
-      { id: "ptba",       label: "PTBA",                   status: "destructive" },
-      { id: "activities", label: "Activités",              status: "destructive" },
-      { id: "journal",    label: "Journal des Opérations", status: "warning"     },
+      { id: "ptba",       label: "PTBA",                   status: "success" },
+      { id: "activities", label: "Activités",              status: "success" },
+      { id: "journal",    label: "Journal des Opérations", status: "success" },
     ],
   },
   {
@@ -41,27 +44,27 @@ export const PROJECT_NAV_GROUPS = [
     items: [
       { id: "budget",        label: "Budget",                 status: "success" },
       { id: "funding",       label: "Sources de financement", status: "success" },
-      { id: "ppm",           label: "PPM",                    status: "warning" },
-      { id: "contracts",     label: "Contrats",               status: "warning" },
-      { id: "disbursements", label: "Décaissements",          status: "warning" },
+      { id: "ppm",           label: "PPM",                    status: "success" },
+      { id: "contracts",     label: "Contrats",               status: "success" },
+      { id: "disbursements", label: "Décaissements",          status: "success" },
     ],
   },
   {
     title: "Suivi & Contrôle",
     items: [
-      { id: "evm",          label: "Indicateurs EVM",   status: "warning"     },
-      { id: "risks",        label: "Risques & Alertes", status: "destructive" },
-      { id: "deliverables", label: "Livrables",         status: "destructive" },
+      { id: "evm",          label: "Indicateurs EVM",   status: "success" },
+      { id: "risks",        label: "Risques & Alertes", status: "success" },
+      { id: "deliverables", label: "Livrables",         status: "success" },
     ],
   },
   {
     title: "Documentation",
     items: [
-      { id: "pdocuments", label: "Documents",         status: "warning"     },
-      { id: "reports",    label: "Rapports",          status: "destructive" },
-      { id: "history",    label: "Historique",        status: "success"     },
-      { id: "comments",   label: "Commentaires",      status: "success"     },
-      { id: "settings",   label: "Paramètres Projet", status: "success"     },
+      { id: "pdocuments", label: "Documents",         status: "success" },
+      { id: "reports",    label: "Rapports",          status: "success" },
+      { id: "history",    label: "Historique",        status: "success" },
+      { id: "comments",   label: "Commentaires",      status: "success" },
+      { id: "settings",   label: "Paramètres Projet", status: "success" },
     ],
   },
 ] as const;

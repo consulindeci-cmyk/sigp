@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, Download, CheckCircle2, FileText, AlertCircle, Eye, Play } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/forms/Button';
 import { Select } from '@/components/ui/forms/Select';
 import { Input } from '@/components/ui/forms/Input';
@@ -23,7 +25,25 @@ export interface ReportGenerationSheetProps {
   onOpenChange: (open: boolean) => void;
   report: ReportTemplate | null;
   mode: GenerationMode;
-  onGenerated?: (report: ReportTemplate, format: ReportFormat) => void;
+  onGenerated?: (report: ReportTemplate, format: ReportFormat, projectId: string, dateDebut: string, dateFin: string) => void;
+}
+
+// Liste réelle des projets pour le sélecteur de périmètre — rapports_projet.
+// project_id est NOT NULL, donc un projet doit être choisi avant de générer.
+function useProjectOptions() {
+  return useQuery({
+    queryKey: ['projects-dropdown-reports'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, nom')
+        .is('deleted_at', null)
+        .order('nom');
+      if (error) throw error;
+      return data as { id: string; nom: string }[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,11 +60,15 @@ export function ReportGenerationSheet({
   const [format, setFormat] = useState<ReportFormat>('PDF');
   const [dateDebut, setDateDebut] = useState('2026-01-01');
   const [dateFin, setDateFin] = useState('2026-06-30');
+  const [projectId, setProjectId] = useState('');
+  const [projectError, setProjectError] = useState(false);
   const [progress, setProgress] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { data: projectOptions = [] } = useProjectOptions();
 
   // Reset state on open
   useEffect(() => {
@@ -54,6 +78,8 @@ export function ReportGenerationSheet({
       setGenerating(false);
       setDone(false);
       setPreviewing(false);
+      setProjectId('');
+      setProjectError(false);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [open, report]);
@@ -76,12 +102,14 @@ export function ReportGenerationSheet({
 
   function handleGenerate() {
     if (!report) return;
+    if (!projectId) { setProjectError(true); return; }
+    setProjectError(false);
     setGenerating(true);
     setDone(false);
     runProgress(() => {
       setGenerating(false);
       setDone(true);
-      onGenerated?.(report, format);
+      onGenerated?.(report, format, projectId, dateDebut, dateFin);
     });
   }
 
@@ -177,19 +205,26 @@ export function ReportGenerationSheet({
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-foreground" htmlFor="rpt-projet">
-                    Périmètre projet (optionnel)
-                  </label>
-                  <Select id="rpt-projet" disabled={generating || previewing}>
-                    <option value="">Tous les projets</option>
-                    <option value="p1">Électrification Solaire Zones Rurales</option>
-                    <option value="p2">Accès Eau Potable et Assainissement Rural</option>
-                    <option value="p3">Santé Maternelle et Infantile</option>
-                    <option value="p4">Appui à la Filière Agricole Nord</option>
-                    <option value="p5">Gouvernance Locale et Décentralisation</option>
-                  </Select>
-                </div>
+                {!isPreviewMode && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-foreground" htmlFor="rpt-projet">
+                      Projet <span className="text-destructive">*</span>
+                    </label>
+                    <Select
+                      id="rpt-projet"
+                      value={projectId}
+                      onChange={(e) => { setProjectId(e.target.value); setProjectError(false); }}
+                      disabled={generating || previewing}
+                      error={projectError}
+                    >
+                      <option value="">Sélectionner un projet…</option>
+                      {projectOptions.map((p) => (
+                        <option key={p.id} value={p.id}>{p.nom}</option>
+                      ))}
+                    </Select>
+                    {projectError && <p className="text-xs text-destructive">Un projet doit être sélectionné.</p>}
+                  </div>
+                )}
               </div>
             )}
 

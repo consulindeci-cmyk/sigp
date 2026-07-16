@@ -115,8 +115,8 @@ function GanttRow({ activity, isLast }: { activity: Activity; isLast: boolean })
   return (
     <tr className={`hover:bg-muted/20 transition-colors ${!isLast ? 'border-b border-border' : ''}`}>
 
-      {/* Left info panel — sticky */}
-      <td className="w-72 shrink-0 px-3 py-2.5 md:sticky md:left-0 z-[1] bg-card border-r border-border">
+      {/* Left info panel */}
+      <td className="w-72 shrink-0 px-3 py-2.5 bg-card border-r border-border">
         <div className="flex items-start gap-2">
           <div className={`mt-1 shrink-0 h-2 w-2 rounded-full ${getPriorityDot(activity.priorite)}`}
             title={`Priorité: ${activity.priorite}`}
@@ -255,7 +255,7 @@ export function PTBAGanttView({ annee: _annee, activities = [] }: PTBAGanttViewP
 
                 {/* Year header */}
                 <tr className="bg-primary text-primary-foreground">
-                  <th className="w-72 shrink-0 px-4 py-2 text-xs font-semibold md:sticky md:left-0 z-[12] bg-primary border-r border-primary-foreground/20">
+                  <th className="w-72 shrink-0 px-4 py-2 text-xs font-semibold bg-primary border-r border-primary-foreground/20">
                     Activité
                   </th>
                   <th className="w-28 px-3 py-2 text-xs font-semibold border-r border-primary-foreground/20">
@@ -279,7 +279,7 @@ export function PTBAGanttView({ annee: _annee, activities = [] }: PTBAGanttViewP
 
                 {/* Quarter header */}
                 <tr className="bg-primary/80 text-primary-foreground">
-                  <th className="w-72 px-4 py-1.5 text-[11px] md:sticky md:left-0 z-[12] bg-primary/80 border-r border-primary-foreground/20">
+                  <th className="w-72 px-4 py-1.5 text-[11px] bg-primary/80 border-r border-primary-foreground/20">
                     Code — Libellé
                   </th>
                   <th className="w-28 px-3 py-1.5 text-[11px] border-r border-primary-foreground/20">

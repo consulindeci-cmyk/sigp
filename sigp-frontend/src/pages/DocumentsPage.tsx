@@ -8,7 +8,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import {
   FileText, FileSpreadsheet, File, Archive, Image as ImageIcon,
   FolderOpen, Download, FileDown, Plus, Eye, Pencil, Trash2,
-  RotateCcw, Copy, AlertCircle, CheckCircle2, Clock,
+  RotateCcw, AlertCircle, CheckCircle2, Clock,
   BookOpen, ArchiveX,
 } from 'lucide-react';
 import type {
@@ -18,7 +18,7 @@ import type {
 import {
   STATUT_GLOBAL_DOC_LABEL, CONF_GLOBAL_DOC_LABEL,
   CATEGORIE_GLOBAL_DOC_OPTIONS, STATUT_GLOBAL_DOC_OPTIONS,
-  CONF_GLOBAL_DOC_OPTIONS, TYPE_FICHIER_OPTIONS, AUTEURS_GLOBAL_DOC,
+  CONF_GLOBAL_DOC_OPTIONS, TYPE_FICHIER_OPTIONS,
 } from '@/mocks/globalDocumentsMocks';
 import {
   useGlobalDocuments, useUpdateGlobalDocument, useDeleteGlobalDocument,
@@ -171,9 +171,10 @@ export default function DocumentsPage() {
 
   // ── Filtres ──────────────────────────────────────────────────────────────────
 
-  const auteurOptions = useMemo(() =>
-    AUTEURS_GLOBAL_DOC.map(a => ({ label: a, value: a })),
-  []);
+  const auteurOptions = useMemo(() => {
+    const unique = [...new Set(docs.map(d => d.auteur))].sort();
+    return unique.map(a => ({ label: a, value: a }));
+  }, [docs]);
 
   const tableFilters = useMemo(() => [
     {
@@ -208,6 +209,8 @@ export default function DocumentsPage() {
   const handleSave = useCallback((payload: DocumentSavePayload, id?: string) => {
     const now = new Date().toISOString();
     if (id) {
+      const current = docs.find(d => d.id === id);
+      if (!current) return;
       setDocs(prev => prev.map(d =>
         d.id === id ? {
           ...d, ...payload,
@@ -217,6 +220,24 @@ export default function DocumentsPage() {
           updatedAt: now,
         } : d,
       ));
+      updateMutation.mutate({
+        id,
+        titre: payload.titre,
+        changes: {
+          categorie:         payload.categorie,
+          type:              payload.type,
+          version:           payload.version,
+          confidentialite:   payload.confidentialite,
+          auteur:            payload.auteur,
+          service:           payload.service,
+          mots_cles:         payload.mots_cles,
+          taille_ko:         payload.taille_ko,
+          date_expiration:   payload.date_expiration,
+          feStatut:          payload.statut,
+          date_modification: payload.date_modification,
+        },
+        current,
+      });
     } else {
       setDocs(prev => {
         const max = prev.reduce((m, d) => {
@@ -239,7 +260,7 @@ export default function DocumentsPage() {
         return [newDoc, ...prev];
       });
     }
-  }, []);
+  }, [docs, updateMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
@@ -281,55 +302,28 @@ export default function DocumentsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleDuplicate = useCallback((doc: DocumentGlobal) => {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    setDocs(prev => {
-      const max = prev.reduce((m, d) => {
-        const n = parseInt(d.id.replace('gdoc-', ''), 10);
-        return isNaN(n) ? m : Math.max(m, n);
-      }, 0);
-      const catCode = doc.categorie.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 3);
-      const catDocs = prev.filter(d => d.categorie === doc.categorie);
-      const copy: DocumentGlobal = {
-        ...doc,
-        id:                `gdoc-${String(max + 1).padStart(3, '0')}`,
-        code_document:     `DOC-${catCode}-${String(catDocs.length + 1).padStart(3, '0')}`,
-        titre:             `${doc.titre} (copie)`,
-        statut:            'BROUILLON',
-        nb_telechargements: 0,
-        nb_commentaires:    0,
-        date_creation:     today,
-        date_modification: today,
-        createdAt:         now,
-        updatedAt:         now,
-      };
-      return [copy, ...prev];
-    });
-  }, []);
-
   const handleNewVersion = useCallback((doc: DocumentGlobal) => {
     const now = new Date().toISOString();
     const today = now.slice(0, 10);
     const parts  = doc.version.split('.');
     const newVer = `${parseInt(parts[0], 10) + 1}.0`;
+    const newVersions = [...doc.versions, {
+      version:     newVer,
+      date:        today,
+      auteur:      doc.auteur,
+      changements: `Mise à jour v${newVer}`,
+    }];
     setDocs(prev => prev.map(d =>
       d.id === doc.id
-        ? {
-          ...d,
-          version: newVer,
-          statut:  'EN_VALIDATION',
-          date_modification: today,
-          updatedAt: now,
-          versions: [...d.versions, {
-            version:     newVer,
-            date:        today,
-            auteur:      d.auteur,
-            changements: `Mise à jour v${newVer}`,
-          }],
-        }
+        ? { ...d, version: newVer, statut: 'EN_VALIDATION', date_modification: today, updatedAt: now, versions: newVersions }
         : d,
     ));
+    updateMutation.mutate({
+      id: doc.id,
+      changes: { version: newVer, feStatut: 'EN_VALIDATION', date_modification: today, versions: newVersions },
+      current: doc,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDownload = useCallback((doc: DocumentGlobal) => {
@@ -340,6 +334,12 @@ export default function DocumentsPage() {
         ? { ...d, nb_telechargements: d.nb_telechargements + 1, date_modification: today, updatedAt: now }
         : d,
     ));
+    updateMutation.mutate({
+      id: doc.id,
+      changes: { nb_telechargements: doc.nb_telechargements + 1, date_modification: today },
+      current: doc,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openNew  = useCallback(() => {
@@ -519,13 +519,6 @@ export default function DocumentsPage() {
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              variant="ghost" size="sm" aria-label="Dupliquer"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => handleDuplicate(d)}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
             {isArchived ? (
               <Button
                 variant="ghost" size="sm" aria-label="Restaurer"
@@ -554,7 +547,7 @@ export default function DocumentsPage() {
         );
       },
     },
-  ], [openView, openEdit, handleDownload, handleDuplicate, handleRestore, handleArchive]);
+  ], [openView, openEdit, handleDownload, handleRestore, handleArchive]);
 
   // ── JSX ──────────────────────────────────────────────────────────────────────
 
@@ -800,6 +793,7 @@ export default function DocumentsPage() {
         }}
         onDownload={handleDownload}
         onNewVersion={handleNewVersion}
+        auteurOptions={auteurOptions.map(o => o.value)}
       />
 
       {/* ── Modal suppression ──────────────────────────────────────────────────── */}

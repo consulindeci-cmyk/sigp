@@ -234,25 +234,24 @@ export default function TabReports() {
 
   const handleDuplicate = useCallback((id: string) => {
     const now = new Date().toISOString();
-    setRapports(prev => {
-      const original = prev.find(r => r.id === id);
-      if (!original) return prev;
-      const copy: RapportProjet = {
-        ...original,
-        id: `rpt-${Date.now()}`,
-        code_rapport: nextReportCode(prev),
-        titre: `${original.titre} (copie)`,
-        statut: 'GENERE',
-        version: '1.0',
-        nb_telechargements: 0,
-        date_generation: now.slice(0, 10),
-        date_telechargement: undefined,
-        createdAt: now,
-        updatedAt: now,
-      };
-      return [copy, ...prev];
-    });
-  }, []);
+    const original = rapports.find(r => r.id === id);
+    if (!original) return;
+    const copy: RapportProjet = {
+      ...original,
+      id: `rpt-${Date.now()}`,
+      code_rapport: nextReportCode(rapports),
+      titre: `${original.titre} (copie)`,
+      statut: 'GENERE',
+      version: '1.0',
+      nb_telechargements: 0,
+      date_generation: now.slice(0, 10),
+      date_telechargement: undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setRapports(prev => [copy, ...prev]);
+    createMutation.mutate({ ...copy, projet_id: resolvedProjectId });
+  }, [rapports, createMutation, resolvedProjectId]);
 
   const handleArchive = useCallback((id: string) => {
     const now = new Date().toISOString();

@@ -15,8 +15,6 @@ const LoginPage     = lazy(() => import('./pages/LoginPage'));
 const UsersPage     = lazy(() => import('./pages/UsersPage'));
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
 const ReportsPage   = lazy(() => import('./pages/ReportsPage'));
-// Pilote migration Supabase — page de test isolée, à retirer après validation.
-const PilotSupabaseProjectsPage = lazy(() => import('./pages/PilotSupabaseProjectsPage'));
 
 // ─── Mapping dashboard par défaut → route ────────────────────────────────────
 
@@ -63,8 +61,6 @@ export default function App() {
       <Suspense fallback={<Loader fullScreen text="Chargement de l'application..." />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          {/* Pilote migration Supabase — hors ProtectedRoute, session Supabase Auth indépendante */}
-          <Route path="/pilot-supabase" element={<PilotSupabaseProjectsPage />} />
           <Route
             element={
               <ProtectedRoute>

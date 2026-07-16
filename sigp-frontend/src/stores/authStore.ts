@@ -56,6 +56,8 @@ export const useAuthStore = create<AuthState>()((set) => ({
     const user = await userFromSupabaseSession()
     if (!user) throw new Error('Profil utilisateur introuvable après authentification.')
     set({ user, isAuthenticated: true, isAuthChecked: true })
+    // Best-effort : ne doit jamais bloquer ni faire échouer la connexion.
+    supabase.from('login_history').insert({ user_id: user.id, user_agent: navigator.userAgent }).then(() => {})
   },
 
   logout: async () => {

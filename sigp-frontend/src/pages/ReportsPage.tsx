@@ -41,7 +41,8 @@ import {
   type MonthlyExportsData,
 } from '@/mocks/reportsMocks';
 import type { RapportProjet, TypeRapport, FormatRapport } from '@/types';
-import { useReports, useDeleteReport } from '@/hooks/useReports';
+import { useReports, useCreateReport, useDeleteReport } from '@/hooks/useReports';
+import { useAuthStore } from '@/stores/authStore';
 
 // ── Adapters: RapportProjet → ReportPage types ────────────────────────────────
 
@@ -186,7 +187,6 @@ function CategorySection({
   onGenerate,
   onPreview,
   onToggleFav,
-  onDuplicate,
   onDelete,
 }: {
   category: ReportCategory;
@@ -194,7 +194,6 @@ function CategorySection({
   onGenerate: (r: ReportTemplate) => void;
   onPreview: (r: ReportTemplate) => void;
   onToggleFav: (id: string) => void;
-  onDuplicate: (r: ReportTemplate) => void;
   onDelete: (r: ReportTemplate) => void;
 }) {
   if (reports.length === 0) return null;
@@ -215,7 +214,6 @@ function CategorySection({
             onGenerate={onGenerate}
             onPreview={onPreview}
             onToggleFav={onToggleFav}
-            onDuplicate={onDuplicate}
             onDelete={onDelete}
           />
         ))}
@@ -230,7 +228,18 @@ function CategorySection({
 
 export default function ReportsPage() {
   const { data: apiRapports } = useReports();
+  const createMutation = useCreateReport();
   const deleteMutation = useDeleteReport();
+  const currentUser = useAuthStore((s) => s.user);
+
+  // Un même "code" de modèle peut regrouper des rapports de plusieurs projets
+  // (cf. buildTemplates) — on retient le type réel le plus récent par code
+  // pour pouvoir recréer une ligne rapports_projet cohérente à la génération.
+  const codeToType = useMemo(() => {
+    const map = new Map<string, TypeRapport>();
+    for (const r of apiRapports ?? []) map.set(r.code_rapport, r.type);
+    return map;
+  }, [apiRapports]);
 
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [generated, setGenerated] = useState<GeneratedReport[]>([]);
@@ -324,20 +333,6 @@ export default function ReportsPage() {
     );
   }
 
-  function handleDuplicate(report: ReportTemplate) {
-    const dup: ReportTemplate = {
-      ...report,
-      id: `dup-${Date.now()}`,
-      code: `${report.code}-COPY`,
-      nom: `${report.nom} (Copie)`,
-      favori: false,
-      nombreExports: 0,
-      dateCreation: new Date().toISOString().split('T')[0],
-      dateDernierExport: '—',
-    };
-    setTemplates((prev) => [dup, ...prev]);
-  }
-
   function openDelete(report: ReportTemplate) {
     setReportToDelete(report);
     setDeleteModalOpen(true);
@@ -351,29 +346,27 @@ export default function ReportsPage() {
     setReportToDelete(null);
   }
 
-  function handleGenerated(report: ReportTemplate, format: ReportFormat) {
-    const newEntry: GeneratedReport = {
-      id: `g-${Date.now()}`,
-      reportCode: report.code,
-      reportNom: report.nom,
-      format,
-      dateGeneration: new Date().toLocaleString('fr-FR', {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit',
-      }).replace(',', ''),
-      genereePar: 'Amadou Diallo',
-      taille: `${(Math.random() * 4 + 0.2).toFixed(1)} Mo`,
-      statut: 'Succès',
-      categorie: report.categorie,
-    };
-    setGenerated((prev) => [newEntry, ...prev]);
-    setTemplates((prev) =>
-      prev.map((t) =>
-        t.id === report.id
-          ? { ...t, nombreExports: t.nombreExports + 1, dateDernierExport: newEntry.dateGeneration.split(' ')[0] }
-          : t
-      )
-    );
+  function handleGenerated(
+    report: ReportTemplate, format: ReportFormat, projectId: string,
+    dateDebut: string, dateFin: string,
+  ) {
+    const auteur = currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Utilisateur inconnu';
+    const beFormat: FormatRapport = format === 'XLSX' ? 'Excel' : format === 'DOCX' ? 'Word' : 'PDF';
+    createMutation.mutate({
+      projet_id: projectId,
+      code_rapport: report.code,
+      titre: report.nom,
+      description: report.description,
+      type: codeToType.get(report.code) ?? 'AVANCEMENT',
+      format: beFormat,
+      statut: 'GENERE',
+      periode: `${dateDebut} → ${dateFin}`,
+      version: '1.0',
+      auteur,
+      taille_ko: 0,
+      nb_telechargements: 0,
+      date_generation: new Date().toISOString().slice(0, 10),
+    });
   }
 
   function handleDeleteGenerated(id: string) {
@@ -579,7 +572,6 @@ export default function ReportsPage() {
                   onGenerate={openGenerate}
                   onPreview={openPreview}
                   onToggleFav={handleToggleFav}
-                  onDuplicate={handleDuplicate}
                   onDelete={openDelete}
                 />
               ))}
@@ -604,7 +596,6 @@ export default function ReportsPage() {
                   onGenerate={openGenerate}
                   onPreview={openPreview}
                   onToggleFav={handleToggleFav}
-                  onDuplicate={handleDuplicate}
                   onDelete={openDelete}
                 />
               ))}

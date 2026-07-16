@@ -204,15 +204,19 @@ export function useUpdateGlobalDocument() {
       id,
       changes,
       current,
+      titre,
     }: {
       id: string;
       changes: Partial<GDocMeta>;
       current: DocumentGlobal;
+      /** titre est une vraie colonne (hors du blob meta) — sans ce paramètre,
+       * un changement de titre ne serait jamais persisté. */
+      titre?: string;
     }) => {
       const meta = buildUpdateMeta(changes, current);
       const { data: resp } = await invokeEdgeFunction<{ data: DocumentRow }>('documents-update', {
         id,
-        titre:       current.titre,
+        titre:       titre ?? current.titre,
         description: encodeMeta(meta),
         statut:      feToBeStatut(meta.feStatut),
       });

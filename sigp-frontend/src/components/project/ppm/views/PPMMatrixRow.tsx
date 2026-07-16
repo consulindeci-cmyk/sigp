@@ -51,7 +51,7 @@ function PPMMatrixRowComponent({ ligne, onClick }: PPMMatrixRowProps) {
       className="hover:bg-muted/5 transition-colors group"
     >
       {/* 1. Identifiants */}
-      <td className={`${CELL} bg-card group-hover:bg-muted/5 md:sticky md:left-0 z-10 transition-colors`}>
+      <td className={`${CELL} bg-card group-hover:bg-muted/5 transition-colors`}>
         <div className="font-semibold text-foreground">{ligne.reference_marche}</div>
         <div className="text-[11px] text-muted-foreground">WBS: {ligne.wbs_id}</div>
       </td>

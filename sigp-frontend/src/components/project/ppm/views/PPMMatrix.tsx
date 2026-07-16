@@ -12,10 +12,10 @@ const SELECT_CLASS = 'h-8 px-3 text-xs border border-border rounded-md bg-backgr
 
 const TH_GROUP = 'px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground border-r border-primary/30 text-center'
 const TH_GROUP_LAST = 'px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground text-center'
-const TH_GROUP_STICKY = `${TH_GROUP} md:sticky md:left-0 z-30 bg-primary`
+const TH_GROUP_STICKY = `${TH_GROUP} bg-primary`
 
 const TH_COL = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-r border-b border-border bg-muted/30 whitespace-nowrap'
-const TH_COL_STICKY = `${TH_COL} md:sticky md:left-0 z-30 w-[200px]`
+const TH_COL_STICKY = `${TH_COL} w-[200px]`
 const TH_COL_RIGHT = `${TH_COL} text-right`
 const TH_COL_CENTER = `${TH_COL} text-center`
 const TH_COL_SECTION = `${TH_COL} border-r-2`

@@ -1,4 +1,4 @@
-import { FileText, Star, StarOff, Play, Eye, Copy, Trash2 } from 'lucide-react';
+import { FileText, Star, StarOff, Play, Eye, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Card, CardContent } from '@/components/ui/data-display/Card';
@@ -39,7 +39,6 @@ export interface ReportCatalogCardProps {
   onGenerate:    (r: ReportTemplate) => void;
   onPreview:     (r: ReportTemplate) => void;
   onToggleFav:   (id: string) => void;
-  onDuplicate:   (r: ReportTemplate) => void;
   onDelete:      (r: ReportTemplate) => void;
 }
 
@@ -48,12 +47,10 @@ export function ReportCatalogCard({
   onGenerate,
   onPreview,
   onToggleFav,
-  onDuplicate,
   onDelete,
 }: ReportCatalogCardProps) {
   const moreActions: ActionItem[] = [
     { label: 'Aperçu',     icon: <Eye className="h-3.5 w-3.5" />,    onClick: () => onPreview(report) },
-    { label: 'Dupliquer',  icon: <Copy className="h-3.5 w-3.5" />,   onClick: () => onDuplicate(report) },
     { label: 'Supprimer',  icon: <Trash2 className="h-3.5 w-3.5" />, onClick: () => onDelete(report), variant: 'destructive', separator: true },
   ];
 

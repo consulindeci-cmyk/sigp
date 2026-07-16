@@ -7,7 +7,7 @@ import type {
 import {
   CATEGORIE_GLOBAL_DOC_OPTIONS, STATUT_GLOBAL_DOC_OPTIONS,
   CONF_GLOBAL_DOC_OPTIONS, TYPE_FICHIER_OPTIONS,
-  STATUT_GLOBAL_DOC_LABEL, AUTEURS_GLOBAL_DOC, SERVICES_GLOBAL_DOC,
+  STATUT_GLOBAL_DOC_LABEL, SERVICES_GLOBAL_DOC,
 } from '@/mocks/globalDocumentsMocks';
 import {
   SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
@@ -63,6 +63,9 @@ export interface DocumentSlideOverProps {
   onDelete?:     (id: string) => void;
   onDownload?:   (doc: DocumentGlobal) => void;
   onNewVersion?: (doc: DocumentGlobal) => void;
+  /** Auteurs réels déjà présents dans les documents existants (dérivés côté
+   * page, pas une liste figée). */
+  auteurOptions: string[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -100,7 +103,7 @@ const INIT: FormState = {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function DocumentSlideOver({
-  open, onOpenChange, mode, document: doc, onSave, onDelete, onDownload, onNewVersion,
+  open, onOpenChange, mode, document: doc, onSave, onDelete, onDownload, onNewVersion, auteurOptions,
 }: DocumentSlideOverProps) {
   const [form, setForm]               = useState<FormState>(INIT);
   const [errors, setErrors]           = useState<Partial<Record<keyof FormState, string>>>({});
@@ -374,7 +377,7 @@ export function DocumentSlideOver({
                       value={form.auteur}
                       onChange={e => set('auteur', e.target.value)}
                     >
-                      {AUTEURS_GLOBAL_DOC.map(a => <option key={a} value={a}>{a}</option>)}
+                      {auteurOptions.map(a => <option key={a} value={a}>{a}</option>)}
                     </Select>
                   </div>
                   <div className="space-y-1.5">

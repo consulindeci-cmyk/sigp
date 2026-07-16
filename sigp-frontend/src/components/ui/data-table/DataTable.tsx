@@ -84,7 +84,7 @@ export function DataTable<TData, TValue>({
                     const sorted = header.column.getIsSorted();
                     const meta = header.column.columnDef.meta as { align?: string; isSticky?: boolean; isStickyRight?: boolean } | undefined;
                     const align = meta?.align ?? 'left';
-                    const isStickyLeft = meta?.isSticky === true;
+                    const isStickyLeft = false; // Désactivé (défilement horizontal libre de tout le tableau)
                     const isStickyRight = meta?.isStickyRight === true;
 
                     return (
@@ -140,7 +140,7 @@ export function DataTable<TData, TValue>({
                     {row.getVisibleCells().map((cell) => {
                       const meta = cell.column.columnDef.meta as { align?: string; isSticky?: boolean; isStickyRight?: boolean } | undefined;
                       const align = meta?.align ?? 'left';
-                      const isStickyLeft = meta?.isSticky === true;
+                      const isStickyLeft = false; // Désactivé (défilement horizontal libre)
                       const isStickyRight = meta?.isStickyRight === true;
 
                       return (

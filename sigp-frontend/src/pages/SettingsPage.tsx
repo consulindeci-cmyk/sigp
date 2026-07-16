@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import {
   User, Shield, Bell, Palette, Building2, Database, Archive,
   Lock, SlidersHorizontal, Plug, Info, AlertTriangle,
-  Save, CheckCircle2, Key, Laptop, Smartphone, Tablet,
+  Save, CheckCircle2, Key, Laptop,
   LogOut, RotateCcw, UserX, Trash2, Eye, EyeOff, Copy,
   Download, RefreshCw, Calendar, Globe, Mail, Phone,
   ExternalLink, ChevronRight, Sun, Moon, Monitor,
@@ -26,9 +26,11 @@ import {
 } from '@/stores/prefsStore';
 import {
   LANGUES, TIMEZONES, FORMATS_DATE, DEVISES,
-  type UserProfile, type ActiveSession, type ConnectionHistory, type SessionDevice,
+  type UserProfile,
 } from '@/mocks/settingsMocks';
 import { useCurrentUserProfile, useUpdateProfile } from '@/hooks/useUserProfile';
+import { useLoginHistory } from '@/hooks/useLoginHistory';
+import { supabase } from '@/lib/supabaseClient';
 
 // ─── Types nav ────────────────────────────────────────────────────────────────
 
@@ -101,12 +103,6 @@ function SaveRow({ saving, saved, onSave, label = 'Enregistrer' }: {
       </Button>
     </div>
   );
-}
-
-function DeviceIcon({ device }: { device: SessionDevice }) {
-  if (device === 'mobile') return <Smartphone className="h-4 w-4" aria-hidden="true" />;
-  if (device === 'tablet') return <Tablet className="h-4 w-4" aria-hidden="true" />;
-  return <Laptop className="h-4 w-4" aria-hidden="true" />;
 }
 
 // ─── OptionCard ───────────────────────────────────────────────────────────────
@@ -341,76 +337,50 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
 // ─── Section: Sécurité ────────────────────────────────────────────────────────
 
 interface SecuriteSectionProps {
-  sessions: ActiveSession[];
-  onTerminateSession: (id: string) => void;
-  onTerminateAll: () => void;
-  connectionHistory: ConnectionHistory[];
+  userId: string | undefined;
+  onTerminateOthers: () => Promise<void>;
 }
 
-function SecuriteSection({ sessions, onTerminateSession, onTerminateAll, connectionHistory }: SecuriteSectionProps) {
-  const [terminateAllOpen, setTerminateAllOpen] = useState(false);
-  const [allDone, setAllDone] = useState(false);
+function SecuriteSection({ userId, onTerminateOthers }: SecuriteSectionProps) {
+  const { data: history = [] } = useLoginHistory(userId);
+  const [terminateOpen, setTerminateOpen] = useState(false);
+  const [terminating, setTerminating] = useState(false);
+  const [done, setDone] = useState(false);
 
-  function handleTerminateAll() {
-    onTerminateAll(); setTerminateAllOpen(false); setAllDone(true);
-    setTimeout(() => setAllDone(false), 4000);
+  async function handleTerminate() {
+    setTerminating(true);
+    await onTerminateOthers();
+    setTerminating(false); setTerminateOpen(false); setDone(true);
+    setTimeout(() => setDone(false), 4000);
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <SectionHeader title="Sécurité" description="Sessions actives et historique des connexions. ⚠️ Données simulées — nécessite le backend." />
+      <SectionHeader title="Sécurité" description="Déconnexion à distance et historique des connexions." />
 
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-md bg-info/10 text-info flex items-center justify-center shrink-0">
-                <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
-              </div>
-              <div>
-                <CardTitle className="text-base">Sessions actives</CardTitle>
-                <CardDescription className="text-[11px]">{sessions.length} appareil{sessions.length > 1 ? 's' : ''} connecté{sessions.length > 1 ? 's' : ''}.</CardDescription>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-md bg-info/10 text-info flex items-center justify-center shrink-0">
+              <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
             </div>
-            <div className="flex items-center gap-2">
-              {allDone && <span className="text-xs text-success flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Terminées</span>}
-              <Button variant="outline" size="sm"
-                className="text-destructive border-destructive/30 hover:bg-destructive/10 text-xs"
-                leftIcon={<LogOut className="h-3.5 w-3.5" />}
-                onClick={() => setTerminateAllOpen(true)}>
-                Tout déconnecter
-              </Button>
+            <div>
+              <CardTitle className="text-base">Autres appareils</CardTitle>
+              <CardDescription className="text-[11px]">
+                Supabase ne permet pas de lister les appareils connectés individuellement — seule une déconnexion globale des autres sessions est possible.
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-3">
-            {sessions.map(s => (
-              <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-card">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
-                    <DeviceIcon device={s.device} />
-                  </div>
-                  <div className="flex flex-col gap-0.5 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[13px] font-semibold text-foreground">{s.appareil}</span>
-                      {s.courante && <Badge variant="success" className="text-[10px] px-1.5 py-0">Courante</Badge>}
-                    </div>
-                    <p className="text-[11px] text-muted-foreground truncate">{s.navigateur} · {s.localisation} · {s.ip}</p>
-                    <p className="text-[10px] text-muted-foreground">{s.dernierAcces}</p>
-                  </div>
-                </div>
-                {!s.courante && (
-                  <Button variant="outline" size="sm"
-                    className="shrink-0 text-destructive border-destructive/30 hover:bg-destructive/10"
-                    leftIcon={<LogOut className="h-3.5 w-3.5" />}
-                    onClick={() => onTerminateSession(s.id)}
-                    aria-label={`Terminer la session sur ${s.appareil}`}>
-                    Terminer
-                  </Button>
-                )}
-              </div>
-            ))}
+          <div className="flex items-center gap-3">
+            {done && <span className="text-xs text-success flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Autres appareils déconnectés</span>}
+            <Button variant="outline" size="sm"
+              className="text-destructive border-destructive/30 hover:bg-destructive/10 text-xs"
+              leftIcon={<LogOut className="h-3.5 w-3.5" />}
+              onClick={() => setTerminateOpen(true)}>
+              Déconnecter tous les autres appareils
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -418,38 +388,36 @@ function SecuriteSection({ sessions, onTerminateSession, onTerminateAll, connect
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Historique des connexions</CardTitle>
-          <CardDescription className="text-[11px]">6 dernières tentatives.</CardDescription>
+          <CardDescription className="text-[11px]">{history.length} dernière{history.length > 1 ? 's' : ''} connexion{history.length > 1 ? 's' : ''} réussie{history.length > 1 ? 's' : ''}.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col divide-y divide-border">
-            {connectionHistory.map(entry => (
-              <div key={entry.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <p className="text-[12px] font-medium text-foreground">{entry.localisation}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono">{entry.ip} · {entry.navigateur}</p>
+          {history.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune connexion enregistrée pour l'instant.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-border">
+              {history.map(entry => (
+                <div key={entry.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <p className="text-[12px] font-medium text-foreground">{entry.navigateur}</p>
+                  <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                    {new Date(entry.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[10px] text-muted-foreground font-mono">{entry.date}</span>
-                  <Badge variant={entry.statut === 'Succès' ? 'success' : 'destructive'} className="text-[10px] px-1.5 py-0">
-                    {entry.statut}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Modal open={terminateAllOpen} onOpenChange={setTerminateAllOpen}>
+      <Modal open={terminateOpen} onOpenChange={setTerminateOpen}>
         <ModalContent>
           <ModalHeader>
-            <ModalTitle>Déconnecter tous les appareils ?</ModalTitle>
-            <ModalDescription>Tous les appareils connectés sauf la session courante seront déconnectés.</ModalDescription>
+            <ModalTitle>Déconnecter tous les autres appareils ?</ModalTitle>
+            <ModalDescription>Toutes les sessions actives sauf celle-ci seront déconnectées.</ModalDescription>
           </ModalHeader>
           <ModalFooter>
             <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
-            <Button variant="destructive" onClick={handleTerminateAll} leftIcon={<LogOut className="h-4 w-4" />}>
-              Tout déconnecter
+            <Button variant="destructive" onClick={handleTerminate} disabled={terminating} leftIcon={<LogOut className="h-4 w-4" />}>
+              {terminating ? 'Déconnexion...' : 'Déconnecter'}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -1432,7 +1400,7 @@ function AProposSection() {
 
 interface ZoneDangereuseProps {
   onResetAll: () => void;
-  onTerminateAllSessions: () => void;
+  onTerminateAllSessions: () => Promise<void>;
 }
 
 function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereuseProps) {
@@ -1451,8 +1419,8 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
     setTimeout(() => setResetDone(false), 4000);
   }
 
-  function handleTerminateAll() {
-    onTerminateAllSessions(); setSessionsOpen(false); setSessionsDone(true);
+  async function handleTerminateAll() {
+    await onTerminateAllSessions(); setSessionsOpen(false); setSessionsDone(true);
     setTimeout(() => setSessionsDone(false), 4000);
   }
 
@@ -1519,8 +1487,8 @@ function ZoneDangereuse({ onResetAll, onTerminateAllSessions }: ZoneDangereusePr
           <div className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-md bg-warning/10 text-warning flex items-center justify-center shrink-0"><LogOut className="h-3.5 w-3.5" /></div>
             <div>
-              <CardTitle className="text-base">Déconnecter tous les appareils</CardTitle>
-              <CardDescription className="text-[11px]">⚠️ Simulation — nécessite le backend.</CardDescription>
+              <CardTitle className="text-base">Déconnecter les autres appareils</CardTitle>
+              <CardDescription className="text-[11px]">✅ Fonctionnel — révoque les sessions actives sur tous les autres appareils.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -1687,8 +1655,6 @@ export default function SettingsPage() {
   const backendProfile            = useCurrentUserProfile();
   const updateProfileMutation     = useUpdateProfile();
   const [profile,  setProfile]  = useState<UserProfile>(backendProfile);
-  const [sessions, setSessions] = useState<ActiveSession[]>([]);
-  const connectionHistory: ConnectionHistory[] = [];
 
   useEffect(() => {
     if (backendProfile.id) setProfile(backendProfile);
@@ -1696,8 +1662,9 @@ export default function SettingsPage() {
 
   const { setTheme, setPrefs, setNotifs } = usePrefsStore();
 
-  function handleTerminateSession(id: string) { setSessions(prev => prev.filter(s => s.id !== id)); }
-  function handleTerminateAll()               { setSessions(prev => prev.filter(s => s.courante)); }
+  async function handleTerminateOthers() {
+    await supabase.auth.signOut({ scope: 'others' });
+  }
 
   function handleResetAll() {
     // Réinitialise le store Zustand (et donc localStorage via persist)
@@ -1741,10 +1708,8 @@ export default function SettingsPage() {
       case 'securite':
         return (
           <SecuriteSection
-            sessions={sessions}
-            onTerminateSession={handleTerminateSession}
-            onTerminateAll={handleTerminateAll}
-            connectionHistory={connectionHistory}
+            userId={profile.id}
+            onTerminateOthers={handleTerminateOthers}
           />
         );
       case 'notifications':
@@ -1769,7 +1734,7 @@ export default function SettingsPage() {
         return (
           <ZoneDangereuse
             onResetAll={handleResetAll}
-            onTerminateAllSessions={handleTerminateAll}
+            onTerminateAllSessions={handleTerminateOthers}
           />
         );
     }
