@@ -11,6 +11,7 @@ const ProjectsPage  = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const SettingsPage  = lazy(() => import('./pages/SettingsPage'));
 const LoginPage     = lazy(() => import('./pages/LoginPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const UsersPage     = lazy(() => import('./pages/UsersPage'));
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
 const ReportsPage   = lazy(() => import('./pages/ReportsPage'));
@@ -60,6 +61,7 @@ export default function App() {
       <Suspense fallback={<Loader fullScreen text="Chargement de l'application..." />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             element={
               <ProtectedRoute>

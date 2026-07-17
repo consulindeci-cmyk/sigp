@@ -3,22 +3,15 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, Navigate } from 'react-router-dom'
-import { Eye, EyeOff, AlertCircle, Mail, Lock, Check } from 'lucide-react'
+import { Eye, EyeOff, AlertCircle, Mail, Lock, Check, CheckCircle2, ArrowLeft } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { supabase } from '@/lib/supabaseClient'
 
 const schema = z.object({
   email: z.string().email('Email invalide').min(1, 'Requis'),
   password: z.string().min(6, 'Minimum 6 caractères'),
 })
 type FormData = z.infer<typeof schema>
-
-const DEMO_USERS = [
-  { label: 'Super Admin',  email: 'admin@sigp.ci',           pwd: 'Admin@2026'   },
-  { label: 'Coordonnateur', email: 'coord@sigp.ci',          pwd: 'Coord@2026'   },
-  { label: 'Financier',    email: 'finance@sigp.ci',         pwd: 'Finance@2026' },
-  { label: 'Bailleur',     email: 'bailleur@banquemonde.org', pwd: 'Bailleur@2026' },
-  { label: 'Auditeur',     email: 'audit@sigp.ci',           pwd: 'Audit@2026'   },
-]
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuthStore()
@@ -28,10 +21,16 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe]     = useState(true)
   const emailRef = useRef<HTMLInputElement>(null)
 
+  const [forgotMode, setForgotMode]       = useState(false)
+  const [forgotEmail, setForgotEmail]     = useState('')
+  const [forgotSending, setForgotSending] = useState(false)
+  const [forgotSent, setForgotSent]       = useState(false)
+  const [forgotError, setForgotError]     = useState('')
+
   const {
     register, handleSubmit,
     formState: { errors, isSubmitting },
-    setError, setValue,
+    setError,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { email: '', password: '' },
@@ -52,12 +51,27 @@ export default function LoginPage() {
     }
   }
 
-  const { ref: hookFormEmailRef, ...emailRest } = register('email')
-
-  const fillCredentials = (email: string, pwd: string) => {
-    setValue('email', email, { shouldValidate: true })
-    setValue('password', pwd, { shouldValidate: true })
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setForgotError('')
+    if (!forgotEmail.trim()) { setForgotError('Adresse email requise.'); return }
+    setForgotSending(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    setForgotSending(false)
+    if (error) { setForgotError(error.message); return }
+    setForgotSent(true)
   }
+
+  const backToLogin = () => {
+    setForgotMode(false)
+    setForgotSent(false)
+    setForgotError('')
+    setForgotEmail('')
+  }
+
+  const { ref: hookFormEmailRef, ...emailRest } = register('email')
 
   return (
     <div className="h-screen w-screen overflow-hidden flex font-sans antialiased">
@@ -82,6 +96,85 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {forgotMode ? (
+            <div key="forgot-panel">
+              {/* Badge + Titre — mode récupération */}
+              <div className="mb-4">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest text-[#1d9e75] bg-[#1d9e75]/10 border border-[#1d9e75]/25 mb-2">
+                  Récupération de compte
+                </span>
+                <h1 className="text-xl font-extrabold text-[#0a1628] tracking-tight leading-tight">
+                  Mot de passe oublié
+                </h1>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Saisissez votre adresse email pour recevoir un lien de réinitialisation.
+                </p>
+              </div>
+
+              {forgotSent ? (
+                <div className="flex items-center gap-2 bg-[#1d9e75]/10 border border-[#1d9e75]/25 rounded-xl px-3 py-2.5">
+                  <CheckCircle2 size={14} className="text-[#1d9e75] shrink-0" />
+                  <p className="text-[#0a1628] text-xs font-semibold">
+                    Si un compte existe pour {forgotEmail}, un email de réinitialisation vient d'être envoyé.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotSubmit} noValidate className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Adresse email</label>
+                    <div className="flex items-center rounded-xl bg-white border border-slate-200 hover:border-slate-300 transition-all duration-200 focus-within:ring-2 focus-within:ring-[#1d9e75]/20 focus-within:border-[#1d9e75]">
+                      <span className="pl-3 pr-2 flex items-center shrink-0">
+                        <Mail size={14} className="text-slate-400" />
+                      </span>
+                      <input
+                        type="email"
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder="nom@sigp.ci"
+                        autoComplete="email"
+                        className="flex-1 bg-transparent text-slate-900 text-sm py-2.5 pr-3 outline-none placeholder:text-slate-300"
+                      />
+                    </div>
+                  </div>
+
+                  {forgotError && (
+                    <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                      <AlertCircle size={13} className="text-red-500 shrink-0" />
+                      <p className="text-red-700 text-xs font-semibold">{forgotError}</p>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={forgotSending}
+                    className="
+                      w-full flex justify-center items-center gap-2
+                      bg-[#1a56db] hover:bg-[#1649c4] text-white font-bold rounded-xl text-sm px-4 py-2.5
+                      transition-all duration-200 active:scale-[0.98]
+                      shadow-[0_4px_16px_rgba(26,86,219,0.3)]
+                      disabled:opacity-70 disabled:cursor-not-allowed
+                    "
+                  >
+                    {forgotSending ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Envoi...
+                      </>
+                    ) : 'Envoyer le lien de réinitialisation'}
+                  </button>
+                </form>
+              )}
+
+              <button
+                type="button"
+                onClick={backToLogin}
+                className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-[#1d9e75] transition-colors"
+              >
+                <ArrowLeft size={12} /> Retour à la connexion
+              </button>
+            </div>
+          ) : (
+          <div key="login-panel">
           {/* Badge + Titre */}
           <div className="mb-4">
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest text-[#1d9e75] bg-[#1d9e75]/10 border border-[#1d9e75]/25 mb-2">
@@ -132,9 +225,13 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-semibold text-slate-700">Mot de passe</label>
-                <a href="#" className="text-[11px] font-bold text-[#1d9e75] hover:underline transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setForgotMode(true)}
+                  className="text-[11px] font-bold text-[#1d9e75] hover:underline transition-colors"
+                >
                   Mot de passe oublié ?
-                </a>
+                </button>
               </div>
               <div className={`
                 flex items-center rounded-xl bg-white border transition-all duration-200
@@ -210,34 +307,13 @@ export default function LoginPage() {
               ) : 'Se connecter'}
             </button>
           </form>
-
-          {/* Comptes de démonstration */}
-          <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-            <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-2">
-              Comptes utilisateurs
-            </p>
-            <div className="grid grid-cols-3 gap-1">
-              {DEMO_USERS.map((user, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => fillCredentials(user.email, user.pwd)}
-                  className="
-                    text-left px-2 py-1.5 rounded-lg border border-slate-200 bg-white
-                    hover:border-[#1d9e75]/40 hover:bg-[#f0fdf8]
-                    transition-all duration-200 group
-                  "
-                >
-                  <p className="text-[9px] font-extrabold uppercase tracking-wider text-[#1d9e75] truncate">
-                    {user.label}
-                  </p>
-                  <p className="text-[9px] font-mono text-slate-400 group-hover:text-[#1d9e75] truncate">
-                    {user.email.split('@')[0]}
-                  </p>
-                </button>
-              ))}
-            </div>
           </div>
+          )}
+
+          {/* Assistance — pas d'inscription publique, création réservée à l'admin */}
+          <p className="mt-4 text-center text-[11px] text-slate-400">
+            Pas encore de compte ? Contactez l'administrateur de votre organisation pour obtenir vos accès.
+          </p>
 
         </div>
       </div>
