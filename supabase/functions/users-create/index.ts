@@ -61,6 +61,7 @@ Deno.serve(async (req: Request) => {
         email,
         mot_de_passe: 'SUPABASE_AUTH_MANAGED', // legacy NOT NULL, jamais utilisé pour l'auth réelle
         role: body.role ?? 'VIEWER',
+        actif: true, // pas de vrai défaut DB sur cette colonne — sans ceci, actif reste NULL
         telephone: body.telephone?.trim() ?? null,
         organisation_id: body.organisationId ?? null,
         updated_at: new Date().toISOString(),
@@ -75,13 +76,20 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    // 2. GoTrue ensuite — best-effort, surfacé si échec, jamais de rollback silencieux du profil.
+    // 2. GoTrue ensuite — création du compte (non confirmé pour exiger la vérification par e-mail).
     const { data: authUser, error: authError } = await admin.auth.admin.createUser({
       email,
       password: body.password,
-      email_confirm: true,
+      email_confirm: false,
       user_metadata: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
     });
+
+    if (!authError && authUser?.user) {
+      // Envoie automatiquement un e-mail officiel de vérification/invitation à l'utilisateur
+      admin.auth.admin.inviteUserByEmail(email, {
+        data: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
+      }).catch((e) => console.warn('[users-create] Envoi de l\'e-mail d\'invitation échoué :', e));
+    }
 
     if (authError || !authUser?.user) {
       console.error('[users-create] GoTrue createUser failed', authError);
