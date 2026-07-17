@@ -25,7 +25,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'ADMIN', 'SUPER_ADMIN']);
+    // La création de projet reste une responsabilité org_admin — un
+    // SUPER_ADMIN n'en crée pas lui-même (page Projets en lecture seule
+    // côté supervision plateforme).
+    requireRole(profile, ['COORDINATEUR', 'ADMIN']);
 
     const body: CreateProjectBody = await req.json();
 
@@ -47,14 +50,12 @@ Deno.serve(async (req: Request) => {
     if (programmeError) throw programmeError;
     if (!programme) return json({ error: 'Programme introuvable' }, 404);
 
-    if (profile.role !== 'SUPER_ADMIN') {
-      const { data: programmeOrgId, error: orgError } = await admin.rpc('programme_organisation_id', {
-        p_programme_id: body.programmeId,
-      });
-      if (orgError) throw orgError;
-      if (!programmeOrgId || programmeOrgId !== profile.organisation_id) {
-        return json({ error: "Ce programme n'appartient pas à votre organisation" }, 403);
-      }
+    const { data: programmeOrgId, error: orgError } = await admin.rpc('programme_organisation_id', {
+      p_programme_id: body.programmeId,
+    });
+    if (orgError) throw orgError;
+    if (!programmeOrgId || programmeOrgId !== profile.organisation_id) {
+      return json({ error: "Ce programme n'appartient pas à votre organisation" }, 403);
     }
 
     if (body.managerId) {

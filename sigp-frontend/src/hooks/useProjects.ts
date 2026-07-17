@@ -75,6 +75,11 @@ export interface UseProjectsParams {
   statut?: string;
   programmeId?: string;
   managerId?: string;
+  // SUPER_ADMIN uniquement — filtre la liste sur les projets d'une
+  // organisation donnée (résolu via organisation_programme_ids()).
+  organisationId?: string;
+  // SUPER_ADMIN uniquement — enrichit chaque ligne avec organisationNom.
+  includeOrganisation?: boolean;
 }
 
 // Colonnes aliasées en camelCase pour matcher exactement ProjectApiDto.
@@ -183,12 +188,14 @@ export function useProjects(params?: UseProjectsParams) {
       let bailleurFilter: string | undefined
       let secteurFilter: string | undefined
       let paysFilter: string | undefined
+      let organisationFilter = params?.organisationId
       for (const [key, value] of Object.entries(filters)) {
         if (value === undefined || value === null || value === '') continue
         if (key === 'status' || key === 'statut') statutFilter = statusToStatut(String(value))
         else if (key === 'donor' || key === 'bailleurPrincipal') bailleurFilter = String(value)
         else if (key === 'sector' || key === 'secteur') secteurFilter = String(value)
         else if (key === 'country' || key === 'pays') paysFilter = String(value)
+        else if (key === 'organisation') organisationFilter = String(value)
       }
 
       if (statutFilter) query = query.eq('statut', statutFilter)
@@ -197,6 +204,16 @@ export function useProjects(params?: UseProjectsParams) {
       if (bailleurFilter) query = query.eq('bailleur_principal', bailleurFilter)
       if (secteurFilter) query = query.eq('secteur', secteurFilter)
       if (paysFilter) query = query.eq('pays', paysFilter)
+
+      if (organisationFilter) {
+        const { data: programmeIds, error: programmeIdsError } = await supabase.rpc('organisation_programme_ids', {
+          p_organisation_id: organisationFilter,
+        })
+        if (programmeIdsError) throw programmeIdsError
+        // Organisation sans aucun programme (ou id refusé par la fonction) :
+        // aucun projet ne doit matcher plutôt que de renvoyer toute la liste.
+        query = query.in('programme_id', (programmeIds ?? []).length > 0 ? programmeIds : ['00000000-0000-0000-0000-000000000000'])
+      }
 
       const sortColumnMap: Record<string, string> = {
         nom: 'nom', code: 'code', statut: 'statut', createdAt: 'created_at',
@@ -210,10 +227,30 @@ export function useProjects(params?: UseProjectsParams) {
 
       const rows = (data as unknown as RawRow[]).map(flatten)
       const aggMap = await fetchBatchAggregations(rows.map((r) => ({ id: r.id, budgetTotal: r.budgetTotal })))
-      const enriched = rows.map((r) => ({
+      let enriched = rows.map((r) => ({
         ...r,
         ...(aggMap.get(r.id) ?? { progressScore: 0, tauxDecaissement: 0, composantes: 0, activites: 0, livrables: 0 }),
       }))
+
+      // SUPER_ADMIN uniquement — résout le nom d'organisation de chaque
+      // projet de la page en un seul appel groupé (anti N+1), pour la
+      // colonne "Organisation" affichée sur la vue plateforme.
+      if (params?.includeOrganisation) {
+        const distinctProgrammeIds = Array.from(new Set(enriched.map((r) => r.programmeId).filter((id): id is string => !!id)))
+        if (distinctProgrammeIds.length > 0) {
+          const { data: orgRows, error: orgRowsError } = await supabase.rpc('programme_organisations_batch', {
+            p_programme_ids: distinctProgrammeIds,
+          })
+          if (orgRowsError) throw orgRowsError
+          const orgMap = new Map<string, string>(
+            (orgRows ?? []).map((o: { programme_id: string; organisation_nom: string }) => [o.programme_id, o.organisation_nom] as [string, string])
+          )
+          enriched = enriched.map((r) => ({
+            ...r,
+            organisationNom: r.programmeId ? orgMap.get(r.programmeId) ?? null : null,
+          }))
+        }
+      }
 
       const total = count ?? enriched.length
       return {
@@ -418,6 +455,18 @@ export function useProjectsKPIs(filters?: Record<string, string | number | undef
   return useQuery({
     queryKey: projectKeys.kpis(queryParams),
     queryFn: async () => {
+      // SUPER_ADMIN uniquement — même résolution organisation → programme_id
+      // que useProjects, pour que les KPIs restent cohérents avec la liste
+      // filtrée affichée juste en-dessous.
+      let organisationProgrammeIds: string[] | null = null
+      if (queryParams.organisation) {
+        const { data: ids, error: idsError } = await supabase.rpc('organisation_programme_ids', {
+          p_organisation_id: String(queryParams.organisation),
+        })
+        if (idsError) throw idsError
+        organisationProgrammeIds = (ids ?? []).length > 0 ? ids : ['00000000-0000-0000-0000-000000000000']
+      }
+
       const applyFilters = <T,>(q: T): T => {
         // deno-lint-ignore no-explicit-any
         let r = q as any
@@ -425,6 +474,7 @@ export function useProjectsKPIs(filters?: Record<string, string | number | undef
         if (queryParams.bailleurPrincipal) r = r.ilike('bailleur_principal', `%${queryParams.bailleurPrincipal}%`)
         if (queryParams.secteur) r = r.ilike('secteur', `%${queryParams.secteur}%`)
         if (queryParams.pays) r = r.ilike('pays', `%${queryParams.pays}%`)
+        if (organisationProgrammeIds) r = r.in('programme_id', organisationProgrammeIds)
         return r as T
       }
       const now = new Date().toISOString()

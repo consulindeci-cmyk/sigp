@@ -15,8 +15,17 @@ function formatDateShort(iso: string): string {
   }
 }
 
-export function getProjectColumns(getActions: (row: ProjectRow) => ActionItem[]): ColumnDef<ProjectRow, unknown>[] {
-  return [
+export interface GetProjectColumnsOptions {
+  // SUPER_ADMIN uniquement — affiche l'organisation propriétaire de
+  // chaque projet (vue plateforme multi-organisations).
+  showOrganisation?: boolean;
+}
+
+export function getProjectColumns(
+  getActions: (row: ProjectRow) => ActionItem[],
+  options?: GetProjectColumnsOptions
+): ColumnDef<ProjectRow, unknown>[] {
+  const columns: ColumnDef<ProjectRow, unknown>[] = [
     {
       accessorKey: 'code',
       header: 'CODE',
@@ -42,6 +51,20 @@ export function getProjectColumns(getActions: (row: ProjectRow) => ActionItem[])
         </div>
       ),
     },
+    ...(options?.showOrganisation
+      ? [
+          {
+            accessorKey: 'organisationNom',
+            header: 'ORGANISATION',
+            enableSorting: false,
+            cell: ({ getValue }: { getValue: () => unknown }) => (
+              <Badge variant="secondary" className="text-[11px] w-max">
+                {(getValue() as string) || 'Sans organisation'}
+              </Badge>
+            ),
+          } satisfies ColumnDef<ProjectRow, unknown>,
+        ]
+      : []),
     {
       accessorKey: 'donor',
       header: 'BAILLEUR',
@@ -167,4 +190,5 @@ export function getProjectColumns(getActions: (row: ProjectRow) => ActionItem[])
       ),
     },
   ];
+  return columns;
 }

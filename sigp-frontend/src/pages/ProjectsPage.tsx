@@ -9,9 +9,11 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Eye, Edit, Copy, Archive, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { useAuthStore } from '@/stores/authStore';
 import { ContentLayout } from '@/components/layout/ContentLayout';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { type DataTableFilter } from '@/components/ui/data-table/types';
+import { useOrganisationsList } from '@/hooks/useOrganisationsAdmin';
 
 // Refactored modular components per Tâche 5
 import { ProjectsToolbar } from '@/components/projects/ProjectsToolbar';
@@ -44,6 +46,10 @@ const STATUS_OPTIONS = [
 ];
 
 export default function ProjectsPage() {
+  // ── Super Admin : vue plateforme, lecture seule + filtre par organisation ──
+  const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
+  const { data: organisationsForFilter } = useOrganisationsList(isSuperAdmin);
+
   // ── API data & Default Programme ──────────────────────────────────────────
   const { data: programmesData } = useQuery({
     queryKey: ['programmes'],
@@ -63,7 +69,9 @@ export default function ProjectsPage() {
   });
   const [sortingState, setSortingState] = useState<SortingState>([]);
   const [columnFiltersState, setColumnFiltersState] = useState<ColumnFiltersState>([]);
-  const [view, setView] = useState<'table' | 'grid'>('grid');
+  // SUPER_ADMIN : vue Tableau par défaut (filtres + colonne Organisation
+  // uniquement disponibles dans ce mode, cf. rendu conditionnel plus bas).
+  const [view, setView] = useState<'table' | 'grid'>(() => (isSuperAdmin ? 'table' : 'grid'));
 
   // Typed updaters — élimination des any résiduels (P-07)
   const handleSortingChange = useCallback((updater: Updater<SortingState>) => {
@@ -107,7 +115,7 @@ export default function ProjectsPage() {
     isLoading: isProjectsLoading,
     isError: isProjectsError,
     error: projectsError,
-  } = useProjects(queryParams);
+  } = useProjects({ ...queryParams, includeOrganisation: isSuperAdmin });
 
   const { data: refOptions } = useProjectsReferenceOptions();
   const { data: exactKpis } = useProjectsKPIs(queryParams.filters);
@@ -151,15 +159,28 @@ export default function ProjectsPage() {
   }), [exactKpis, rowCount]);
 
   // Dynamic filter options across entire database per Tâche 10 & 11
-  const projectFilters = useMemo<DataTableFilter[]>(() => [
-    { id: 'status',  title: 'Statut',   options: STATUS_OPTIONS },
-    { id: 'donor',   title: 'Bailleur', options: (refOptions?.donors ?? []).map((d) => ({ label: d, value: d })) },
-    { id: 'sector',  title: 'Secteur',  options: (refOptions?.sectors ?? []).map((s) => ({ label: s, value: s })) },
-    { id: 'country', title: 'Pays',     options: (refOptions?.countries ?? []).map((c) => ({ label: c, value: c })) },
-  ], [refOptions]);
+  const projectFilters = useMemo<DataTableFilter[]>(() => {
+    const filters: DataTableFilter[] = [
+      { id: 'status',  title: 'Statut',   options: STATUS_OPTIONS },
+      { id: 'donor',   title: 'Bailleur', options: (refOptions?.donors ?? []).map((d) => ({ label: d, value: d })) },
+      { id: 'sector',  title: 'Secteur',  options: (refOptions?.sectors ?? []).map((s) => ({ label: s, value: s })) },
+      { id: 'country', title: 'Pays',     options: (refOptions?.countries ?? []).map((c) => ({ label: c, value: c })) },
+    ];
+    if (isSuperAdmin) {
+      filters.push({
+        id: 'organisation',
+        title: 'Organisation',
+        options: (organisationsForFilter ?? []).map((o) => ({ label: o.nom, value: o.id })),
+      });
+    }
+    return filters;
+  }, [refOptions, isSuperAdmin, organisationsForFilter]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
   function openNew() {
+    // Supervision Super Admin : pas de création de projet, même via le
+    // raccourci ?new=1 (cf. effect ci-dessous).
+    if (isSuperAdmin) return;
     setSelectedProject(null);
     setSlideOverMode('new');
     setSlideOverOpen(true);
@@ -304,25 +325,38 @@ export default function ProjectsPage() {
   }
 
   // Memoïsé pour éviter les re-renders des cartes (P-06)
-  const getActions = useCallback((project: ProjectRow): ActionItem[] => [
-    { label: 'Voir',      icon: <Eye     className="h-3.5 w-3.5" />, onClick: () => openView(project) },
-    { label: 'Modifier',  icon: <Edit    className="h-3.5 w-3.5" />, onClick: () => openEdit(project) },
-    { label: 'Dupliquer', icon: <Copy    className="h-3.5 w-3.5" />, onClick: () => handleDuplicate(project) },
-    {
-      label: 'Archiver', icon: <Archive className="h-3.5 w-3.5" />,
-      onClick: () => openArchive(project),
-      separator: true,
-      disabled: project.status === 'Clôturé' || project.statut === 'CLOTURE',
-    },
-    {
-      label: 'Supprimer', icon: <Trash2 className="h-3.5 w-3.5" />,
-      onClick: () => openDelete(project),
-      variant: 'destructive', separator: true,
-    },
+  // SUPER_ADMIN : page de supervision en lecture seule — la création/édition
+  // de projet reste une responsabilité org_admin (cf. requireRole resserré
+  // côté Edge Functions projects-create/update/delete/restore).
+  const getActions = useCallback((project: ProjectRow): ActionItem[] => {
+    if (isSuperAdmin) {
+      return [
+        { label: 'Voir', icon: <Eye className="h-3.5 w-3.5" />, onClick: () => openView(project) },
+      ];
+    }
+    return [
+      { label: 'Voir',      icon: <Eye     className="h-3.5 w-3.5" />, onClick: () => openView(project) },
+      { label: 'Modifier',  icon: <Edit    className="h-3.5 w-3.5" />, onClick: () => openEdit(project) },
+      { label: 'Dupliquer', icon: <Copy    className="h-3.5 w-3.5" />, onClick: () => handleDuplicate(project) },
+      {
+        label: 'Archiver', icon: <Archive className="h-3.5 w-3.5" />,
+        onClick: () => openArchive(project),
+        separator: true,
+        disabled: project.status === 'Clôturé' || project.statut === 'CLOTURE',
+      },
+      {
+        label: 'Supprimer', icon: <Trash2 className="h-3.5 w-3.5" />,
+        onClick: () => openDelete(project),
+        variant: 'destructive', separator: true,
+      },
+    ];
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  }, [isSuperAdmin]);
 
-  const columns = useMemo(() => getProjectColumns(getActions), [getActions]);
+  const columns = useMemo(
+    () => getProjectColumns(getActions, { showOrganisation: isSuperAdmin }),
+    [getActions, isSuperAdmin]
+  );
 
   return (
     <ContentLayout>
@@ -332,6 +366,7 @@ export default function ProjectsPage() {
         onOpenNew={openNew}
         onExport={handleExport}
         isExporting={isExporting}
+        canCreate={!isSuperAdmin}
       />
 
       {/* Affichage de l'erreur d'export CSV (P-11) */}

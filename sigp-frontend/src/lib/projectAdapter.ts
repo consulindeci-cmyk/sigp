@@ -58,6 +58,9 @@ export interface ProjectApiDto {
   livrables: number;
   createdAt: string;
   updatedAt: string;
+  // SUPER_ADMIN uniquement — nom de l'organisation propriétaire du projet
+  // (résolu en batch via programme_organisations_batch(), voir useProjects.ts).
+  organisationNom?: string | null;
 }
 
 export interface Project {
@@ -94,6 +97,7 @@ export interface Project {
 export type ProjectRow = Project & {
   programmeId?: string | null;
   rawManagerId?: string | null;
+  organisationNom?: string | null;
 };
 
 export interface CreateProjectPayload {
@@ -242,6 +246,7 @@ export function adaptProjectDto(raw: ProjectApiDto): ProjectRow {
     composantes: raw.composantes ?? 0,
     activites: raw.activites ?? 0,
     livrables: raw.livrables ?? 0,
+    organisationNom: raw.organisationNom ?? undefined,
   };
 }
 

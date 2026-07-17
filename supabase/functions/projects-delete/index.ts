@@ -11,8 +11,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    // Alignement strict avec le NestJS d'origine : suppression réservée à ADMIN.
-    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
+    // Alignement strict avec le NestJS d'origine : suppression réservée à
+    // ADMIN (org_admin). Un SUPER_ADMIN ne supprime pas lui-même un projet
+    // (page Projets en lecture seule côté supervision plateforme).
+    requireRole(profile, ['ADMIN']);
 
     const body: DeleteProjectBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -26,14 +28,12 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Projet introuvable' }, 404);
 
-    if (profile.role !== 'SUPER_ADMIN') {
-      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
-        p_project_id: body.id,
-      });
-      if (orgError) throw orgError;
-      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
-        return json({ error: "Accès refusé : ce projet n'appartient pas à votre organisation" }, 403);
-      }
+    const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+      p_project_id: body.id,
+    });
+    if (orgError) throw orgError;
+    if (!projectOrgId || projectOrgId !== profile.organisation_id) {
+      return json({ error: "Accès refusé : ce projet n'appartient pas à votre organisation" }, 403);
     }
 
     // Soft delete — jamais de suppression physique (cohérent avec le

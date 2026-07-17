@@ -21,9 +21,14 @@ export const organisationsAdminKeys = {
   list: () => [...organisationsAdminKeys.all, 'list'] as const,
 };
 
-export function useOrganisationsList() {
+// `enabled` : à mettre à false pour tout appelant non-SUPER_ADMIN — l'Edge
+// Function organisations-list rejette (403) toute autre requireRole, inutile
+// de la déclencher pour un rôle qui ne pourra jamais l'utiliser (ex. le
+// filtre Organisation de ProjectsPage, réservé au SUPER_ADMIN).
+export function useOrganisationsList(enabled: boolean = true) {
   return useQuery({
     queryKey: organisationsAdminKeys.list(),
+    enabled,
     queryFn: async (): Promise<OrganisationRow[]> => {
       const { data } = await invokeEdgeFunction<{ data: OrganisationOverviewRow[] }>('organisations-list', {});
       return (data ?? []).map(adaptOrganisationRow);

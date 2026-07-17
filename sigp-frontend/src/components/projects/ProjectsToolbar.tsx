@@ -9,6 +9,8 @@ export interface ProjectsToolbarProps {
   onOpenNew: () => void;
   onExport: () => void;
   isExporting?: boolean;
+  // SUPER_ADMIN : page de supervision, création réservée aux org_admin.
+  canCreate?: boolean;
 }
 
 export function ProjectsToolbar({
@@ -17,6 +19,7 @@ export function ProjectsToolbar({
   onOpenNew,
   onExport,
   isExporting = false,
+  canCreate = true,
 }: ProjectsToolbarProps) {
   return (
     <PageHeader
@@ -74,11 +77,13 @@ export function ProjectsToolbar({
             {isExporting ? 'Exportation…' : 'Exporter (CSV)'}
           </Button>
 
-          {/* New project button */}
-          <Button size="sm" onClick={onOpenNew} aria-label="Nouveau projet">
-            <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-            Nouveau Projet
-          </Button>
+          {/* New project button — masqué en supervision Super Admin */}
+          {canCreate && (
+            <Button size="sm" onClick={onOpenNew} aria-label="Nouveau projet">
+              <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              Nouveau Projet
+            </Button>
+          )}
         </div>
       }
     />

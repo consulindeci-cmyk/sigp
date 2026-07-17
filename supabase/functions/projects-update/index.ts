@@ -25,7 +25,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'ADMIN', 'SUPER_ADMIN']);
+    // La modification de projet reste une responsabilité org_admin — un
+    // SUPER_ADMIN n'en modifie pas lui-même (page Projets en lecture seule
+    // côté supervision plateforme).
+    requireRole(profile, ['COORDINATEUR', 'ADMIN']);
 
     const body: UpdateProjectBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -39,15 +42,13 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Projet introuvable' }, 404);
 
-    // Cloisonnement : un non-ADMIN ne peut modifier qu'un projet de sa propre organisation
-    if (profile.role !== 'SUPER_ADMIN') {
-      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
-        p_project_id: body.id,
-      });
-      if (orgError) throw orgError;
-      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
-        return json({ error: "Accès refusé : ce projet n'appartient pas à votre organisation" }, 403);
-      }
+    // Cloisonnement : ne peut modifier qu'un projet de sa propre organisation
+    const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+      p_project_id: body.id,
+    });
+    if (orgError) throw orgError;
+    if (!projectOrgId || projectOrgId !== profile.organisation_id) {
+      return json({ error: "Accès refusé : ce projet n'appartient pas à votre organisation" }, 403);
     }
 
     if (body.programmeId && body.programmeId !== existing.programme_id) {
@@ -59,14 +60,12 @@ Deno.serve(async (req: Request) => {
       if (programmeError) throw programmeError;
       if (!programme) return json({ error: 'Programme introuvable' }, 404);
 
-      if (profile.role !== 'SUPER_ADMIN') {
-        const { data: newProgrammeOrgId, error: orgError2 } = await admin.rpc('programme_organisation_id', {
-          p_programme_id: body.programmeId,
-        });
-        if (orgError2) throw orgError2;
-        if (!newProgrammeOrgId || newProgrammeOrgId !== profile.organisation_id) {
-          return json({ error: "Ce programme n'appartient pas à votre organisation" }, 403);
-        }
+      const { data: newProgrammeOrgId, error: orgError2 } = await admin.rpc('programme_organisation_id', {
+        p_programme_id: body.programmeId,
+      });
+      if (orgError2) throw orgError2;
+      if (!newProgrammeOrgId || newProgrammeOrgId !== profile.organisation_id) {
+        return json({ error: "Ce programme n'appartient pas à votre organisation" }, 403);
       }
     }
 
