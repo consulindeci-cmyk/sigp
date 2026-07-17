@@ -69,9 +69,7 @@ export default function ProjectsPage() {
   });
   const [sortingState, setSortingState] = useState<SortingState>([]);
   const [columnFiltersState, setColumnFiltersState] = useState<ColumnFiltersState>([]);
-  // SUPER_ADMIN : vue Tableau par défaut (filtres + colonne Organisation
-  // uniquement disponibles dans ce mode, cf. rendu conditionnel plus bas).
-  const [view, setView] = useState<'table' | 'grid'>(() => (isSuperAdmin ? 'table' : 'grid'));
+  const [view, setView] = useState<'table' | 'grid'>('grid');
 
   // Typed updaters — élimination des any résiduels (P-07)
   const handleSortingChange = useCallback((updater: Updater<SortingState>) => {
