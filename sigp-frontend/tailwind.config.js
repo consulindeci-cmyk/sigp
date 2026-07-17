@@ -82,14 +82,17 @@ export default {
         'lg':  '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
         'xl':  '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
         // --- Ombres officielles du Design System (DO NOT REMOVE) ---
+        // Teinte ardoise sombre (rgb(24,34,38), = --ink) plutôt qu'émeraude :
+        // une ombre reste un indice de profondeur neutre, la couleur de
+        // marque reste concentrée sur les éléments interactifs/statuts.
         // Usage : composants Card, surface légère, élévation minimale
-        'card':     '0 1px 3px rgba(11,45,77,0.04), 0 1px 2px rgba(11,45,77,0.03)',
+        'card':     '0 1px 3px rgba(24,34,38,0.04), 0 1px 2px rgba(24,34,38,0.03)',
         // Usage : dropdowns, menus, sélecteurs — surface suspendue
-        'dropdown': '0 4px 12px rgba(11,45,77,0.08), 0 2px 6px rgba(11,45,77,0.06)',
+        'dropdown': '0 4px 12px rgba(24,34,38,0.08), 0 2px 6px rgba(24,34,38,0.06)',
         // Usage : popovers, tooltips riches, overlays légers
-        'popover':  '0 10px 25px rgba(11,45,77,0.10), 0 4px 10px rgba(11,45,77,0.06)',
+        'popover':  '0 10px 25px rgba(24,34,38,0.10), 0 4px 10px rgba(24,34,38,0.06)',
         // Usage : modals, drawers, SlideOver — élévation maximale
-        'modal':    '0 24px 48px rgba(11,45,77,0.14), 0 8px 16px rgba(11,45,77,0.08)',
+        'modal':    '0 24px 48px rgba(24,34,38,0.14), 0 8px 16px rgba(24,34,38,0.08)',
       },
       // --- Constante de Layout (DO NOT CHANGE — source unique de vérité) ---
       // Tous les layouts (DashboardLayout, ContentLayout, MasterDetailLayout)

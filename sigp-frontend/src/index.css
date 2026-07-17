@@ -3,80 +3,82 @@
 @tailwind utilities;
 
 :root {
-  /* HSL Design Tokens (Premium ERP - Linear/Notion style) */
-  --background: 210 20% 98%; /* Very light grayish blue (Canvas) */
-  --foreground: 222 47% 11%; /* Very dark navy (Ink) */
+  /* HSL Design Tokens (Charte Émeraude / Ardoise) */
+  --background: 170 20% 97%; /* Fond givré */
+  --foreground: 205 25% 14%; /* Encre ardoise */
 
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 205 25% 14%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
+  --popover-foreground: 205 25% 14%;
 
-  /* Primary: Deep Navy */
-  --primary: 210 75% 17%;
-  --primary-foreground: 210 40% 98%;
+  /* Primary: Émeraude profond (#0F5942) */
+  --primary: 161 71% 20%;
+  --primary-foreground: 160 20% 98%;
 
-  /* Secondary: Soft Slate */
-  --secondary: 210 20% 92%;
-  --secondary-foreground: 222 47% 11%;
+  /* Secondary: Ardoise très clair (neutre, pas une 2e couleur de marque) */
+  --secondary: 205 20% 93%;
+  --secondary-foreground: 205 25% 14%;
 
-  /* Muted: Lighter Slate */
-  --muted: 210 20% 96%;
-  --muted-foreground: 215 16% 47%;
+  /* Muted: à peine différencié du fond givré */
+  --muted: 170 18% 95%;
+  --muted-foreground: 205 14% 45%;
 
-  /* Accent: Bright Blue for active states */
-  --accent: 214 100% 50%;
-  --accent-foreground: 210 40% 98%;
+  /* Accent: Émeraude vif (#169E75) — couleur interactive (hover/focus/actifs) */
+  --accent: 162 76% 35%;
+  --accent-foreground: 160 20% 98%;
 
-  /* Semantics */
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  --warning: 38 92% 50%;
-  --warning-foreground: 48 96% 89%;
-  --success: 142 71% 45%;
-  --success-foreground: 138 76% 97%;
-  --info: 214 100% 50%;
+  /* Semantics — Pastel & Encre forte */
+  --destructive: 358 66% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --warning: 38 88% 42%;
+  --warning-foreground: 48 90% 96%;
+  --success: 145 55% 32%;
+  --success-foreground: 152 40% 97%;
+  --info: 206 74% 42%;
   --info-foreground: 210 40% 98%;
 
   /* Borders & Rings */
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 210 75% 17%;
+  --border: 205 20% 88%;
+  --input: 205 20% 88%;
+  --ring: 162 76% 35%;
 
   /* Layout Radius */
   --radius: 0.5rem;
 
-  /* Sidebar Tokens (Dark Navy Theme) */
-  --sidebar-background: 222 47% 11%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 215 28% 17%;
-  --sidebar-accent: 215 28% 17%;
-  --sidebar-accent-foreground: 210 40% 98%;
+  /* Sidebar Tokens (toujours sombre, indépendante du thème) */
+  --sidebar-background: 161 60% 14%;
+  --sidebar-foreground: 160 20% 96%;
+  --sidebar-border: 161 30% 20%;
+  --sidebar-accent: 161 35% 22%;
+  --sidebar-accent-foreground: 160 20% 96%;
 
-  /* Legacy Fallback Tokens (DO NOT DELETE - Used for progressive migration) */
-  --navy-900: #0B2D4D;
-  --navy-700: #123A5F;
-  --navy-500: #1F5482;
-  --navy-100: #E7EEF5;
-  --canvas: #F4F6F8;
+  /* Legacy Fallback Tokens (DO NOT DELETE - Used for progressive migration)
+     Noms conservés (des centaines de classes .chip/.kpi-card/.sidebar les
+     référencent) — valeurs synchronisées sur la charte Émeraude/Ardoise. */
+  --navy-900: #0F5942;
+  --navy-700: #155C43;
+  --navy-500: #169E75;
+  --navy-100: #DCF2EA;
+  --canvas: #F2F8F6;
   --surface: #FFFFFF;
-  --line: #DDE3E9;
-  --line-soft: #E9EDF1;
-  --ink: #1A2733;
-  --slate: #5B6B7C;
-  --slate-light: #8A97A4;
-  --green: #1F8A5C;
-  --green-bg: #E7F4ED;
+  --line: #D9E1E6;
+  --line-soft: #E7ECEF;
+  --ink: #182226;
+  --slate: #61707A;
+  --slate-light: #95A3AB;
+  --green: #1F7A4D;
+  --green-bg: #E3F5EB;
   --amber: #B9690E;
   --amber-bg: #FCEEDC;
   --red: #C23B2E;
-  --red-bg: #FBE9E6;
-  
+  --red-bg: #FBE7E5;
+
   --font-display: 'Source Serif 4', serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
-  
+
   --sidebar-w: 248px;
   --topbar-h: 56px;
 }
@@ -776,7 +778,7 @@ table{border-collapse:collapse;width:100%;}
   padding:18px;
   cursor:pointer;
 }
-.report-card:hover{border-color:var(--slate-light);box-shadow:0 1px 6px rgba(11,45,77,0.06);}
+.report-card:hover{border-color:var(--slate-light);box-shadow:0 1px 6px rgba(24,34,38,0.06);}
 .rc-ico{
   width:36px;height:36px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;
@@ -932,50 +934,50 @@ table{border-collapse:collapse;width:100%;}
   }
 }
 
-/* ===== Dark mode — Design tokens ===== */
+/* ===== Dark mode — Design tokens (Charte Émeraude / Ardoise) ===== */
 .dark {
-  --background:        222 47% 9%;
-  --foreground:        210 40% 95%;
+  --background:        205 25% 8%;
+  --foreground:        160 15% 95%;
 
-  --card:              220 35% 13%;
-  --card-foreground:   210 40% 95%;
+  --card:              205 22% 12%;
+  --card-foreground:   160 15% 95%;
 
-  --popover:           220 35% 13%;
-  --popover-foreground:210 40% 95%;
+  --popover:           205 22% 12%;
+  --popover-foreground:160 15% 95%;
 
-  --primary:           213 80% 63%;
-  --primary-foreground:222 47% 9%;
+  --primary:           162 65% 55%;
+  --primary-foreground:205 25% 9%;
 
-  --secondary:         215 30% 20%;
-  --secondary-foreground:210 40% 90%;
+  --secondary:         205 20% 20%;
+  --secondary-foreground:160 15% 92%;
 
-  --muted:             215 30% 16%;
-  --muted-foreground:  215 16% 62%;
+  --muted:             205 20% 16%;
+  --muted-foreground:  205 12% 65%;
 
-  --accent:            213 80% 63%;
-  --accent-foreground: 222 47% 9%;
+  --accent:            162 70% 60%;
+  --accent-foreground: 205 25% 9%;
 
-  --destructive:       0 72% 55%;
+  --destructive:       358 60% 55%;
   --destructive-foreground:0 0% 100%;
 
-  --warning:           38 92% 55%;
-  --warning-foreground:48 96% 89%;
+  --warning:           38 85% 55%;
+  --warning-foreground:48 90% 92%;
 
-  --success:           142 71% 42%;
-  --success-foreground:138 76% 97%;
+  --success:           145 50% 48%;
+  --success-foreground:205 25% 9%;
 
-  --info:              213 80% 63%;
-  --info-foreground:   222 47% 9%;
+  --info:              206 70% 55%;
+  --info-foreground:   205 25% 9%;
 
-  --border:            215 30% 20%;
-  --input:             215 30% 20%;
-  --ring:              213 80% 63%;
+  --border:            205 20% 20%;
+  --input:             205 20% 20%;
+  --ring:              162 70% 60%;
 
-  --sidebar-background:222 47% 7%;
-  --sidebar-foreground:210 40% 92%;
-  --sidebar-border:    215 30% 13%;
-  --sidebar-accent:    215 30% 15%;
-  --sidebar-accent-foreground:210 40% 92%;
+  --sidebar-background:161 65% 10%;
+  --sidebar-foreground:160 15% 92%;
+  --sidebar-border:    161 30% 14%;
+  --sidebar-accent:    161 35% 16%;
+  --sidebar-accent-foreground:160 15% 92%;
 }
 
 /* ===== Réduction des animations ===== */
