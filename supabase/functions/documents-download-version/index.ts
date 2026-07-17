@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
     if (docError) throw docError;
     if (!document) return json({ error: 'Document introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
         p_project_id: document.project_id,
       });

@@ -20,7 +20,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: CreateDisbursementBody = await req.json();
     if (body.montant === undefined || body.montant === null) {
@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
     // Résout l'organisation à partir du premier chemin disponible (mêmes
     // règles que la fonction SQL disbursement_organisation_id, mais avant
     // insertion — la ligne n'existe pas encore).
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       let resolvedOrgId: string | null = null;
       if (body.budgetVersionId) {
         const { data } = await admin.rpc('budget_version_organisation_id', { p_version_id: body.budgetVersionId });

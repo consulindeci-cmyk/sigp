@@ -30,8 +30,17 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Commentaire introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN' && existing.auteur_id !== profile.id) {
-      return json({ error: "Accès refusé : seul l'auteur ou un administrateur peut modifier ce commentaire" }, 403);
+    if (profile.role !== 'SUPER_ADMIN' && existing.auteur_id !== profile.id) {
+      if (profile.role !== 'ADMIN') {
+        return json({ error: "Accès refusé : seul l'auteur ou un administrateur peut modifier ce commentaire" }, 403);
+      }
+      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+        p_project_id: existing.project_id,
+      });
+      if (orgError) throw orgError;
+      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
+        return json({ error: "Accès refusé : seul l'auteur ou un administrateur peut modifier ce commentaire" }, 403);
+      }
     }
 
     const updatePayload: Record<string, unknown> = {

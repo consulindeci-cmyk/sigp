@@ -11,7 +11,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: DeleteNotificationBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -24,6 +24,21 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (findError) throw findError;
     if (!existing) return json({ error: 'Notification introuvable' }, 404);
+
+    // requireRole ci-dessus limite déjà l'appelant à ADMIN/SUPER_ADMIN — reste
+    // à vérifier que le destinataire appartient bien à l'organisation de
+    // l'org_admin (SUPER_ADMIN n'a aucune restriction).
+    if (profile.role !== 'SUPER_ADMIN') {
+      const { data: owner, error: ownerError } = await admin
+        .from('users')
+        .select('organisation_id')
+        .eq('id', existing.user_id)
+        .maybeSingle();
+      if (ownerError) throw ownerError;
+      if (!owner || owner.organisation_id !== profile.organisation_id) {
+        return json({ error: "Accès refusé : cette notification n'appartient pas à votre organisation" }, 403);
+      }
+    }
 
     const { error: deleteError } = await admin
       .from('notifications')

@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: CreateNotificationBody = await req.json();
     if (!body.userId) return json({ error: 'userId est obligatoire' }, 400);
@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
     if (userError) throw userError;
     if (!targetUser) return json({ error: 'Utilisateur introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN' && targetUser.organisation_id !== profile.organisation_id) {
+    if (profile.role !== 'SUPER_ADMIN' && targetUser.organisation_id !== profile.organisation_id) {
       return json({ error: "Vous ne pouvez notifier qu'un utilisateur de votre organisation" }, 403);
     }
 

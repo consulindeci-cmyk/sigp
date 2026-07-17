@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type UserRole =
+  | 'SUPER_ADMIN'
   | 'ADMIN'
   | 'COORDINATEUR'
   | 'CHARGE_PROGRAMME'
@@ -11,7 +12,12 @@ export type UserRole =
   | 'AUDITEUR'
   | 'VIEWER';
 
+// SUPER_ADMIN volontairement absent de USER_ROLE_OPTIONS ci-dessous : non
+// assignable via le formulaire standard "Nouvel utilisateur"/"Modifier" —
+// uniquement provisionné via l'onboarding d'une organisation
+// (organisations-create) ou une promotion manuelle en base.
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'Super Administrateur',
   ADMIN: 'Administrateur',
   COORDINATEUR: 'Coordinateur Projet',
   CHARGE_PROGRAMME: 'Chargé de Programme',

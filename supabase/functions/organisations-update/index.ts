@@ -19,7 +19,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     if (!profile.organisation_id) {
       return json({ error: "Aucune organisation associée à ce compte" }, 400);

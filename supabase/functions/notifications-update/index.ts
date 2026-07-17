@@ -30,8 +30,19 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Notification introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN' && existing.user_id !== profile.id) {
-      return json({ error: "Accès refusé : ce n'est pas votre notification" }, 403);
+    if (profile.role !== 'SUPER_ADMIN' && existing.user_id !== profile.id) {
+      if (profile.role !== 'ADMIN') {
+        return json({ error: "Accès refusé : ce n'est pas votre notification" }, 403);
+      }
+      const { data: owner, error: ownerError } = await admin
+        .from('users')
+        .select('organisation_id')
+        .eq('id', existing.user_id)
+        .maybeSingle();
+      if (ownerError) throw ownerError;
+      if (!owner || owner.organisation_id !== profile.organisation_id) {
+        return json({ error: "Accès refusé : ce n'est pas votre notification" }, 403);
+      }
     }
 
     const updatePayload: Record<string, unknown> = {

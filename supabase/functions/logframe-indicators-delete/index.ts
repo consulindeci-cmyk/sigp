@@ -11,7 +11,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: DeleteLogframeIndicatorBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -30,6 +30,16 @@ Deno.serve(async (req: Request) => {
       .select('project_id')
       .eq('id', existing.objective_id)
       .maybeSingle();
+
+    if (profile.role !== 'SUPER_ADMIN') {
+      const { data: orgId, error: orgError } = await admin.rpc('logframe_objective_organisation_id', {
+        p_objective_id: existing.objective_id,
+      });
+      if (orgError) throw orgError;
+      if (!orgId || orgId !== profile.organisation_id) {
+        return json({ error: "Accès refusé : cet indicateur n'appartient pas à votre organisation" }, 403);
+      }
+    }
 
     const { error: deleteError } = await admin
       .from('logframe_indicators')

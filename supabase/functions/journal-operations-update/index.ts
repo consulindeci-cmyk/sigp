@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: UpdateJournalOperationBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -31,7 +31,7 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Opération de journal introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: orgId, error: orgError } = await admin.rpc('budget_line_organisation_id', {
         p_line_id: existing.budget_ligne_id,
       });

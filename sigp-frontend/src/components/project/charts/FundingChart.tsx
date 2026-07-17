@@ -10,7 +10,15 @@ export default function FundingChart({ data, state = 'success' }: Props) {
   return (
     <WidgetWrapper title="Financements (Bailleurs)" state={state}>
       <div style={{ display: 'flex', alignItems: 'center', minHeight: '100%', flexWrap: 'wrap', gap: '16px', padding: '10px 0' }}>
-        <div style={{ width: '80px', height: '80px', borderRadius: '50%', flexShrink: 0, border: `12px solid ${data[1]?.color || 'var(--slate)'}`, borderTopColor: data[0]?.color || 'var(--navy-700)' }}></div>
+        <div style={{
+          width: '80px', height: '80px', borderRadius: '50%', flexShrink: 0,
+          borderWidth: '12px',
+          borderStyle: 'solid',
+          borderTopColor: data[0]?.color || 'var(--navy-700)',
+          borderRightColor: data[1]?.color || 'var(--slate)',
+          borderBottomColor: data[1]?.color || 'var(--slate)',
+          borderLeftColor: data[1]?.color || 'var(--slate)',
+        }}></div>
         <div style={{ fontSize: '12px', color: 'var(--slate)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {data.map(item => (
              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

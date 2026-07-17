@@ -19,7 +19,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: CreateBudgetLineBody = await req.json();
     if (!body.versionId) return json({ error: 'versionId est obligatoire' }, 400);
@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
     if (versionError) throw versionError;
     if (!version) return json({ error: 'Version budgétaire introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
         p_project_id: version.project_id,
       });

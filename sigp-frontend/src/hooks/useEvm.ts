@@ -24,9 +24,11 @@ export interface EvmSummary {
   cv: number;
   spi: number;
   cpi: number;
+  bac: number;
   eac: number;
   etc: number;
   vac: number;
+  tcpi: number;
 }
 
 export interface EvmHistoryPoint {
@@ -86,6 +88,8 @@ export const useProjectEvmSummary = (projectId: string) => {
       const eac = cpi > 0 ? bac / cpi : bac;
       const etc = eac - ac;
       const vac = bac - eac;
+      // TCPI standard (basé sur BAC) : performance restante nécessaire pour tenir le budget initial.
+      const tcpi = (bac - ac) !== 0 ? (bac - ev) / (bac - ac) : 1;
 
       return {
         pv: Math.round(pv),
@@ -95,9 +99,11 @@ export const useProjectEvmSummary = (projectId: string) => {
         cv: Math.round(cv),
         spi: Number(spi.toFixed(4)),
         cpi: Number(cpi.toFixed(4)),
+        bac: Math.round(bac),
         eac: Math.round(eac),
         etc: Math.round(etc),
         vac: Math.round(vac),
+        tcpi: Number(tcpi.toFixed(4)),
       };
     },
     enabled: !!projectId,

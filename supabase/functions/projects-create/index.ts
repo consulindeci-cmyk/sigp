@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: CreateProjectBody = await req.json();
 
@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
     if (programmeError) throw programmeError;
     if (!programme) return json({ error: 'Programme introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: programmeOrgId, error: orgError } = await admin.rpc('programme_organisation_id', {
         p_programme_id: body.programmeId,
       });

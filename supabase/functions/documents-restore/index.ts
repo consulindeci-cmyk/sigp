@@ -13,7 +13,7 @@ Deno.serve(async (req: Request) => {
     const { admin, profile } = await authorize(req);
     // Même rôle que documents-delete (COORDINATEUR + ADMIN) — restaurer est
     // l'inverse symétrique de supprimer, pas une opération distincte.
-    requireRole(profile, ['COORDINATEUR', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: RestoreDocumentBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -27,7 +27,7 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: "Document introuvable dans la corbeille" }, 404);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
         p_project_id: existing.project_id,
       });

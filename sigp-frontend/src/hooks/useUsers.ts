@@ -179,7 +179,10 @@ export function useUsersKPIs() {
         base(),
         base().eq('actif', true),
         base().eq('actif', false),
-        base().eq('role', 'ADMIN'),
+        // SUPER_ADMIN regroupé avec ADMIN dans ce compteur : les deux
+        // représentent des "privilèges étendus" pour ce KPI, seul le libellé
+        // de rôle affiché par ligne (roleLabel) les distingue.
+        base().in('role', ['ADMIN', 'SUPER_ADMIN']),
         base().eq('role', 'COORDINATEUR'),
         base().eq('role', 'CHARGE_PROGRAMME'),
         base().eq('role', 'FINANCIER'),

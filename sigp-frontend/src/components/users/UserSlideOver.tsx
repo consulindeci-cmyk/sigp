@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/overlays/SlideOver';
 import {
   USER_ROLE_OPTIONS,
+  USER_ROLE_LABELS,
   type UserRow,
   type UserRole,
   type CreateUserPayload,
@@ -75,12 +76,15 @@ export const updateUserSchema = z.object({
   prenom: z.string().trim().min(1, 'Le prénom est obligatoire').max(100, 'Maximum 100 caractères'),
   email: z.string().trim().optional().or(z.literal('')),
   telephone: z.string().trim().max(30, 'Maximum 30 caractères').optional().or(z.literal('')),
-  role: z.enum(['ADMIN', 'COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'AUDITEUR', 'VIEWER']),
+  // SUPER_ADMIN inclus uniquement pour permettre au champ disabled de conserver
+  // sa valeur d'origine à l'enregistrement (voir rendu du Select plus bas) —
+  // ce rôle reste non assignable via ce formulaire.
+  role: z.enum(['SUPER_ADMIN', 'ADMIN', 'COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'AUDITEUR', 'VIEWER']),
   actif: z.boolean().default(true),
   password: z.string().optional().or(z.literal('')),
 });
 
-export type UserFormValues = z.infer<typeof createUserSchema>;
+export type UserFormValues = Omit<z.infer<typeof createUserSchema>, 'role'> & { role: UserRole };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -422,23 +426,36 @@ export function UserSlideOver({
                 <label className="text-sm font-medium text-foreground" htmlFor="u-role">
                   Rôle système *
                 </label>
-                <Select
-                  id="u-role"
-                  {...register('role')}
-                  aria-invalid={errors.role ? 'true' : 'false'}
-                  aria-describedby={errors.role ? 'error-role' : undefined}
-                >
-                  {USER_ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </Select>
-                {errors.role && (
-                  <span id="error-role" role="alert" className="text-xs text-destructive flex items-center gap-1 mt-0.5">
-                    <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
-                    {errors.role.message}
-                  </span>
+                {mode === 'edit' && user?.role === 'SUPER_ADMIN' ? (
+                  <>
+                    <Select id="u-role" {...register('role')} disabled>
+                      <option value="SUPER_ADMIN">{USER_ROLE_LABELS.SUPER_ADMIN}</option>
+                    </Select>
+                    <span className="text-[11px] text-muted-foreground">
+                      Le rôle Super Administrateur ne peut pas être modifié depuis ce formulaire.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Select
+                      id="u-role"
+                      {...register('role')}
+                      aria-invalid={errors.role ? 'true' : 'false'}
+                      aria-describedby={errors.role ? 'error-role' : undefined}
+                    >
+                      {USER_ROLE_OPTIONS.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </Select>
+                    {errors.role && (
+                      <span id="error-role" role="alert" className="text-xs text-destructive flex items-center gap-1 mt-0.5">
+                        <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        {errors.role.message}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </form>

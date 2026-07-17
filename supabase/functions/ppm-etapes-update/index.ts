@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: UpdatePpmEtapeBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -37,7 +37,7 @@ Deno.serve(async (req: Request) => {
       .eq('id', existing.marche_id)
       .maybeSingle();
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: orgId, error: orgError } = await admin.rpc('ppm_marche_organisation_id', {
         p_marche_id: existing.marche_id,
       });

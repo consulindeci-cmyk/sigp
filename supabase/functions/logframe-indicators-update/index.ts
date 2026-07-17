@@ -20,7 +20,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: UpdateLogframeIndicatorBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (objError) throw objError;
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: orgId, error: orgError } = await admin.rpc('logframe_objective_organisation_id', {
         p_objective_id: existing.objective_id,
       });

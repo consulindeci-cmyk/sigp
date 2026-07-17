@@ -27,7 +27,7 @@ Deno.serve(async (req: Request) => {
     if (!body.elementId) return json({ error: 'elementId est obligatoire' }, 400);
     if (!body.message?.trim()) return json({ error: 'message est obligatoire' }, 400);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
         p_project_id: body.projectId,
       });

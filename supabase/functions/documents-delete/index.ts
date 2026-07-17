@@ -14,7 +14,7 @@ Deno.serve(async (req: Request) => {
     // Différence assumée avec Risques/WBS/Contrats : ici c'est bien
     // COORDINATEUR + ADMIN côté NestJS (document.controller.ts:132), pas
     // ADMIN seul — reproduit fidèlement, ce n'est pas une déviation.
-    requireRole(profile, ['COORDINATEUR', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: DeleteDocumentBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -28,7 +28,7 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Document introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
         p_project_id: existing.project_id,
       });

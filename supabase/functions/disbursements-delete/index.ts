@@ -11,7 +11,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: DeleteDisbursementBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -24,6 +24,16 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (findError) throw findError;
     if (!existing) return json({ error: 'Décaissement introuvable' }, 404);
+
+    if (profile.role !== 'SUPER_ADMIN') {
+      const { data: orgId, error: orgError } = await admin.rpc('disbursement_organisation_id', {
+        p_disbursement_id: body.id,
+      });
+      if (orgError) throw orgError;
+      if (!orgId || orgId !== profile.organisation_id) {
+        return json({ error: "Accès refusé : ce décaissement n'appartient pas à votre organisation" }, 403);
+      }
+    }
 
     const { error: deleteError } = await admin
       .from('disbursements')

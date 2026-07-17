@@ -20,6 +20,7 @@ interface WBSNodeFormProps {
   onOpenChange: (open: boolean) => void;
   initialData?: Partial<WBS>;
   parentId?: string | null;
+  projectId: string;
   onSubmit: (data: Partial<WBS>) => void;
 }
 
@@ -28,9 +29,10 @@ export function WBSNodeForm({
   onOpenChange,
   initialData,
   parentId,
+  projectId,
   onSubmit,
 }: WBSNodeFormProps) {
-  const { data: logframeData } = useLogframe('proj-1');
+  const { data: logframeData } = useLogframe(projectId);
   const logframeItems = logframeData?.data || [];
 
   const isParent = !parentId && !initialData?.parent_id;

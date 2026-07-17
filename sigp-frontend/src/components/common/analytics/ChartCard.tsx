@@ -38,7 +38,7 @@ export const ChartCard = React.memo(({
         </div>
       </div>
 
-      <div className="flex-1 relative flex flex-col" style={{ minHeight }}>
+      <div className="relative flex flex-col" style={{ height: minHeight }}>
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
             Chargement...

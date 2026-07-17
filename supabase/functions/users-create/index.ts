@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: CreateUserBody = await req.json();
     if (!body.nom?.trim()) return json({ error: 'Le nom est obligatoire' }, 400);
@@ -40,6 +40,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const email = body.email.trim().toLowerCase();
+
+    // org_admin (ADMIN scopé) ne peut créer que dans sa propre organisation —
+    // tout organisationId qu'il fournirait est ignoré. Seul SUPER_ADMIN peut
+    // cibler une organisation arbitraire (ou aucune, historiquement possible).
+    const organisationId = profile.role === 'SUPER_ADMIN'
+      ? (body.organisationId ?? null)
+      : profile.organisation_id;
 
     // Pré-check : email déjà utilisé par un compte actif (réplique findByEmail).
     const { data: existing, error: existingError } = await admin
@@ -63,7 +70,7 @@ Deno.serve(async (req: Request) => {
         role: body.role ?? 'VIEWER',
         actif: true, // pas de vrai défaut DB sur cette colonne — sans ceci, actif reste NULL
         telephone: body.telephone?.trim() ?? null,
-        organisation_id: body.organisationId ?? null,
+        organisation_id: organisationId,
         updated_at: new Date().toISOString(),
       })
       .select('id, nom, prenom, email, role, actif, telephone, organisation_id, created_at')

@@ -11,7 +11,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: DeleteTeamMemberBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -24,6 +24,16 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (findError) throw findError;
     if (!existing) return json({ error: 'Membre introuvable' }, 404);
+
+    if (profile.role !== 'SUPER_ADMIN') {
+      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+        p_project_id: existing.project_id,
+      });
+      if (orgError) throw orgError;
+      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
+        return json({ error: "Accès refusé : ce membre n'appartient pas à votre organisation" }, 403);
+      }
+    }
 
     const { error: deleteError } = await admin
       .from('project_team_members')

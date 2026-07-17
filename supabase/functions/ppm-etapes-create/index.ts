@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: CreatePpmEtapeBody = await req.json();
     if (!body.marcheId) return json({ error: 'marcheId est obligatoire' }, 400);
@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
     if (marcheError) throw marcheError;
     if (!marche) return json({ error: 'Marché PPM introuvable' }, 404);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
         p_project_id: marche.project_id,
       });

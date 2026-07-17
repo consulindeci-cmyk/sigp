@@ -70,12 +70,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function fetchCandidates(): Promise<LegacyUser[]> {
+  // `actif` inclut aussi IS NULL : users-create ne le fixait pas explicitement
+  // avant correction, laissant certaines lignes avec actif=NULL — silencieusement
+  // exclues d'un simple `.eq('actif', true)` (logique à trois valeurs de SQL).
   let query = adminClient
     .from('users')
     .select('id, email, nom, prenom')
     .is('deleted_at', null)
     .is('auth_user_id', null)
-    .eq('actif', true)
+    .or('actif.eq.true,actif.is.null')
     .order('created_at', { ascending: true });
   if (limit) query = query.limit(limit);
 
@@ -122,7 +125,7 @@ async function migrateOne(user: LegacyUser): Promise<{ email: string; status: 'o
 
     const { error: linkError } = await adminClient
       .from('users')
-      .update({ auth_user_id: authUserId, updated_at: new Date().toISOString() })
+      .update({ auth_user_id: authUserId, actif: true, updated_at: new Date().toISOString() })
       .eq('id', user.id);
     if (linkError) throw linkError;
 

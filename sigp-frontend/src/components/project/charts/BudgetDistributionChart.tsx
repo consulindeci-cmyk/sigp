@@ -12,9 +12,12 @@ export default function BudgetDistributionChart({ data, state = 'success' }: Pro
       <div style={{ display: 'flex', alignItems: 'center', minHeight: '100%', flexWrap: 'wrap', gap: '16px', padding: '10px 0' }}>
         <div style={{
           width: '80px', height: '80px', borderRadius: '50%', flexShrink: 0,
-          border: `12px solid ${data[0]?.color || 'hsl(var(--primary))'}`,
+          borderWidth: '12px',
+          borderStyle: 'solid',
           borderTopColor: data[2]?.color || 'hsl(var(--warning))',
           borderRightColor: data[1]?.color || 'hsl(var(--success))',
+          borderBottomColor: data[0]?.color || 'hsl(var(--primary))',
+          borderLeftColor: data[0]?.color || 'hsl(var(--primary))',
         }} />
         <div style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {data.map(item => (

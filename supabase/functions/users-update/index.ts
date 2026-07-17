@@ -28,8 +28,8 @@ Deno.serve(async (req: Request) => {
     // modifier un AUTRE utilisateur reste réservé à ADMIN (page Utilisateurs).
     const isSelf = body.id === profile.id;
     if (!isSelf) {
-      requireRole(profile, ['ADMIN']);
-    } else if (profile.role !== 'ADMIN') {
+      requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
+    } else if (profile.role !== 'ADMIN' && profile.role !== 'SUPER_ADMIN') {
       if (body.role !== undefined) {
         return json({ error: 'Vous ne pouvez pas modifier votre propre rôle' }, 403);
       }

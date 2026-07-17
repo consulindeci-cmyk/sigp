@@ -11,7 +11,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['ADMIN']);
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: DeleteJournalOperationBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -24,6 +24,16 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (findError) throw findError;
     if (!existing) return json({ error: 'Opération de journal introuvable' }, 404);
+
+    if (profile.role !== 'SUPER_ADMIN') {
+      const { data: orgId, error: orgError } = await admin.rpc('budget_line_organisation_id', {
+        p_line_id: existing.budget_ligne_id,
+      });
+      if (orgError) throw orgError;
+      if (!orgId || orgId !== profile.organisation_id) {
+        return json({ error: "Accès refusé : cette opération n'appartient pas à votre organisation" }, 403);
+      }
+    }
 
     const { error: deleteError } = await admin
       .from('journal_operations')

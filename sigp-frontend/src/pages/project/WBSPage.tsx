@@ -290,6 +290,7 @@ export default function WBSPage() {
         }}
         initialData={editingNode || undefined}
         parentId={parentIdForNew}
+        projectId={resolvedProjectId}
         onSubmit={handleFormSubmit}
       />
 

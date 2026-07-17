@@ -18,17 +18,22 @@ Deno.serve(async (req: Request) => {
     // Un utilisateur peut supprimer son propre compte ("Zone dangereuse") ;
     // supprimer un AUTRE utilisateur reste réservé à ADMIN (page Utilisateurs).
     if (body.id !== profile.id) {
-      requireRole(profile, ['ADMIN']);
+      requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
     }
 
     const { data: existing, error: findError } = await admin
       .from('users')
-      .select('id, nom, prenom, email, role, actif, auth_user_id')
+      .select('id, nom, prenom, email, role, actif, auth_user_id, organisation_id')
       .eq('id', body.id)
       .is('deleted_at', null)
       .maybeSingle();
     if (findError) throw findError;
     if (!existing) return json({ error: 'Utilisateur introuvable' }, 404);
+
+    // org_admin ne peut supprimer que des utilisateurs de sa propre organisation.
+    if (body.id !== profile.id && profile.role !== 'SUPER_ADMIN' && existing.organisation_id !== profile.organisation_id) {
+      return json({ error: "Accès refusé : cet utilisateur n'appartient pas à votre organisation" }, 403);
+    }
 
     // Soft delete du profil — réplique UsersRepository.softDelete() (jamais
     // de suppression physique). deleted_at est vérifié par authorize() sur

@@ -19,7 +19,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN']);
+    requireRole(profile, ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN']);
 
     const body: CreateTeamMemberBody = await req.json();
     if (!body.projectId) return json({ error: 'projectId est obligatoire' }, 400);
@@ -27,7 +27,7 @@ Deno.serve(async (req: Request) => {
     if (!body.role) return json({ error: 'role est obligatoire' }, 400);
     if (!body.email?.trim()) return json({ error: 'email est obligatoire' }, 400);
 
-    if (profile.role !== 'ADMIN') {
+    if (profile.role !== 'SUPER_ADMIN') {
       const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
         p_project_id: body.projectId,
       });
