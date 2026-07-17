@@ -69,7 +69,7 @@ AS $$
     JOIN public.unites      u   ON u.id   = pr.unite_id
     JOIN public.departements d  ON d.id   = u.departement_id
     JOIN public.directions  dir ON dir.id = d.direction_id
-    WHERE dir.organisation_id = o.id AND p.statut = 'ACTIF' AND p.deleted_at IS NULL
+    WHERE dir.organisation_id = o.id AND p.statut = 'EN_COURS' AND p.deleted_at IS NULL
   ) proj ON true
   LEFT JOIN LATERAL (
     SELECT count(*) AS cnt
