@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, PaginationState, ColumnFiltersState, Updater } from '@tanstack/react-table';
 import {
   FileText, FileSpreadsheet, File, Archive, Image as ImageIcon,
   FolderOpen, Download, FileDown, Plus, Eye, Pencil, Trash2,
@@ -21,12 +21,15 @@ import {
   CONF_GLOBAL_DOC_OPTIONS, TYPE_FICHIER_OPTIONS,
 } from '@/mocks/globalDocumentsMocks';
 import {
-  useGlobalDocuments, useUpdateGlobalDocument, useDeleteGlobalDocument,
+  useGlobalDocuments, useGlobalDocumentsKPIs, useUpdateGlobalDocument, useDeleteGlobalDocument,
 } from '@/hooks/useGlobalDocuments';
+import { useAuthStore } from '@/stores/authStore';
+import { useOrganisationsList } from '@/hooks/useOrganisationsAdmin';
 import { DocumentSlideOver } from '@/components/documents/DocumentSlideOver';
 import type { DocumentSavePayload } from '@/components/documents/DocumentSlideOver';
 import { DocumentCategoryTree } from '@/components/documents/DocumentCategoryTree';
 import { DataTable }  from '@/components/ui/data-table/DataTable';
+import { type DataTableFilter } from '@/components/ui/data-table/types';
 import { StatCard }   from '@/components/ui/data-display/StatCard';
 import { Badge }      from '@/components/ui/data-display/Badge';
 import { Button }     from '@/components/ui/forms/Button';
@@ -88,37 +91,94 @@ const PIE_COLORS = [
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
-  const { data: docsData, isLoading: isLoadingDocs } = useGlobalDocuments();
+  const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
+  const { data: organisationsForFilter } = useOrganisationsList(isSuperAdmin);
+
+  // ── État pagination/filtres serveur (page/recherche/statut/organisation) —
+  // même modèle que Users/Projects. categorie/type/confidentialite/auteur
+  // restent des filtres client (voir plus bas) : encodés en JSON dans
+  // `description`, pas des colonnes réelles, donc non résolvables serveur.
+  const [paginationState, setPaginationState] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
+  const [columnFiltersState, setColumnFiltersState] = useState<ColumnFiltersState>([]);
+
+  const handleColumnFiltersChange = useCallback((updater: Updater<ColumnFiltersState>) => {
+    setColumnFiltersState(prev => typeof updater === 'function' ? updater(prev) : updater);
+    setPaginationState(prev => ({ ...prev, pageIndex: 0 }));
+  }, []);
+
+  const queryParams = useMemo(() => {
+    const titreFilter = columnFiltersState.find(f => f.id === 'titre');
+    const search = typeof titreFilter?.value === 'string' && titreFilter.value.trim() !== '' ? titreFilter.value.trim() : undefined;
+
+    const statutFilter = columnFiltersState.find(f => f.id === 'statut');
+    const statut = typeof statutFilter?.value === 'string' && statutFilter.value !== '' ? (statutFilter.value as StatutGlobalDoc) : undefined;
+
+    const organisationFilter = columnFiltersState.find(f => f.id === 'organisation');
+    const organisationId = typeof organisationFilter?.value === 'string' && organisationFilter.value !== '' ? organisationFilter.value : undefined;
+
+    return { search, statut, organisationId };
+  }, [columnFiltersState]);
+
+  const { data: docsPage, isLoading: isLoadingDocs } = useGlobalDocuments({
+    page: paginationState.pageIndex + 1,
+    limit: paginationState.pageSize,
+    ...queryParams,
+  });
+  // Agrégat séparé (KPIs/graphiques) : mêmes filtres réels, pas de pagination —
+  // découplé de la page de table affichée (même principe que useProjectsKPIs).
+  const { data: kpiDocs } = useGlobalDocumentsKPIs(queryParams);
+
   const updateMutation = useUpdateGlobalDocument();
   const deleteMutation = useDeleteGlobalDocument();
 
-  const [docs, setDocs] = useState<DocumentGlobal[]>([]);
+  const pageDocs = useMemo(() => docsPage?.data ?? [], [docsPage]);
+  const docs = useMemo(() => kpiDocs ?? [], [kpiDocs]);
+  const pageCount = docsPage?.meta?.totalPages ?? 1;
+  const rowCount = docsPage?.meta?.total ?? pageDocs.length;
 
-  useEffect(() => {
-    if (docsData) setDocs(docsData);
-  }, [docsData]);
+  // "Nouveau document" : documents_projet.project_id est NOT NULL — un document
+  // "global" (sans projet) ne peut littéralement pas y être inséré, useCreateGlobalDocument
+  // reste un stub qui ne persiste jamais réellement (comportement d'origine).
+  // draftDocs préserve l'illusion visuelle immédiate (prepend local), en dehors
+  // du cycle de pagination serveur — ces lignes disparaissent au prochain refetch.
+  const [draftDocs, setDraftDocs] = useState<DocumentGlobal[]>([]);
+
   const [slideOpen, setSlideOpen]   = useState(false);
   const [slideMode, setSlideMode]   = useState<'new' | 'edit' | 'view'>('new');
   const [slideDoc,  setSlideDoc]    = useState<DocumentGlobal | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentGlobal | null>(null);
   const [selectedCat, setSelectedCat]   = useState<CategorieGlobalDoc | null>(null);
 
-  // ── Documents filtrés par catégorie (pour le tree) ───────────────────────
+  // ── Documents affichés dans le tableau : page serveur + brouillons locaux,
+  // filtrés côté client par catégorie (arbre) et par les filtres meta-encodés
+  // (categorie/type/confidentialite/auteur) — ces derniers ne s'appliquent
+  // donc qu'à la page courante, pas à l'ensemble de la bibliothèque.
 
-  const filteredDocs = useMemo(
-    () => selectedCat ? docs.filter(d => d.categorie === selectedCat) : docs,
-    [docs, selectedCat],
-  );
+  const categorieFilter = columnFiltersState.find(f => f.id === 'categorie')?.value as CategorieGlobalDoc | undefined;
+  const typeFilter = columnFiltersState.find(f => f.id === 'type')?.value as TypeFichier | undefined;
+  const confidentialiteFilter = columnFiltersState.find(f => f.id === 'confidentialite')?.value as ConfidentialiteGlobalDoc | undefined;
+  const auteurFilter = columnFiltersState.find(f => f.id === 'auteur')?.value as string | undefined;
 
-  // ── KPIs ────────────────────────────────────────────────────────────────────
+  const filteredDocs = useMemo(() => {
+    const combined = [...draftDocs, ...pageDocs];
+    return combined.filter(d =>
+      (!selectedCat || d.categorie === selectedCat) &&
+      (!categorieFilter || d.categorie === categorieFilter) &&
+      (!typeFilter || d.type === typeFilter) &&
+      (!confidentialiteFilter || d.confidentialite === confidentialiteFilter) &&
+      (!auteurFilter || d.auteur === auteurFilter)
+    );
+  }, [draftDocs, pageDocs, selectedCat, categorieFilter, typeFilter, confidentialiteFilter, auteurFilter]);
+
+  // ── KPIs (sur l'agrégat, pas la page affichée) ─────────────────────────────
 
   const kpis = useMemo(() => {
     const totalKo  = docs.reduce((s, d) => s + d.taille_ko, 0);
     const publies  = docs.filter(d => d.statut === 'PUBLIE').length;
     const brouil   = docs.filter(d => d.statut === 'BROUILLON').length;
     const archives = docs.filter(d => d.statut === 'ARCHIVE').length;
-    return { total: docs.length, publies, brouil, archives, taille: fmtSize(totalKo) };
-  }, [docs]);
+    return { total: rowCount, publies, brouil, archives, taille: fmtSize(totalKo) };
+  }, [docs, rowCount]);
 
   // ── Alertes ─────────────────────────────────────────────────────────────────
 
@@ -176,50 +236,63 @@ export default function DocumentsPage() {
     return unique.map(a => ({ label: a, value: a }));
   }, [docs]);
 
-  const tableFilters = useMemo(() => [
-    {
-      id: 'categorie',
-      title: 'Catégorie',
-      options: CATEGORIE_GLOBAL_DOC_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
-    },
-    {
-      id: 'type',
-      title: 'Type',
-      options: TYPE_FICHIER_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
-    },
-    {
-      id: 'statut',
-      title: 'Statut',
-      options: STATUT_GLOBAL_DOC_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
-    },
-    {
-      id: 'auteur',
-      title: 'Auteur',
-      options: auteurOptions,
-    },
-    {
-      id: 'confidentialite',
-      title: 'Confidentialité',
-      options: CONF_GLOBAL_DOC_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
-    },
-  ], [auteurOptions]);
+  const tableFilters = useMemo(() => {
+    const filters: DataTableFilter[] = [
+      {
+        id: 'categorie',
+        title: 'Catégorie',
+        options: CATEGORIE_GLOBAL_DOC_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
+      },
+      {
+        id: 'type',
+        title: 'Type',
+        options: TYPE_FICHIER_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
+      },
+      {
+        id: 'statut',
+        title: 'Statut',
+        options: STATUT_GLOBAL_DOC_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
+      },
+      {
+        id: 'auteur',
+        title: 'Auteur',
+        options: auteurOptions,
+      },
+      {
+        id: 'confidentialite',
+        title: 'Confidentialité',
+        options: CONF_GLOBAL_DOC_OPTIONS.map(o => ({ label: o.label, value: o.value as string })),
+      },
+    ];
+    if (isSuperAdmin) {
+      filters.push({
+        id: 'organisation',
+        title: 'Organisation',
+        options: (organisationsForFilter ?? []).map(o => ({ label: o.nom, value: o.id })),
+      });
+    }
+    return filters;
+  }, [auteurOptions, isSuperAdmin, organisationsForFilter]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
+
+  // Un doc "brouillon" (créé via le stub, jamais vraiment persisté) doit être
+  // mis à jour localement plutôt que via une mutation réseau qui échouerait
+  // (id inexistant côté serveur) — même fragilité pré-existante, juste rendue
+  // explicite ici plutôt que masquée par la resynchronisation locale globale.
+  const isDraft = useCallback((id: string) => draftDocs.some(d => d.id === id), [draftDocs]);
 
   const handleSave = useCallback((payload: DocumentSavePayload, id?: string) => {
     const now = new Date().toISOString();
     if (id) {
-      const current = docs.find(d => d.id === id);
+      const current = [...draftDocs, ...docs].find(d => d.id === id);
       if (!current) return;
-      setDocs(prev => prev.map(d =>
-        d.id === id ? {
-          ...d, ...payload,
-          versions: d.versions,
-          nb_telechargements: d.nb_telechargements,
-          nb_commentaires: d.nb_commentaires,
-          updatedAt: now,
-        } : d,
-      ));
+
+      if (isDraft(id)) {
+        setDraftDocs(prev => prev.map(d => d.id === id ? { ...d, ...payload, updatedAt: now } : d));
+        return;
+      }
+
       updateMutation.mutate({
         id,
         titre: payload.titre,
@@ -239,14 +312,14 @@ export default function DocumentsPage() {
         current,
       });
     } else {
-      setDocs(prev => {
-        const max = prev.reduce((m, d) => {
+      setDraftDocs(prev => {
+        const all = [...prev, ...docs];
+        const max = all.reduce((m, d) => {
           const n = parseInt(d.id.replace('gdoc-', ''), 10);
           return isNaN(n) ? m : Math.max(m, n);
         }, 0);
         const catCode = payload.categorie.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 3);
-        const catDocs = prev.filter(d => d.categorie === payload.categorie);
-        const catMax  = catDocs.length;
+        const catMax = all.filter(d => d.categorie === payload.categorie).length;
         const newDoc: DocumentGlobal = {
           id:                `gdoc-${String(max + 1).padStart(3, '0')}`,
           code_document:     `DOC-${catCode}-${String(catMax + 1).padStart(3, '0')}`,
@@ -260,51 +333,46 @@ export default function DocumentsPage() {
         return [newDoc, ...prev];
       });
     }
-  }, [docs, updateMutation]);
+  }, [docs, draftDocs, isDraft, updateMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    setDocs(prev => prev.filter(d => d.id !== deleteTarget.id));
-    deleteMutation.mutate(deleteTarget.id);
+    if (isDraft(deleteTarget.id)) {
+      setDraftDocs(prev => prev.filter(d => d.id !== deleteTarget.id));
+    } else {
+      deleteMutation.mutate(deleteTarget.id);
+    }
     setDeleteTarget(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deleteTarget]);
+  }, [deleteTarget, isDraft, deleteMutation]);
 
   const handleArchive = useCallback((doc: DocumentGlobal) => {
-    const now   = new Date().toISOString();
-    const today = now.slice(0, 10);
-    setDocs(prev => prev.map(d =>
-      d.id === doc.id
-        ? { ...d, statut: 'ARCHIVE' as const, date_modification: today, updatedAt: now }
-        : d,
-    ));
+    const today = new Date().toISOString().slice(0, 10);
+    if (isDraft(doc.id)) {
+      setDraftDocs(prev => prev.map(d => d.id === doc.id ? { ...d, statut: 'ARCHIVE' as const, date_modification: today } : d));
+      return;
+    }
     updateMutation.mutate({
       id: doc.id,
       changes: { feStatut: 'ARCHIVE', date_modification: today },
       current: doc,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDraft, updateMutation]);
 
   const handleRestore = useCallback((doc: DocumentGlobal) => {
-    const now   = new Date().toISOString();
-    const today = now.slice(0, 10);
-    setDocs(prev => prev.map(d =>
-      d.id === doc.id
-        ? { ...d, statut: 'PUBLIE' as const, date_modification: today, updatedAt: now }
-        : d,
-    ));
+    const today = new Date().toISOString().slice(0, 10);
+    if (isDraft(doc.id)) {
+      setDraftDocs(prev => prev.map(d => d.id === doc.id ? { ...d, statut: 'PUBLIE' as const, date_modification: today } : d));
+      return;
+    }
     updateMutation.mutate({
       id: doc.id,
       changes: { feStatut: 'PUBLIE', date_modification: today },
       current: doc,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDraft, updateMutation]);
 
   const handleNewVersion = useCallback((doc: DocumentGlobal) => {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
     const parts  = doc.version.split('.');
     const newVer = `${parseInt(parts[0], 10) + 1}.0`;
     const newVersions = [...doc.versions, {
@@ -313,34 +381,31 @@ export default function DocumentsPage() {
       auteur:      doc.auteur,
       changements: `Mise à jour v${newVer}`,
     }];
-    setDocs(prev => prev.map(d =>
-      d.id === doc.id
-        ? { ...d, version: newVer, statut: 'EN_VALIDATION', date_modification: today, updatedAt: now, versions: newVersions }
-        : d,
-    ));
+    if (isDraft(doc.id)) {
+      setDraftDocs(prev => prev.map(d =>
+        d.id === doc.id ? { ...d, version: newVer, statut: 'EN_VALIDATION', date_modification: today, versions: newVersions } : d,
+      ));
+      return;
+    }
     updateMutation.mutate({
       id: doc.id,
       changes: { version: newVer, feStatut: 'EN_VALIDATION', date_modification: today, versions: newVersions },
       current: doc,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDraft, updateMutation]);
 
   const handleDownload = useCallback((doc: DocumentGlobal) => {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    setDocs(prev => prev.map(d =>
-      d.id === doc.id
-        ? { ...d, nb_telechargements: d.nb_telechargements + 1, date_modification: today, updatedAt: now }
-        : d,
-    ));
+    const today = new Date().toISOString().slice(0, 10);
+    if (isDraft(doc.id)) {
+      setDraftDocs(prev => prev.map(d => d.id === doc.id ? { ...d, nb_telechargements: d.nb_telechargements + 1, date_modification: today } : d));
+      return;
+    }
     updateMutation.mutate({
       id: doc.id,
       changes: { nb_telechargements: doc.nb_telechargements + 1, date_modification: today },
       current: doc,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDraft, updateMutation]);
 
   const openNew  = useCallback(() => {
     setSlideDoc(null); setSlideMode('new'); setSlideOpen(true);
@@ -774,6 +839,14 @@ export default function DocumentsPage() {
                 searchKey="titre"
                 searchPlaceholder="Rechercher par titre, auteur, code…"
                 filters={tableFilters}
+                manualPagination
+                pageCount={pageCount}
+                rowCount={rowCount}
+                pagination={paginationState}
+                onPaginationChange={setPaginationState}
+                manualFiltering
+                columnFilters={columnFiltersState}
+                onColumnFiltersChange={handleColumnFiltersChange}
               />
             </CardContent>
           </Card>
@@ -788,7 +861,7 @@ export default function DocumentsPage() {
         document={slideDoc}
         onSave={handleSave}
         onDelete={(id) => {
-          const target = docs.find(d => d.id === id);
+          const target = [...draftDocs, ...docs].find(d => d.id === id);
           if (target) { setSlideOpen(false); setDeleteTarget(target); }
         }}
         onDownload={handleDownload}

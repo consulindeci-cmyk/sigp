@@ -41,12 +41,15 @@ Deno.serve(async (req: Request) => {
     if (docError) throw docError;
     if (!document) return json({ error: 'Document introuvable' }, 404);
 
+    // Résolu inconditionnellement (pas seulement pour le contrôle d'accès
+    // non-SUPER_ADMIN) : sert aussi de préfixe de chemin de stockage ci-dessous.
+    const { data: documentOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+      p_project_id: document.project_id,
+    });
+    if (orgError) throw orgError;
+
     if (profile.role !== 'SUPER_ADMIN') {
-      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
-        p_project_id: document.project_id,
-      });
-      if (orgError) throw orgError;
-      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
+      if (!documentOrgId || documentOrgId !== profile.organisation_id) {
         return json({ error: "Ce document n'appartient pas à votre organisation" }, 403);
       }
     }
@@ -72,7 +75,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const storedName = `${crypto.randomUUID()}${ext}`;
+    // Nouveaux uploads uniquement : chemin préfixé par organisation
+    // (attachments/{organisation_id}/...) — les fichiers déjà en place restent
+    // à leur ancienne clé plate, aucune bascule rétroactive n'est effectuée.
+    // "unassigned" : filet de sécurité pour un projet orphelin sans programme
+    // (documentOrgId alors NULL), cas déjà documenté ailleurs dans le schéma.
+    const storedName = `attachments/${documentOrgId ?? 'unassigned'}/${crypto.randomUUID()}${ext}`;
 
     const { error: uploadError } = await admin.storage
       .from(BUCKET)

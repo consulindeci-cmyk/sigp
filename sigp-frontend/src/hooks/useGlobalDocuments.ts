@@ -1,15 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import type {
   DocumentGlobal, CategorieGlobalDoc, StatutGlobalDoc,
-  ConfidentialiteGlobalDoc, TypeFichier, VersionGlobalDoc,
+  ConfidentialiteGlobalDoc, TypeFichier, VersionGlobalDoc, PaginatedResponse,
 } from '@/types';
 
 // ── Cache key ─────────────────────────────────────────────────────────────────
 
 export const globalDocumentKeys = {
-  all: () => ['global-documents'] as const,
+  all: ['global-documents'] as const,
+  list: (params?: object) => [...globalDocumentKeys.all, 'list', params] as const,
+  kpis: (params?: object) => [...globalDocumentKeys.all, 'kpis', params] as const,
 };
 
 // ── Meta encoding (description field) — inchangé, même colonne côté Supabase ─
@@ -135,27 +137,90 @@ function buildUpdateMeta(
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
-// Pas de filtre project_id : "bibliothèque globale" = tous les documents
-// visibles pour l'utilisateur (RLS org-scope déjà), tous projets confondus —
-// fidèle au comportement d'origine (GET /documents sans projectId).
+// Pas de filtre project_id explicite : "bibliothèque globale" = tous les
+// documents visibles pour l'utilisateur (RLS org-scope déjà), tous projets
+// confondus — fidèle au comportement d'origine (GET /documents sans
+// projectId). organisationId (SUPER_ADMIN uniquement) est le seul filtre
+// inter-organisations, résolu via organisation_project_ids().
+//
+// categorie/type/confidentialite/auteur restent des filtres CLIENT-SIDE
+// (DocumentsPage.tsx) : ces champs sont encodés dans le JSON `description`
+// (__GDOC_META__), pas des colonnes réelles — impossible de les filtrer côté
+// serveur sans changement de schéma. Seuls titre (recherche) et statut (vraie
+// colonne) + organisationId sont résolus ici.
 
-async function fetchGlobalDocuments(): Promise<DocumentGlobal[]> {
-  const { data, error } = await supabase
-    .from('documents_projet')
-    .select(DOCUMENT_SELECT)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (error) throw error;
-  return (data as unknown as DocumentRow[]).map(adaptGlobalDocument);
+export interface GlobalDocumentsParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  statut?: StatutGlobalDoc;
+  organisationId?: string;
 }
 
-// ── Read hook ─────────────────────────────────────────────────────────────────
+async function fetchGlobalDocumentsPage(params: GlobalDocumentsParams): Promise<PaginatedResponse<DocumentGlobal>> {
+  const page = params.page ?? 1;
+  const limit = params.limit ?? 20;
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
 
-export function useGlobalDocuments() {
+  let query = supabase.from('documents_projet').select(DOCUMENT_SELECT, { count: 'exact' }).is('deleted_at', null);
+
+  if (params.search) {
+    query = query.ilike('titre', `%${params.search}%`);
+  }
+  if (params.statut) {
+    query = query.eq('statut', feToBeStatut(params.statut));
+  }
+  if (params.organisationId) {
+    const { data: projectIds, error: projectIdsError } = await supabase.rpc('organisation_project_ids', {
+      p_organisation_id: params.organisationId,
+    });
+    if (projectIdsError) throw projectIdsError;
+    // Organisation sans aucun projet (ou id refusé par la fonction) : aucun
+    // document ne doit matcher plutôt que de renvoyer toute la bibliothèque.
+    query = query.in('project_id', (projectIds ?? []).length > 0 ? projectIds : ['00000000-0000-0000-0000-000000000000']);
+  }
+
+  query = query.order('created_at', { ascending: false }).range(from, to);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+
+  const list = (data as unknown as DocumentRow[]).map(adaptGlobalDocument);
+  const total = count ?? list.length;
+  return {
+    data: list,
+    meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
+  };
+}
+
+// ── Read hook (table paginée) ──────────────────────────────────────────────────
+
+export function useGlobalDocuments(params?: GlobalDocumentsParams) {
   return useQuery({
-    queryKey: globalDocumentKeys.all(),
-    queryFn:  fetchGlobalDocuments,
+    queryKey: globalDocumentKeys.list(params),
+    queryFn: () => fetchGlobalDocumentsPage(params ?? {}),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+// ── KPI/graphiques (agrégat séparé, pas de pagination) ─────────────────────────
+// Même logique que useUsersKPIs/useProjectsKPIs : un jeu de données propre,
+// découplé de la page affichée dans le tableau. Les champs meta-encodés
+// (categorie notamment, utilisée par les graphiques) ne pouvant pas être
+// agrégés côté SQL, ce hook reste un fetch borné (500 lignes) plutôt qu'un
+// vrai agrégat serveur — respecte les mêmes filtres (recherche/statut/
+// organisation) que la liste, pour rester cohérent avec ce qui est affiché.
+
+export function useGlobalDocumentsKPIs(params?: Omit<GlobalDocumentsParams, 'page' | 'limit'>) {
+  return useQuery({
+    queryKey: globalDocumentKeys.kpis(params),
+    queryFn: async () => {
+      const page = await fetchGlobalDocumentsPage({ ...params, page: 1, limit: 500 });
+      return page.data;
+    },
+    staleTime: 60_000,
   });
 }
 
@@ -192,7 +257,7 @@ export function useCreateGlobalDocument() {
       return Promise.resolve({} as DocumentGlobal);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: globalDocumentKeys.all() });
+      qc.invalidateQueries({ queryKey: globalDocumentKeys.all });
     },
   });
 }
@@ -222,8 +287,8 @@ export function useUpdateGlobalDocument() {
       });
       return adaptGlobalDocument(resp);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),
-    onError:   () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all }),
+    onError:   () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all }),
   });
 }
 
@@ -233,7 +298,7 @@ export function useDeleteGlobalDocument() {
     mutationFn: async (id: string) => {
       await invokeEdgeFunction<{ message: string }>('documents-delete', { id });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),
-    onError:   () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all }),
+    onError:   () => qc.invalidateQueries({ queryKey: globalDocumentKeys.all }),
   });
 }
