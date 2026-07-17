@@ -175,21 +175,19 @@ export function useUsersKPIs() {
     queryKey: userKeys.kpis(),
     queryFn: async (): Promise<UsersKPIs> => {
       const base = () => supabase.from('users').select('*', { count: 'exact', head: true }).is('deleted_at', null);
-      const [total, active, inactive, admin, coord, chargeProgramme, financier, auditeur, viewer] = await Promise.all([
+      const [total, active, inactive, admin, superAdmin, coord, chargeProgramme, financier, auditeur, viewer] = await Promise.all([
         base(),
         base().eq('actif', true),
         base().eq('actif', false),
-        // SUPER_ADMIN regroupé avec ADMIN dans ce compteur : les deux
-        // représentent des "privilèges étendus" pour ce KPI, seul le libellé
-        // de rôle affiché par ligne (roleLabel) les distingue.
-        base().in('role', ['ADMIN', 'SUPER_ADMIN']),
+        base().eq('role', 'ADMIN'),
+        base().eq('role', 'SUPER_ADMIN'),
         base().eq('role', 'COORDINATEUR'),
         base().eq('role', 'CHARGE_PROGRAMME'),
         base().eq('role', 'FINANCIER'),
         base().eq('role', 'AUDITEUR'),
         base().eq('role', 'VIEWER'),
       ]);
-      for (const res of [total, active, inactive, admin, coord, chargeProgramme, financier, auditeur, viewer]) {
+      for (const res of [total, active, inactive, admin, superAdmin, coord, chargeProgramme, financier, auditeur, viewer]) {
         if (res.error) throw res.error;
       }
       return {
@@ -197,6 +195,7 @@ export function useUsersKPIs() {
         activeUsers: active.count ?? 0,
         inactiveUsers: inactive.count ?? 0,
         administrators: admin.count ?? 0,
+        superAdmins: superAdmin.count ?? 0,
         coordinators: coord.count ?? 0,
         financiers: financier.count ?? 0,
         auditors: auditeur.count ?? 0,

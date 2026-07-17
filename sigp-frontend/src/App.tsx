@@ -2,6 +2,7 @@ import { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { RequireSuperAdmin } from './components/auth/RequireSuperAdmin';
 import { Loader } from './components/ui/feedback/Loader';
 import { usePrefsStore, applyThemeClass } from './stores/prefsStore';
 
@@ -15,6 +16,7 @@ const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const UsersPage     = lazy(() => import('./pages/UsersPage'));
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
 const ReportsPage   = lazy(() => import('./pages/ReportsPage'));
+const OrganisationsPage = lazy(() => import('./pages/OrganisationsPage'));
 
 // ─── Mapping dashboard par défaut → route ────────────────────────────────────
 
@@ -77,6 +79,14 @@ export default function App() {
             <Route path="/users"     element={<UsersPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/reports"   element={<ReportsPage />} />
+            <Route
+              path="/organisations"
+              element={
+                <RequireSuperAdmin>
+                  <OrganisationsPage />
+                </RequireSuperAdmin>
+              }
+            />
           </Route>
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

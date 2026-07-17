@@ -52,6 +52,20 @@ export async function authorize(req: Request): Promise<AuthorizedRequest> {
     throw Object.assign(new Error('Compte désactivé'), { status: 403 });
   }
 
+  // SUPER_ADMIN est un rôle plateforme, jamais bloqué par le statut de sa
+  // propre organisation (mêmes bypass que is_admin() côté RLS).
+  if (profile.role !== 'SUPER_ADMIN' && profile.organisation_id) {
+    const { data: org, error: orgError } = await admin
+      .from('organisations')
+      .select('statut')
+      .eq('id', profile.organisation_id)
+      .maybeSingle();
+    if (orgError) throw orgError;
+    if (org?.statut === 'SUSPENDUE') {
+      throw Object.assign(new Error('Votre organisation est suspendue — accès bloqué'), { status: 403 });
+    }
+  }
+
   return { admin, profile: profile as AppUser };
 }
 

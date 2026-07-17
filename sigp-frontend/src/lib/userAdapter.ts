@@ -96,6 +96,7 @@ export interface UsersKPIs {
   activeUsers: number;
   inactiveUsers: number;
   administrators: number;
+  superAdmins: number;
   coordinators: number;
   financiers: number;
   auditors: number;

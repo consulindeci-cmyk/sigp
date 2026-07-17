@@ -1,4 +1,4 @@
-import { Users, UserCheck, UserX, Shield, Briefcase } from 'lucide-react';
+import { Users, UserCheck, UserX, Shield, ShieldAlert, Briefcase } from 'lucide-react';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import type { UsersKPIs } from '@/lib/userAdapter';
 
@@ -11,10 +11,11 @@ export function UserKPIs({ kpis }: { kpis: UsersKPIs | undefined }) {
   const actifs = kpis?.activeUsers ?? 0;
   const inactifs = kpis?.inactiveUsers ?? 0;
   const admins = kpis?.administrators ?? 0;
+  const superAdmins = kpis?.superAdmins ?? 0;
   const coord = kpis?.coordinators ?? 0;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
       <StatCard
         title="Total Utilisateurs"
         value={total}
@@ -41,7 +42,14 @@ export function UserKPIs({ kpis }: { kpis: UsersKPIs | undefined }) {
         value={admins}
         icon={<Shield className="h-4 w-4" aria-hidden="true" />}
         iconVariant="info"
-        description="privilèges étendus"
+        description="admin. d'organisation"
+      />
+      <StatCard
+        title="Super Administrateurs"
+        value={superAdmins}
+        icon={<ShieldAlert className="h-4 w-4" aria-hidden="true" />}
+        iconVariant="default"
+        description="accès plateforme complet"
       />
       <StatCard
         title="Coordinateurs"

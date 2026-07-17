@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -8,6 +9,7 @@ import {
   Users,
   FileText,
   Settings,
+  Building2,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -88,6 +90,7 @@ interface NavItem {
   to: string;
   label: string;
   icon: React.ElementType;
+  superAdminOnly?: boolean;
 }
 
 interface SidebarProps {
@@ -103,6 +106,7 @@ const navItems: NavItem[] = [
   { to: '/projects',  label: 'Projets',          icon: FolderKanban   },
   { to: '/users',     label: 'Utilisateurs',     icon: Users          },
   { to: '/documents', label: 'Documents',        icon: FileText       },
+  { to: '/organisations', label: 'Organisations', icon: Building2,    superAdminOnly: true },
   { to: '/settings',  label: 'Paramètres',       icon: Settings       },
 ];
 
@@ -120,6 +124,12 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
     activeProjectTab, setActiveProjectTab,
   } = useUIStore();
   const [projectNavOpen, setProjectNavOpen] = useState(true);
+
+  const isSuperAdmin = useAuthStore(state => state.user?.role === 'SUPER_ADMIN');
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => !item.superAdminOnly || isSuperAdmin),
+    [isSuperAdmin]
+  );
 
   const isExpanded = isMobile ? true : sidebarOpen;
   // Sub-nav visible only when on a project detail page (not the list)
@@ -266,7 +276,7 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
         className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 space-y-0.5 scrollbar-thin"
         aria-label="Navigation principale"
       >
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = path.startsWith(item.to);
           return (
             <React.Fragment key={item.to}>
