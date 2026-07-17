@@ -5,9 +5,11 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { RequireSuperAdmin } from './components/auth/RequireSuperAdmin';
 import { Loader } from './components/ui/feedback/Loader';
 import { usePrefsStore, applyThemeClass } from './stores/prefsStore';
+import { useAuthStore } from './stores/authStore';
 
 // ─── Lazy loaded pages ────────────────────────────────────────────────────────
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const SuperAdminDashboardPage = lazy(() => import('./pages/SuperAdminDashboardPage'));
 const ProjectsPage  = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const SettingsPage  = lazy(() => import('./pages/SettingsPage'));
@@ -17,6 +19,13 @@ const UsersPage     = lazy(() => import('./pages/UsersPage'));
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
 const ReportsPage   = lazy(() => import('./pages/ReportsPage'));
 const OrganisationsPage = lazy(() => import('./pages/OrganisationsPage'));
+
+// ─── Aiguillage /dashboard : vue macro plateforme pour SUPER_ADMIN, vue
+// portefeuille org-scopée (RLS) pour tous les autres rôles ──────────────────
+function DashboardRouter() {
+  const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
+  return isSuperAdmin ? <SuperAdminDashboardPage /> : <DashboardPage />;
+}
 
 // ─── Mapping dashboard par défaut → route ────────────────────────────────────
 
@@ -72,7 +81,7 @@ export default function App() {
             }
           >
             <Route path="/" element={<Navigate to={homeRoute} replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/dashboard" element={<DashboardRouter />} />
             <Route path="/projects"  element={<ProjectsPage />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/settings"  element={<SettingsPage />} />

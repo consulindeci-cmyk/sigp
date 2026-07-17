@@ -24,6 +24,7 @@ export interface OrganisationOverviewRow {
   org_admin_email: string | null;
   org_admin_count: number;
   projets_actifs_count: number;
+  budget_total_actif: number;
   utilisateurs_count: number;
 }
 
@@ -45,6 +46,7 @@ export interface OrganisationRow {
   orgAdminEmail: string;
   orgAdminCount: number;
   projetsActifsCount: number;
+  budgetTotalActif: number;
   utilisateursCount: number;
 }
 
@@ -86,6 +88,7 @@ export function adaptOrganisationRow(row: OrganisationOverviewRow): Organisation
     orgAdminEmail: row.org_admin_email ?? '—',
     orgAdminCount: row.org_admin_count ?? 0,
     projetsActifsCount: row.projets_actifs_count ?? 0,
+    budgetTotalActif: Number(row.budget_total_actif ?? 0),
     utilisateursCount: row.utilisateurs_count ?? 0,
   };
 }
