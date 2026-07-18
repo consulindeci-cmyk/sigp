@@ -189,7 +189,11 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
   // Validation stricte de l'équilibre — le bouton final reste désactivé tant
   // que ce n'est pas rigoureusement égal (à 1 centime près pour l'arrondi flottant).
   const balanced = Math.abs(totalLignes - totalSources) < 0.01;
-  const canFinish = lignesValid && sourcesValid && balanced && !wizard.isPending;
+  // Sans programme, projects-create rejette systématiquement la création
+  // (programmeId obligatoire) — mieux vaut bloquer clairement ici avec un
+  // message explicite que laisser échouer l'appel serveur sans contexte.
+  const hasProgramme = !!defaultProgrammeId;
+  const canFinish = lignesValid && sourcesValid && balanced && hasProgramme && !wizard.isPending;
 
   function goNext() {
     if (step === 1) {
@@ -265,6 +269,16 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-sm font-medium text-foreground">Création du projet en cours…</p>
               <p className="text-xs text-muted-foreground">Merci de patienter, ne fermez pas cette fenêtre.</p>
+            </div>
+          )}
+
+          {!hasProgramme && (
+            <div className="mb-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                Aucun programme n'est configuré pour votre organisation — la création de projet est
+                bloquée tant que ce n'est pas résolu. Contactez un administrateur de la plateforme.
+              </span>
             </div>
           )}
 
