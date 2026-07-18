@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Button } from '@/components/ui/forms/Button';
@@ -155,7 +154,7 @@ export default function ContractsPage() {
 
   if (!resolvedProjectId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-background rounded-lg border border-border">
+      <div className="flex flex-col items-center justify-center p-8 text-center bg-background rounded-lg border border-border">
         <h2 className="text-base font-bold text-foreground mb-2">Aucun projet sélectionné</h2>
         <p className="text-sm text-muted-foreground">Veuillez sélectionner un projet pour afficher la gestion des contrats.</p>
       </div>
@@ -163,11 +162,16 @@ export default function ContractsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex flex-col gap-4">
 
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
-        <PageHeader title="Gestion des Contrats" description="Suivi de l'exécution physique et financière des marchés signés." />
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Gestion des Contrats</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Suivi de l'exécution physique et financière des marchés signés.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => exportXlsx(contracts)}>
             Excel
@@ -182,7 +186,7 @@ export default function ContractsPage() {
       </div>
 
       {/* ── KPI STRIP ───────────────────────────────────────────────────────── */}
-      <div className="shrink-0 grid grid-cols-2 sm:grid-cols-4 gap-3 px-4 py-3 border-b border-border bg-muted/10">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           title="Total Contrats"
           value={kpis.total}
@@ -214,19 +218,17 @@ export default function ContractsPage() {
       </div>
 
       {/* ── TABLE ───────────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-auto p-4">
-        <DataTable
-          columns={columns}
-          data={contracts}
-          isLoading={isLoadingContracts}
-          isError={false}
-          searchKey="identification"
-          searchPlaceholder="Rechercher (Réf, Objet, Titulaire)..."
-          filters={contractFilters}
-          enableRowSelection={true}
-          onRowClick={handleView}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={contracts}
+        isLoading={isLoadingContracts}
+        isError={false}
+        searchKey="identification"
+        searchPlaceholder="Rechercher (Réf, Objet, Titulaire)..."
+        filters={contractFilters}
+        enableRowSelection={true}
+        onRowClick={handleView}
+      />
 
       {/* ── SLIDEOVER ───────────────────────────────────────────────────────── */}
       <ContractSlideOver

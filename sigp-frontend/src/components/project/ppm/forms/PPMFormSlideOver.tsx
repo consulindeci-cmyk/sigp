@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/forms/Button';
 import { useTasks } from '@/hooks/useTasks';
 import { usePpmMarcheActivites, useSetPpmMarcheActivites } from '@/hooks/usePPM';
+import { useBudget, useBudgetVersion } from '@/hooks/useBudget';
+import { useFundingSources } from '@/hooks/useFundingSources';
 
 interface PPMFormSlideOverProps {
   isOpen: boolean;
@@ -35,6 +37,13 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
   function toggleActivite(id: string) {
     setSelectedActiviteIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
+
+  // Lignes budgétaires réelles de la version active + sources de financement
+  // réelles du projet — remplacent les options figées précédentes.
+  const { data: budget } = useBudget(projectId);
+  const { data: budgetVersion } = useBudgetVersion(projectId, budget?.version_active_id);
+  const budgetLignes = budgetVersion?.lignes ?? [];
+  const { data: fundingSources } = useFundingSources(projectId);
 
   // Local form state
   const [reference,     setReference]     = useState('');
@@ -271,9 +280,9 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                     onChange={e => setBudgetLigneId(e.target.value)}
                   >
                     <option value="">-- Sélectionner --</option>
-                    <option value="bl-1">Budget Ligne 1 (Travaux)</option>
-                    <option value="bl-2">Budget Ligne 2 (Services)</option>
-                    <option value="bl-3">Budget Ligne 3 (Épuisée)</option>
+                    {budgetLignes.map(l => (
+                      <option key={l.id} value={l.id}>{l.code_ligne} — {l.libelle}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="col-span-2">
@@ -363,8 +372,9 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                     onChange={e => setBailleurId(e.target.value)}
                   >
                     <option value="">-- Sélectionner --</option>
-                    <option value="b-ida">IDA (Banque Mondiale)</option>
-                    <option value="b-afd">AFD</option>
+                    {(fundingSources ?? []).map(f => (
+                      <option key={f.id} value={f.id}>{f.nom}</option>
+                    ))}
                   </select>
                 </div>
               </div>

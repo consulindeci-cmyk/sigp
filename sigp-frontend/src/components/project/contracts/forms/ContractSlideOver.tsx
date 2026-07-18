@@ -284,24 +284,14 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
                 ))}
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={LABEL}>WBS</label>
-                <Input value={form.wbs_id} onChange={e => set('wbs_id', e.target.value)} placeholder="wbs-1" disabled={isReadOnly} />
-              </div>
-              <div>
-                <label className={LABEL}>Ligne Budget</label>
-                <Select value={form.budget_ligne_id} onChange={e => set('budget_ligne_id', e.target.value)} disabled={isReadOnly}>
-                  <option value="">Aucune</option>
-                  {budgetLignes.map(l => (
-                    <option key={l.id} value={l.id}>{l.code_ligne} — {l.libelle}</option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <label className={LABEL}>Ligne PPM</label>
-                <Input value={form.ppm_ligne_id} onChange={e => set('ppm_ligne_id', e.target.value)} placeholder="ppm-001" disabled={isReadOnly} />
-              </div>
+            <div>
+              <label className={LABEL}>Ligne Budget</label>
+              <Select value={form.budget_ligne_id} onChange={e => set('budget_ligne_id', e.target.value)} disabled={isReadOnly}>
+                <option value="">Aucune</option>
+                {budgetLignes.map(l => (
+                  <option key={l.id} value={l.id}>{l.code_ligne} — {l.libelle}</option>
+                ))}
+              </Select>
             </div>
           </div>
 

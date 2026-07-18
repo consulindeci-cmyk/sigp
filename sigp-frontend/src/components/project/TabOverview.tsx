@@ -107,7 +107,7 @@ function buildKpis(project?: Project, summary?: ProjectSummary): KpiItem[] {
       { label: 'Physique',   val: '—', colorClass: 'text-primary',          target: 'evm'           },
       { label: 'Financière', val: '—', colorClass: 'text-success',          target: 'disbursements' },
       { label: 'Complétude', val: '—', colorClass: 'text-warning',          target: 'overview'      },
-      { label: 'Activités',  val: '—', colorClass: 'text-foreground',       target: 'activities'    },
+      { label: 'Activités',  val: '—', colorClass: 'text-foreground',       target: 'ptba'          },
       { label: 'Livrables',  val: '—', colorClass: 'text-foreground',       target: 'deliverables'  },
       { label: 'Risques',    val: '—', colorClass: 'text-destructive',      target: 'risks'         },
       { label: 'Alertes',    val: '—', colorClass: 'text-destructive',      target: 'risks'         },
@@ -122,7 +122,7 @@ function buildKpis(project?: Project, summary?: ProjectSummary): KpiItem[] {
     { label: 'Physique',   val: pct(summary.tauxAvancementGlobal), colorClass: 'text-primary',          target: 'evm'           },
     { label: 'Financière', val: pct(summary.tauxDecaissement),     colorClass: 'text-success',          target: 'disbursements' },
     { label: 'Complétude', val: pct(summary.profileScore),         colorClass: 'text-warning',          target: 'overview'      },
-    { label: 'Activités',  val: num(summary.nombreActivites),      colorClass: 'text-foreground',       target: 'activities'    },
+    { label: 'Activités',  val: num(summary.nombreActivites),      colorClass: 'text-foreground',       target: 'ptba'          },
     { label: 'Livrables',  val: num(summary.nombreLivrables),      colorClass: 'text-foreground',       target: 'deliverables'  },
     { label: 'Risques',    val: num(summary.nombreRisques),        colorClass: 'text-destructive',      target: 'risks'         },
     { label: 'Alertes',    val: num(summary.risquesCritiques),     colorClass: 'text-destructive',      target: 'risks'         },
@@ -139,7 +139,7 @@ function buildAlerts(summary?: ProjectSummary): AlertItem[] {
       variant: 'warning',
       title: 'Activités en retard',
       message: `${n} activité${n > 1 ? 's' : ''} en retard nécessite${n > 1 ? 'nt' : ''} une attention.`,
-      target: 'activities',
+      target: 'ptba',
     });
   }
 

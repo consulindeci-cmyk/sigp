@@ -65,6 +65,7 @@ Deno.serve(async (req: Request) => {
       fundingSourcesRows,
       milestonesRows,
       criticalActivitiesRows,
+      evmRes,
     ] = await Promise.all([
       db.from('budget_lignes').select('categorie, montant_prevu, montant_engage, montant_paye, version:budget_versions!inner(project_id)')
         .is('deleted_at', null).eq('version.project_id', body.projectId),
@@ -81,11 +82,15 @@ Deno.serve(async (req: Request) => {
       db.from('ptba_activites').select('id, code, libelle, responsable_id, statut, taux_realisation, date_fin_prevue')
         .eq('project_id', body.projectId)
         .or(`statut.eq.EN_RETARD,and(statut.not.in.(TERMINE,ANNULE),date_fin_prevue.lt.${new Date().toISOString()})`),
+      // Même fonction unifiée que l'onglet EVM (calculate_project_evm) — évite
+      // que "Physique" affiche ici une moyenne non pondérée différente du
+      // vrai EV/BAC montré une fois sur l'onglet EVM (cf. audit).
+      db.rpc('calculate_project_evm', { p_project_id: body.projectId }).single(),
     ]);
 
     for (const [name, res] of Object.entries({
       budgetLignesRows, ptbaRows, livrablesRows, contratsRows, risquesRows, wbsRootCount,
-      budgetVersionIdsRows, fundingSourcesRows, milestonesRows, criticalActivitiesRows,
+      budgetVersionIdsRows, fundingSourcesRows, milestonesRows, criticalActivitiesRows, evmRes,
     })) {
       if (res.error) throw new Error(`[${name}] ${res.error.message}`);
     }
@@ -121,9 +126,13 @@ Deno.serve(async (req: Request) => {
     const activitesTerminees = ptbaList.filter((a) => a.statut === 'TERMINE').length;
     const activitesEnCours = ptbaList.filter((a) => a.statut === 'EN_COURS').length;
     const activitesEnRetard = ptbaList.filter((a) => a.statut === 'EN_RETARD').length;
-    const tauxAvancementGlobal = Math.round(
-      ptbaList.length ? ptbaList.reduce((s, a) => s + Number(a.taux_realisation ?? 0), 0) / ptbaList.length : 0,
-    );
+    // Progrès physique pondéré par le budget (EV / BAC), pas une moyenne brute
+    // des % d'avancement — même méthode que calculate_project_evm() (onglet
+    // EVM), pour ne plus jamais afficher deux "Physique" différents.
+    const evm = evmRes.data as { pv: number; ev: number; ac: number; bac: number } | null;
+    const tauxAvancementGlobal = evm && Number(evm.bac) > 0
+      ? Math.round((Number(evm.ev) / Number(evm.bac)) * 100)
+      : 0;
 
     const livrablesList = livrablesRows.data ?? [];
     const nombreLivrables = livrablesList.length;

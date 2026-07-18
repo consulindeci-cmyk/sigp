@@ -122,7 +122,7 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   const projectIds = projects.map((p) => p.id)
 
   const [ptbaRes, livrablesRes, wbsRes, budgetLignesRes] = await Promise.all([
-    supabase.from('ptba_activites').select('project_id, statut, taux_realisation').is('deleted_at', null).in('project_id', projectIds),
+    supabase.from('ptba_activites').select('project_id, statut, taux_realisation, montant_prevu').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('livrables').select('project_id').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('wbs_nodes').select('project_id').is('deleted_at', null).is('parent_id', null).in('project_id', projectIds),
     supabase.from('budget_lignes').select('montant_prevu, montant_paye, version:budget_versions!inner(project_id)').is('deleted_at', null).in('version.project_id', projectIds),
@@ -132,10 +132,14 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   if (wbsRes.error) throw wbsRes.error
   if (budgetLignesRes.error) throw budgetLignesRes.error
 
-  const activitesMap = new Map<string, { count: number; sumTaux: number }>()
+  // sumTaux/count restent pour référence ; ev alimente le vrai "progressScore"
+  // (EV/BAC pondéré par le budget, même méthode que calculate_project_evm() /
+  // l'onglet EVM — pas une moyenne brute des % d'avancement).
+  const activitesMap = new Map<string, { count: number; sumTaux: number; ev: number }>()
   for (const a of ptbaRes.data ?? []) {
-    const e = activitesMap.get(a.project_id) ?? { count: 0, sumTaux: 0 }
+    const e = activitesMap.get(a.project_id) ?? { count: 0, sumTaux: 0, ev: 0 }
     e.count += 1; e.sumTaux += Number(a.taux_realisation ?? 0)
+    e.ev += Number(a.montant_prevu ?? 0) * (Number(a.taux_realisation ?? 0) / 100)
     activitesMap.set(a.project_id, e)
   }
   const livrablesMap = new Map<string, number>()
@@ -152,12 +156,17 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   }
 
   for (const project of projects) {
-    const act = activitesMap.get(project.id) ?? { count: 0, sumTaux: 0 }
+    const act = activitesMap.get(project.id) ?? { count: 0, sumTaux: 0, ev: 0 }
     const bud = budgetMap.get(project.id) ?? { prevu: 0, paye: 0 }
     const budgetTotal = bud.prevu > 0 ? bud.prevu : Number(project.budgetTotal ?? 0)
     const tauxDecaissement = budgetTotal > 0 ? Math.round((bud.paye / budgetTotal) * 10000) / 100 : 0
+    // BAC strict (somme des budget_lignes réelles, sans repli sur
+    // project.budgetTotal) — même définition que calculate_project_evm(),
+    // pour que ce "progressScore" reste identique à celui affiché sur la
+    // fiche projet (Informations Générales) et l'onglet EVM.
+    const progressScore = bud.prevu > 0 ? Math.round((act.ev / bud.prevu) * 100) : 0
     result.set(project.id, {
-      progressScore: act.count ? Math.round(act.sumTaux / act.count) : 0,
+      progressScore,
       tauxDecaissement,
       composantes: composantesMap.get(project.id) ?? 0,
       activites: act.count,

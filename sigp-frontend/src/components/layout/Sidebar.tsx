@@ -44,8 +44,7 @@ export const PROJECT_NAV_GROUPS = [
     items: [
       { id: "budget",        label: "Budget",                 status: "success" },
       { id: "funding",       label: "Sources de financement", status: "success" },
-      { id: "ppm",           label: "PPM",                    status: "success" },
-      { id: "contracts",     label: "Contrats",               status: "success" },
+      { id: "ppm",           label: "Marchés & Contrats",     status: "success" },
       { id: "disbursements", label: "Décaissements",          status: "success" },
     ],
   },
@@ -64,7 +63,14 @@ export const PROJECT_NAV_GROUPS = [
       { id: "reports",    label: "Rapports",          status: "success" },
       { id: "history",    label: "Historique",        status: "success" },
       { id: "comments",   label: "Commentaires",      status: "success" },
-      { id: "settings",   label: "Paramètres Projet", status: "success" },
+    ],
+  },
+  {
+    // Isolé en dernier groupe — standard pour les réglages, séparé du contenu
+    // fonctionnel du projet (Documentation, Suivi, etc.).
+    title: "Paramètres",
+    items: [
+      { id: "settings", label: "Paramètres Projet", status: "success" },
     ],
   },
 ] as const;
@@ -160,7 +166,7 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
                 {activeProjectName ?? 'Détail du Projet'}
               </h2>
               <p className="text-[11px] text-sidebar-foreground/60 truncate mt-0.5">
-                Navigation des 19 modules
+                Navigation des 17 modules
               </p>
             </div>
           </div>

@@ -8,7 +8,6 @@ import PTBAPage from './project/PTBAPage';
 import LogframePage from './project/LogframePage';
 import BudgetPage from './project/BudgetPage';
 import PPMPage from './project/PPMPage';
-import ContractsPage from './project/ContractsPage';
 
 // Natural-flow tabs (padded by ProjectDetail, scroll via parent)
 import { Loader } from '@/components/ui/feedback/Loader';
@@ -95,7 +94,6 @@ export default function ProjectDetail() {
         {activeProjectTab === 'ptba'      && <PTBAPage />}
         {activeProjectTab === 'budget'    && <BudgetPage />}
         {activeProjectTab === 'ppm'       && <PPMPage />}
-        {activeProjectTab === 'contracts' && <ContractsPage />}
 
         {/* Natural-flow tabs: padded, parent container scrolls them */}
         {activeProjectTab === 'overview' && (

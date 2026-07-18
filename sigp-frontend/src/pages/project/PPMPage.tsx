@@ -10,7 +10,8 @@ import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
 import { PPMFormSlideOver } from '@/components/project/ppm/forms/PPMFormSlideOver';
 import { WorkflowTab } from '@/components/project/ppm/tabs/WorkflowTab';
 import { AnalyticsTab } from '@/components/project/ppm/tabs/AnalyticsTab';
-import { LayoutGrid, GitCommit, TrendingUp, Download, Plus, Loader2, Package } from 'lucide-react';
+import ContractsPage from '@/pages/project/ContractsPage';
+import { LayoutGrid, GitCommit, TrendingUp, FileSignature, Download, Plus, Loader2, Package } from 'lucide-react';
 import { PPMLigne } from '@/types';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
@@ -35,9 +36,10 @@ function renderStatusBadge(statut?: string) {
 }
 
 const TABS = [
-  { key: 'MATRIX',   label: 'Matrice Globale',         icon: LayoutGrid },
-  { key: 'WORKFLOW', label: "Workflow d'Approbation",  icon: GitCommit },
-  { key: 'BI',       label: 'Analytics PPM',           icon: TrendingUp },
+  { key: 'MATRIX',    label: 'Matrice Globale',         icon: LayoutGrid },
+  { key: 'WORKFLOW',  label: "Workflow d'Approbation",  icon: GitCommit },
+  { key: 'BI',        label: 'Analytics PPM',           icon: TrendingUp },
+  { key: 'CONTRACTS', label: 'Contrats',                icon: FileSignature },
 ] as const
 
 type Tab = typeof TABS[number]['key']
@@ -123,43 +125,47 @@ export default function PPMPage() {
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
         <div className="flex items-center gap-3 min-w-0">
           <div className="min-w-0">
-            <PageHeader title="Plan de Passation des Marchés (PPM)" />
+            <PageHeader title="Marchés & Contrats" />
           </div>
-          {renderStatusBadge(activeVersion?.statut)}
+          {activeTab !== 'CONTRACTS' && renderStatusBadge(activeVersion?.statut)}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={handleExportXlsx}>
-            Exporter Excel
-          </Button>
-          <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => handleOpenForm()}>
-            Nouveau Marché
-          </Button>
-        </div>
+        {activeTab !== 'CONTRACTS' && (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={handleExportXlsx}>
+              Exporter Excel
+            </Button>
+            <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => handleOpenForm()}>
+              Nouveau Marché
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* ── KPI STRIP ──────────────────────────────────────────────────────── */}
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-4 px-4 py-2.5 border-b border-border bg-muted/10">
-        <div className="flex items-center gap-6">
-          <div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Montant Total Estimé (PPM)</p>
-            <p className="text-sm font-bold text-foreground tabular-nums">{formatMoney(totalEstimeBase)}</p>
+      {/* ── KPI STRIP (uniquement pour les onglets PPM natifs) ──────────────── */}
+      {activeTab !== 'CONTRACTS' && (
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-4 px-4 py-2.5 border-b border-border bg-muted/10">
+          <div className="flex items-center gap-6">
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Montant Total Estimé (PPM)</p>
+              <p className="text-sm font-bold text-foreground tabular-nums">{formatMoney(totalEstimeBase)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Lignes de Marché</p>
+              <p className="text-sm font-bold text-foreground">{lignes.length} {lignes.length > 1 ? 'Lignes' : 'Ligne'}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Lignes de Marché</p>
-            <p className="text-sm font-bold text-foreground">{lignes.length} {lignes.length > 1 ? 'Lignes' : 'Ligne'}</p>
-          </div>
+          <VersionSelector
+            versions={versions.map(v => ({
+              id: v.id,
+              label: v.numero_version,
+              isActive: v.id === activeVersionId,
+              statut: v.statut
+            }))}
+            selectedId={activeVersionId}
+            onChange={setActiveVersionId}
+          />
         </div>
-        <VersionSelector
-          versions={versions.map(v => ({
-            id: v.id,
-            label: v.numero_version,
-            isActive: v.id === activeVersionId,
-            statut: v.statut
-          }))}
-          selectedId={activeVersionId}
-          onChange={setActiveVersionId}
-        />
-      </div>
+      )}
 
       {/* ── ONGLETS ─────────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex items-center gap-1 px-4 border-b border-border bg-card">
@@ -184,7 +190,9 @@ export default function PPMPage() {
 
       {/* ── CONTENU ────────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-auto p-4">
-        {isLoading ? (
+        {activeTab === 'CONTRACTS' ? (
+          <ContractsPage />
+        ) : isLoading ? (
           <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm font-medium">Chargement du PPM...</span>
