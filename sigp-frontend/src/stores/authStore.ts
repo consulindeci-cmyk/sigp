@@ -25,7 +25,7 @@ async function userFromSupabaseSession(): Promise<User | null> {
 
     const { data: profile } = await supabase
       .from('users')
-      .select('id, nom, prenom, email, role, actif, telephone')
+      .select('id, nom, prenom, email, role, actif, telephone, poste, bio')
       .eq('auth_user_id', authUserId)
       .maybeSingle()
     if (!profile) return null
@@ -36,6 +36,8 @@ async function userFromSupabaseSession(): Promise<User | null> {
       prenom: profile.prenom,
       nom: profile.nom,
       telephone: profile.telephone ?? undefined,
+      poste: profile.poste ?? undefined,
+      bio: profile.bio ?? undefined,
       role: profile.role as Role,
       actif: profile.actif,
       createdAt: new Date().toISOString(),

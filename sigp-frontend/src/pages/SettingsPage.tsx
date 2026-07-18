@@ -34,6 +34,7 @@ import { useCurrentUserProfile, useUpdateProfile } from '@/hooks/useUserProfile'
 import { useLoginHistory } from '@/hooks/useLoginHistory';
 import { useOrganisation, useUpdateOrganisation, type Organisation } from '@/hooks/useOrganisation';
 import { useDeleteUser } from '@/hooks/useUsers';
+import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabaseClient';
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 
@@ -140,7 +141,7 @@ function OptionCard<T extends string>({
 
 interface MonCompteSectionProps {
   profile: UserProfile;
-  onSave: (p: UserProfile) => void;
+  onSave: (p: UserProfile) => Promise<void>;
 }
 
 interface MfaEnrollment { factorId: string; qrCode: string; secret: string }
@@ -149,6 +150,7 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
   const [form, setForm]     = useState<UserProfile>({ ...profile });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
   const [pwError, setPwError] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
@@ -180,9 +182,17 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
     setForm(f => ({ ...f, [key]: value }));
   }
 
-  function handleSave() {
-    setSaving(true); setSaved(false);
-    setTimeout(() => { onSave(form); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 3000); }, 800);
+  async function handleSave() {
+    setSaving(true); setSaved(false); setSaveError('');
+    try {
+      await onSave(form);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handlePasswordChange() {
@@ -323,6 +333,7 @@ function MonCompteSection({ profile, onSave }: MonCompteSectionProps) {
               <Textarea id="mc-bio" rows={3} value={form.bio} onChange={e => set('bio', e.target.value)} className="resize-none" />
             </div>
           </div>
+          {saveError && <p className="text-sm text-destructive text-right mt-2" role="alert">{saveError}</p>}
           <SaveRow saving={saving} saved={saved} onSave={handleSave} />
         </CardContent>
       </Card>
@@ -834,18 +845,20 @@ function OrgSection({ role }: { role: string }) {
   const updateMutation = useUpdateOrganisation();
   const [form, setForm]     = useState<Organisation>(EMPTY_ORG);
   const [saved,  setSaved]  = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => { if (organisation) setForm(organisation); }, [organisation]);
 
   function set<K extends keyof Organisation>(k: K, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
   function handleSave() {
-    setSaved(false);
+    setSaved(false); setSaveError('');
     updateMutation.mutate({
       nom: form.nom, adresse: form.adresse, ville: form.ville, pays: form.pays,
       telephone: form.telephone, email: form.email, siteWeb: form.siteWeb,
     }, {
       onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 3000); },
+      onError: (err) => setSaveError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement."),
     });
   }
 
@@ -896,6 +909,7 @@ function OrgSection({ role }: { role: string }) {
                   <Input id="org-web" type="url" value={form.siteWeb} onChange={e => set('siteWeb', e.target.value)} />
                 </div>
               </div>
+              {saveError && <p className="text-sm text-destructive text-right mt-2" role="alert">{saveError}</p>}
               <SaveRow saving={updateMutation.isPending} saved={saved} onSave={handleSave} label="Mettre à jour" />
             </>
           )}
@@ -1987,13 +2001,12 @@ function SettingsSidebar({ profile, navGroups, current, onSelect }: SidebarProps
 
 export default function SettingsPage() {
   const [current,  setCurrent]  = useState<SectionId>('compte');
-  const backendProfile            = useCurrentUserProfile();
-  const updateProfileMutation     = useUpdateProfile();
-  const [profile,  setProfile]  = useState<UserProfile>(backendProfile);
-
-  useEffect(() => {
-    if (backendProfile.id) setProfile(backendProfile);
-  }, [backendProfile.id]);
+  // Source unique de vérité — reconstruit depuis authStore.user à chaque
+  // render. Pas de copie locale : un état dupliqué ici masquait les échecs
+  // d'enregistrement (mise à jour optimiste sans vérifier le résultat de la
+  // mutation) et ne se resynchronisait jamais après une sauvegarde réussie.
+  const profile = useCurrentUserProfile();
+  const updateProfileMutation = useUpdateProfile();
 
   const { setTheme, setPrefs, setNotifs } = usePrefsStore();
 
@@ -2042,15 +2055,18 @@ export default function SettingsPage() {
     localStorage.removeItem('sigp-privacy');
   }
 
-  function handleSaveProfile(p: UserProfile) {
-    setProfile(p);
-    if (p.id) {
-      updateProfileMutation.mutate({
-        id: p.id, prenom: p.prenom, nom: p.nom,
-        telephone: p.telephone || undefined,
-        poste: p.poste || undefined, bio: p.bio || undefined,
-      });
-    }
+  async function handleSaveProfile(p: UserProfile) {
+    if (!p.id) return;
+    await updateProfileMutation.mutateAsync({
+      id: p.id, prenom: p.prenom, nom: p.nom,
+      telephone: p.telephone || undefined,
+      poste: p.poste || undefined, bio: p.bio || undefined,
+    });
+    // Resynchronise authStore.user (source de vérité de useCurrentUserProfile)
+    // avec les valeurs réellement persistées — sans ça, prenom/nom/téléphone/
+    // poste/bio reviennent aux anciennes valeurs au prochain rechargement,
+    // malgré une sauvegarde serveur réussie.
+    await useAuthStore.getState().checkAuth();
   }
 
   function renderSection(): React.ReactNode {
