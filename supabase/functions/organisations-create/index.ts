@@ -16,17 +16,18 @@ interface CreateOrganisationBody {
   siteWeb?: string;
   deviseDefaut?: string;
   identifiantFiscal?: string;
-  // Premier utilisateur ADMIN (org_admin) de la nouvelle organisation.
+  // Premier utilisateur ADMIN (org_admin) de la nouvelle organisation. Aucun
+  // mot de passe fourni ici : le compte est créé via invitation par e-mail
+  // (cf. plus bas), l'administrateur choisit lui-même son mot de passe en
+  // validant le lien reçu.
   adminNom: string;
   adminPrenom: string;
   adminEmail: string;
-  adminPassword: string;
   adminTelephone?: string;
 }
 
 const ALLOWED_DEVISES = new Set(['XOF', 'EUR', 'USD']);
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // organisations.code est NOT NULL sans défaut côté base et n'est exposé nulle
@@ -46,6 +47,38 @@ function generateOrganisationCode(nom: string): string {
   return `${base}-${suffix}`;
 }
 
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
+
+interface PartialProvisioning {
+  orgId?: string;
+  directionId?: string;
+  departementId?: string;
+  uniteId?: string;
+  programmeId?: string;
+  adminUserId?: string;
+}
+
+// Les inserts organisation → hiérarchie → admin ne sont pas une transaction
+// SQL unique (PostgREST ne le permet pas depuis ce client) : si une étape
+// échoue après que des lignes précédentes ont déjà été créées, on les
+// supprime explicitement pour ne jamais laisser une organisation "orpheline"
+// (créée en base mais sans admin fonctionnel) alors que l'appelant reçoit une
+// erreur. Best-effort et silencieux en cas d'échec du nettoyage lui-même —
+// l'erreur d'origine reste celle renvoyée à l'appelant.
+async function rollbackProvisioning(admin: AdminClient, ids: PartialProvisioning): Promise<void> {
+  try {
+    if (ids.adminUserId) await admin.from('users').delete().eq('id', ids.adminUserId);
+    if (ids.programmeId) await admin.from('programmes').delete().eq('id', ids.programmeId);
+    if (ids.uniteId) await admin.from('unites').delete().eq('id', ids.uniteId);
+    if (ids.departementId) await admin.from('departements').delete().eq('id', ids.departementId);
+    if (ids.directionId) await admin.from('directions').delete().eq('id', ids.directionId);
+    if (ids.orgId) await admin.from('organisations').delete().eq('id', ids.orgId);
+  } catch (cleanupErr) {
+    console.error('[organisations-create] rollback failed — organisation potentiellement orpheline', ids, cleanupErr);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée' }, 405);
@@ -62,12 +95,6 @@ Deno.serve(async (req: Request) => {
     const adminEmail = body.adminEmail?.trim().toLowerCase();
     if (!adminEmail || !EMAIL_REGEX.test(adminEmail)) {
       return json({ error: "L'adresse email de l'administrateur est invalide" }, 400);
-    }
-    if (!body.adminPassword || !PASSWORD_REGEX.test(body.adminPassword)) {
-      return json(
-        { error: 'Le mot de passe admin doit contenir au moins 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial' },
-        400,
-      );
     }
     const deviseDefaut = body.deviseDefaut?.trim().toUpperCase() || 'XOF';
     if (!ALLOWED_DEVISES.has(deviseDefaut)) {
@@ -111,6 +138,10 @@ Deno.serve(async (req: Request) => {
       throw orgError;
     }
 
+    // À partir d'ici, l'organisation existe en base : toute sortie en erreur
+    // doit passer par rollbackProvisioning() pour ne rien laisser d'orphelin.
+    const provisioned: PartialProvisioning = { orgId: org.id };
+
     // 2. Hiérarchie minimale auto-provisionnée (invisible pour l'org_admin —
     // lui permet juste de créer des projets immédiatement).
     const { data: direction, error: directionError } = await admin
@@ -124,7 +155,11 @@ Deno.serve(async (req: Request) => {
       })
       .select('id')
       .single();
-    if (directionError) throw directionError;
+    if (directionError) {
+      await rollbackProvisioning(admin, provisioned);
+      throw directionError;
+    }
+    provisioned.directionId = direction.id;
 
     const { data: departement, error: departementError } = await admin
       .from('departements')
@@ -137,7 +172,11 @@ Deno.serve(async (req: Request) => {
       })
       .select('id')
       .single();
-    if (departementError) throw departementError;
+    if (departementError) {
+      await rollbackProvisioning(admin, provisioned);
+      throw departementError;
+    }
+    provisioned.departementId = departement.id;
 
     const { data: unite, error: uniteError } = await admin
       .from('unites')
@@ -150,7 +189,11 @@ Deno.serve(async (req: Request) => {
       })
       .select('id')
       .single();
-    if (uniteError) throw uniteError;
+    if (uniteError) {
+      await rollbackProvisioning(admin, provisioned);
+      throw uniteError;
+    }
+    provisioned.uniteId = unite.id;
 
     const { data: programme, error: programmeError } = await admin
       .from('programmes')
@@ -163,11 +206,17 @@ Deno.serve(async (req: Request) => {
       })
       .select('id')
       .single();
-    if (programmeError) throw programmeError;
+    if (programmeError) {
+      await rollbackProvisioning(admin, provisioned);
+      throw programmeError;
+    }
+    provisioned.programmeId = programme.id;
 
-    // 3. Premier org_admin — même séquence que users-create : ligne SQL
-    // d'abord (jamais d'état orphelin), puis compte Supabase Auth réel,
-    // puis liaison. Best-effort sur l'étape Auth, surfacé si échec.
+    // 3. Premier org_admin — ligne SQL d'abord (jamais d'état orphelin), puis
+    // invitation Supabase Auth. Contrairement à users-create (qui tolère un
+    // échec de connexion et garde le profil avec un avertissement), un échec
+    // ici déclenche un rollback complet : sans mot de passe fourni, un admin
+    // sans invitation envoyée n'aurait aucun moyen de se connecter.
     const { data: adminUser, error: adminInsertError } = await admin
       .from('users')
       .insert({
@@ -185,35 +234,35 @@ Deno.serve(async (req: Request) => {
       .select('id, nom, prenom, email, role, actif, telephone, organisation_id, created_at')
       .single();
     if (adminInsertError) {
+      await rollbackProvisioning(admin, provisioned);
       if (adminInsertError.code === '23505') {
         return json({ error: 'Cet email admin est déjà utilisé (ou associé à un compte supprimé/désactivé)' }, 409);
       }
       throw adminInsertError;
     }
+    provisioned.adminUserId = adminUser.id;
 
-    const { data: authUser, error: authError } = await admin.auth.admin.createUser({
-      email: adminEmail,
-      password: body.adminPassword,
-      email_confirm: false,
-      user_metadata: { profile_id: adminUser.id, nom: body.adminNom.trim(), prenom: body.adminPrenom.trim() },
+    // inviteUserByEmail crée le compte Supabase Auth ET envoie l'e-mail
+    // d'invitation en un seul appel (contrairement à createUser + un appel
+    // séparé à inviteUserByEmail : ce dernier échoue silencieusement car
+    // l'utilisateur existe déjà, donc aucun e-mail ne partait jamais — bug
+    // corrigé ici). Aucun mot de passe fourni : l'administrateur choisit le
+    // sien en validant le lien reçu.
+    const { data: authUser, error: authError } = await admin.auth.admin.inviteUserByEmail(adminEmail, {
+      data: { profile_id: adminUser.id, nom: body.adminNom.trim(), prenom: body.adminPrenom.trim() },
     });
 
-    if (!authError && authUser?.user) {
-      admin.auth.admin.inviteUserByEmail(adminEmail, {
-        data: { profile_id: adminUser.id, nom: body.adminNom.trim(), prenom: body.adminPrenom.trim() },
-      }).catch((e) => console.warn('[organisations-create] Envoi de l\'e-mail d\'invitation échoué :', e));
-    }
-
     if (authError || !authUser?.user) {
-      console.error('[organisations-create] GoTrue createUser failed', authError);
+      console.error('[organisations-create] inviteUserByEmail failed', authError);
+      await rollbackProvisioning(admin, provisioned);
+      const alreadyRegistered = /already.*regist|already.*exist/i.test(authError?.message ?? '');
       return json(
         {
-          data: { organisation: org, admin: adminUser },
-          warning:
-            `Organisation et profil admin créés mais la création du compte de connexion a échoué : ${authError?.message ?? 'erreur inconnue'}. ` +
-            'Provisioning manuel du compte Supabase Auth requis (auth_user_id à lier).',
+          error: alreadyRegistered
+            ? "Cet email est déjà associé à un compte d'authentification existant."
+            : `L'envoi de l'invitation à l'administrateur a échoué : ${authError?.message ?? 'erreur inconnue'}.`,
         },
-        201,
+        alreadyRegistered ? 409 : 502,
       );
     }
 

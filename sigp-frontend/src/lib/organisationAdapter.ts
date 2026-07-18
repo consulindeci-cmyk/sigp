@@ -154,6 +154,5 @@ export interface CreateOrganisationAdminPayload {
   adminNom: string;
   adminPrenom: string;
   adminEmail: string;
-  adminPassword: string;
   adminTelephone?: string;
 }

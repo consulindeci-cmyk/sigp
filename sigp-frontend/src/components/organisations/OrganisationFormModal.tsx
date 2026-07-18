@@ -35,8 +35,6 @@ import { USER_ROLE_LABELS, type UserRole } from '@/lib/userAdapter';
 // Schémas — miroir de UserFormModal.tsx (createUserSchema/updateUserSchema)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-
 const profileFieldsSchema = {
   nom: z.string().trim().min(1, "Le nom de l'organisation est obligatoire").max(200, 'Maximum 200 caractères'),
   adresse: z.string().trim().max(255, 'Maximum 255 caractères').optional().or(z.literal('')),
@@ -62,14 +60,6 @@ export const createOrganisationSchema = z.object({
     .email('Adresse email invalide')
     .max(255, 'Maximum 255 caractères'),
   adminTelephone: z.string().trim().max(30, 'Maximum 30 caractères').optional().or(z.literal('')),
-  adminPassword: z
-    .string()
-    .min(8, 'Le mot de passe doit contenir au moins 8 caractères')
-    .max(128, 'Maximum 128 caractères')
-    .regex(
-      PASSWORD_REGEX,
-      'Doit contenir au moins 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial'
-    ),
 });
 
 export type OrganisationFormValues = z.infer<typeof createOrganisationSchema>;
@@ -77,7 +67,7 @@ export type OrganisationFormValues = z.infer<typeof createOrganisationSchema>;
 const EMPTY_FORM: OrganisationFormValues = {
   nom: '', adresse: '', ville: '', pays: '', telephone: '', email: '', siteWeb: '',
   deviseDefaut: 'XOF', identifiantFiscal: '',
-  adminNom: '', adminPrenom: '', adminEmail: '', adminTelephone: '', adminPassword: '',
+  adminNom: '', adminPrenom: '', adminEmail: '', adminTelephone: '',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -299,7 +289,6 @@ export function OrganisationFormModal({
         adminNom: data.adminNom,
         adminPrenom: data.adminPrenom,
         adminEmail: data.adminEmail,
-        adminPassword: data.adminPassword,
         adminTelephone: data.adminTelephone || undefined,
       });
     } else if (mode === 'edit') {
@@ -588,21 +577,12 @@ export function OrganisationFormModal({
                     <Input id="o-admin-telephone" type="tel" {...register('adminTelephone')} placeholder="+225 01 02 03 04 05" />
                   </div>
 
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-foreground" htmlFor="o-admin-password">
-                      Mot de passe *
-                    </label>
-                    <Input id="o-admin-password" type="password" {...register('adminPassword')} placeholder="Min. 8 car." aria-invalid={errors.adminPassword ? 'true' : 'false'} />
-                    {errors.adminPassword ? (
-                      <span role="alert" className="text-xs text-destructive flex items-center gap-1 mt-0.5">
-                        <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        {errors.adminPassword.message}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground">
-                        1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial.
-                      </span>
-                    )}
+                  <div className="flex flex-col gap-1.5 sm:col-span-2">
+                    <p className="text-[11px] text-muted-foreground">
+                      Aucun mot de passe à définir ici : un e-mail d'invitation sera envoyé à cette
+                      adresse pour que l'administrateur active son compte et choisisse son propre
+                      mot de passe. Si cet email est déjà utilisé, la création sera refusée.
+                    </p>
                   </div>
                 </>
               )}

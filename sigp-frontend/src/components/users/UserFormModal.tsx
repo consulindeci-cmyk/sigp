@@ -48,8 +48,6 @@ export interface UserFormModalProps {
 // Validation Schemas (Zod) — 100% Aligned with NestJS DTOs
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-
 // Création par un ADMIN (org_admin) — rôle libre parmi les 6 rôles métier,
 // implicitement rattaché à sa propre organisation (pas de champ organisation).
 export const createUserSchema = z.object({
@@ -64,10 +62,6 @@ export const createUserSchema = z.object({
   telephone: z.string().trim().max(30, 'Maximum 30 caractères').optional().or(z.literal('')),
   role: z.enum(['ADMIN', 'COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'AUDITEUR', 'VIEWER']),
   actif: z.boolean().default(true),
-  // Pas de mot de passe à saisir ici : invitation d'équipe par un org_admin —
-  // le serveur génère un mot de passe temporaire, le collaborateur définit le
-  // sien via le lien d'invitation envoyé par e-mail (inviteUserByEmail).
-  password: z.string().optional().or(z.literal('')),
 });
 
 // Création par un SUPER_ADMIN — le seul rôle qu'il peut provisionner est
@@ -87,14 +81,6 @@ export const createUserSuperAdminSchema = z.object({
   role: z.literal('ADMIN'),
   organisationId: z.string().trim().min(1, "L'organisation de rattachement est obligatoire"),
   actif: z.boolean().default(true),
-  password: z
-    .string()
-    .min(8, 'Le mot de passe doit contenir au moins 8 caractères')
-    .max(128, 'Maximum 128 caractères')
-    .regex(
-      PASSWORD_REGEX,
-      'Doit contenir au moins 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial'
-    ),
 });
 
 export const updateUserSchema = z.object({
@@ -107,7 +93,6 @@ export const updateUserSchema = z.object({
   // ce rôle reste non assignable via ce formulaire.
   role: z.enum(['SUPER_ADMIN', 'ADMIN', 'COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'AUDITEUR', 'VIEWER']),
   actif: z.boolean().default(true),
-  password: z.string().optional().or(z.literal('')),
 });
 
 export type UserFormValues = Omit<z.infer<typeof createUserSchema>, 'role'> & {
@@ -248,7 +233,6 @@ export function UserFormModal({
       role: 'VIEWER',
       organisationId: '',
       actif: true,
-      password: '',
     },
   });
 
@@ -265,7 +249,6 @@ export function UserFormModal({
           role: restrictToOrgAdmin ? 'ADMIN' : 'VIEWER',
           organisationId: '',
           actif: true,
-          password: '',
         });
       } else if (user && mode === 'edit') {
         reset({
@@ -275,7 +258,6 @@ export function UserFormModal({
           telephone: user.telephone || '',
           role: user.role || 'VIEWER',
           actif: user.actif ?? true,
-          password: '',
         });
       }
     }
@@ -287,7 +269,6 @@ export function UserFormModal({
         nom: data.nom,
         prenom: data.prenom,
         email: data.email,
-        password: data.password || undefined,
         role: restrictToOrgAdmin ? 'ADMIN' : (data.role as UserRole),
         telephone: data.telephone || undefined,
         organisationId: restrictToOrgAdmin ? data.organisationId : undefined,
@@ -398,42 +379,15 @@ export function UserFormModal({
                 )}
               </div>
 
-              {/* Mot de passe — uniquement pour le provisioning direct d'un
-                  administrateur d'organisation par un SUPER_ADMIN */}
-              {mode === 'new' && restrictToOrgAdmin && (
-                <div className="flex flex-col gap-1.5 sm:col-span-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="u-password">
-                    Mot de passe *
-                  </label>
-                  <Input
-                    id="u-password"
-                    type="password"
-                    {...register('password')}
-                    placeholder="Min. 8 car. : 1 maj, 1 min, 1 chiffre, 1 spécial"
-                    aria-invalid={errors.password ? 'true' : 'false'}
-                    aria-describedby={errors.password ? 'error-password' : undefined}
-                  />
-                  {errors.password ? (
-                    <span id="error-password" role="alert" className="text-xs text-destructive flex items-center gap-1 mt-0.5">
-                      <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      {errors.password.message}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground">
-                      Critères robustes exigés par le système (Argon2id).
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Flux d'invitation d'équipe (org_admin) — pas de mot de passe
-                  à saisir : le collaborateur définit le sien via le lien
-                  d'invitation envoyé par e-mail. */}
-              {mode === 'new' && !restrictToOrgAdmin && (
+              {/* Aucun mot de passe à saisir, dans les deux flux de création :
+                  le compte est créé par invitation, le collaborateur définit
+                  lui-même son mot de passe via le lien reçu par e-mail. */}
+              {mode === 'new' && (
                 <div className="flex items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 sm:col-span-2">
                   <Mail className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
                   <p className="text-xs text-muted-foreground">
-                    Un e-mail d'invitation sera envoyé à ce collaborateur pour qu'il définisse
+                    Un e-mail d'invitation sera envoyé à cette adresse pour que{' '}
+                    {restrictToOrgAdmin ? "l'administrateur" : 'ce collaborateur'} définisse
                     lui-même son mot de passe et active son compte.
                   </p>
                 </div>

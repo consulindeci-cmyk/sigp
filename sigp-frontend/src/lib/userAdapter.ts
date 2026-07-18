@@ -83,12 +83,9 @@ export interface CreateUserPayload {
   nom: string;
   prenom: string;
   email: string;
-  // Optionnel : flux d'invitation d'équipe (org_admin) — le serveur génère un
-  // mot de passe temporaire aléatoire, le collaborateur définit le sien via
-  // le lien d'invitation (inviteUserByEmail). Fourni uniquement quand un
-  // SUPER_ADMIN provisionne directement le premier administrateur d'une
-  // organisation (formulaire dédié).
-  password?: string;
+  // Aucun mot de passe côté client : le compte est toujours créé par
+  // invitation (inviteUserByEmail), le destinataire définit le sien via le
+  // lien reçu par e-mail — SUPER_ADMIN comme flux d'invitation d'équipe.
   role?: UserRole;
   telephone?: string;
   // SUPER_ADMIN uniquement — organisation de rattachement obligatoire pour

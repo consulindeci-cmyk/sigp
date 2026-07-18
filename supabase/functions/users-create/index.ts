@@ -5,26 +5,12 @@ interface CreateUserBody {
   nom: string;
   prenom: string;
   email: string;
-  // Optionnel : flux d'invitation d'équipe — un mot de passe temporaire est
-  // généré côté serveur quand absent, le collaborateur définit le sien via
-  // le lien d'invitation (inviteUserByEmail ci-dessous).
-  password?: string;
   role?: 'ADMIN' | 'COORDINATEUR' | 'CHARGE_PROGRAMME' | 'FINANCIER' | 'AUDITEUR' | 'VIEWER';
   telephone?: string;
   organisationId?: string;
 }
 
-// Réplique PASSWORD_REGEX de CreateUserDto : min 8, 1 maj, 1 min, 1 chiffre, 1 spécial.
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Jamais communiqué à l'utilisateur — sert uniquement à satisfaire GoTrue
-// (qui exige un mot de passe à la création). Le compte reste non confirmé
-// (email_confirm: false) : le collaborateur définit son propre mot de passe
-// via le lien d'invitation envoyé plus bas.
-function generateTempPassword(): string {
-  return `Tmp${crypto.randomUUID().replace(/-/g, '')}!A1`;
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -40,27 +26,6 @@ Deno.serve(async (req: Request) => {
     if (!body.email?.trim() || !EMAIL_REGEX.test(body.email.trim())) {
       return json({ error: "L'adresse email est invalide" }, 400);
     }
-    // Un mot de passe explicite n'est fourni que par le formulaire SUPER_ADMIN
-    // (provisioning direct d'un administrateur d'organisation). Le flux
-    // d'invitation d'équipe (org_admin) n'en envoie aucun : un mot de passe
-    // temporaire aléatoire est généré ici, jamais communiqué — le
-    // collaborateur définit le sien via le lien d'invitation ci-dessous.
-    let password: string;
-    if (body.password) {
-      if (body.password.length < 8 || body.password.length > 128) {
-        return json({ error: 'Le mot de passe doit contenir entre 8 et 128 caractères' }, 400);
-      }
-      if (!PASSWORD_REGEX.test(body.password)) {
-        return json(
-          { error: 'Le mot de passe doit contenir au moins une majuscule, une minuscule, un chiffre et un caractère spécial' },
-          400,
-        );
-      }
-      password = body.password;
-    } else {
-      password = generateTempPassword();
-    }
-
     const email = body.email.trim().toLowerCase();
 
     // org_admin (ADMIN scopé) ne peut créer que dans sa propre organisation —
@@ -134,31 +99,27 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    // 2. GoTrue ensuite — création du compte (non confirmé pour exiger la vérification par e-mail).
-    const { data: authUser, error: authError } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: false,
-      user_metadata: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
+    // 2. GoTrue ensuite — inviteUserByEmail crée le compte ET envoie l'e-mail
+    // d'invitation en un seul appel. Avant, createUser() créait le compte
+    // silencieusement (aucun mail envoyé) puis un second appel à
+    // inviteUserByEmail échouait car l'utilisateur existait déjà — échec
+    // avalé par un .catch(), donc aucune invitation ne partait jamais. Aucun
+    // mot de passe fourni : le destinataire choisit le sien via le lien reçu.
+    const { data: authUser, error: authError } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
     });
 
-    if (!authError && authUser?.user) {
-      // Envoie automatiquement un e-mail officiel de vérification/invitation à l'utilisateur
-      admin.auth.admin.inviteUserByEmail(email, {
-        data: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
-      }).catch((e) => console.warn('[users-create] Envoi de l\'e-mail d\'invitation échoué :', e));
-    }
-
     if (authError || !authUser?.user) {
-      console.error('[users-create] GoTrue createUser failed', authError);
+      console.error('[users-create] inviteUserByEmail failed', authError);
+      await admin.from('users').delete().eq('id', newUser.id);
+      const alreadyRegistered = /already.*regist|already.*exist/i.test(authError?.message ?? '');
       return json(
         {
-          data: newUser,
-          warning:
-            `Profil créé mais la création du compte de connexion a échoué : ${authError?.message ?? 'erreur inconnue'}. ` +
-            'Le profil reste utilisable après provisioning manuel du compte Supabase Auth (auth_user_id à lier).',
+          error: alreadyRegistered
+            ? "Cet email est déjà associé à un compte d'authentification existant."
+            : `L'envoi de l'invitation a échoué : ${authError?.message ?? 'erreur inconnue'}.`,
         },
-        201,
+        alreadyRegistered ? 409 : 502,
       );
     }
 
