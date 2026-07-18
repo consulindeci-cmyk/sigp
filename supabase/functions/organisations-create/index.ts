@@ -1,5 +1,6 @@
 import { corsHeaders, json } from '../_shared/cors.ts';
 import { authorize, requireRole } from '../_shared/authorize.ts';
+import { INVITE_REDIRECT_TO } from '../_shared/frontendUrl.ts';
 
 // Réservé SUPER_ADMIN — créer une organisation revient à onboarder un nouveau
 // tenant complet : la ligne organisations elle-même, une hiérarchie minimale
@@ -249,6 +250,7 @@ Deno.serve(async (req: Request) => {
     // corrigé ici). Aucun mot de passe fourni : l'administrateur choisit le
     // sien en validant le lien reçu.
     const { data: authUser, error: authError } = await admin.auth.admin.inviteUserByEmail(adminEmail, {
+      redirectTo: INVITE_REDIRECT_TO,
       data: { profile_id: adminUser.id, nom: body.adminNom.trim(), prenom: body.adminPrenom.trim() },
     });
 

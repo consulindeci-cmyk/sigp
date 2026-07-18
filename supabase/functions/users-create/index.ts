@@ -1,5 +1,6 @@
 import { corsHeaders, json } from '../_shared/cors.ts';
 import { authorize, requireRole } from '../_shared/authorize.ts';
+import { INVITE_REDIRECT_TO } from '../_shared/frontendUrl.ts';
 
 interface CreateUserBody {
   nom: string;
@@ -106,6 +107,7 @@ Deno.serve(async (req: Request) => {
     // avalé par un .catch(), donc aucune invitation ne partait jamais. Aucun
     // mot de passe fourni : le destinataire choisit le sien via le lien reçu.
     const { data: authUser, error: authError } = await admin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: INVITE_REDIRECT_TO,
       data: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
     });
 
