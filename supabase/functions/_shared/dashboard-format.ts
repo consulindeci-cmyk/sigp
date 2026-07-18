@@ -73,4 +73,8 @@ export function niveauToLevel(n: string): 'high' | 'medium' | 'low' {
   return n === 'CRITIQUE' || n === 'ELEVE' ? 'high' : n === 'MODERE' ? 'medium' : 'low';
 }
 
-export const DISTRIBUTION_COLORS = ['primary', 'success', 'warning', 'destructive', 'muted-foreground'];
+// Doit rester un sous-ensemble exact de ProgressBarColor (frontend) — une
+// valeur hors de cette union (ex: 'muted-foreground') rend la barre de
+// progression correspondante invisible côté UI (cast `as any` qui masque
+// l'erreur de type au moment de la consommation).
+export const DISTRIBUTION_COLORS = ['primary', 'success', 'warning', 'destructive'];

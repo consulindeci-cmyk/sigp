@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import ProjectHeader from '../components/project/layout/ProjectHeader';
@@ -25,8 +25,8 @@ import TabHistory from '../components/project/TabHistory';
 import TabComments from '../components/project/TabComments';
 import TabSettings from '../components/project/TabSettings';
 
-import { useProject, useProjectSummary, useProjectRowAggregation } from '@/hooks/useProjects';
-import { adaptProjectDto, type Project } from '@/lib/projectAdapter';
+import { useProject, useProjectSummary, useProjectRowAggregation, useUpdateProject } from '@/hooks/useProjects';
+import { adaptProjectDto, type Project, type UpdateProjectPayload } from '@/lib/projectAdapter';
 
 const PAD = 'px-4 sm:px-6 lg:px-8 py-6';
 const INNER = 'mx-auto w-full max-w-layout';
@@ -40,6 +40,8 @@ export default function ProjectDetail() {
   const { data: apiProject, isLoading } = useProject(id ?? '');
   const { data: summary } = useProjectSummary(id ?? '');
   const { data: rowAgg } = useProjectRowAggregation(id ?? '');
+  const updateProjectMutation = useUpdateProject();
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const project: Project | undefined = useMemo(() => {
     if (!apiProject) return undefined;
@@ -76,13 +78,46 @@ export default function ProjectDetail() {
     return <Loader fullWidth text="Chargement du projet..." />;
   }
 
+  const currentProject = project;
+
+  // Le champ `code` est intentionnellement absent du payload PATCH (immuable côté backend)
+  async function handleProjectUpdate(data: Partial<Project>) {
+    setUpdateError(null);
+    try {
+      const payload: UpdateProjectPayload = {
+        nom: data.name,
+        description: data.description,
+        bailleurPrincipal: data.donor,
+        secteur: data.sector,
+        pays: data.country,
+        managerId: data.managerId || undefined,
+        dateDebut: data.startDate || undefined,
+        dateFinPrevue: data.endDate || undefined,
+        dateFinEffective: data.dateFinEffective || undefined,
+        dateClotureEffective: data.dateClotureEffective || undefined,
+        budgetTotal: data.budgetTotal,
+        devise: data.devise,
+        statut: data.statut,
+      };
+      await updateProjectMutation.mutateAsync({ id: currentProject.id, payload });
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
+      throw err;
+    }
+  }
+
   return (
     <div className="flex flex-col flex-1 bg-background relative">
 
       {/* ── HEADER ──────────────────────────────────────────────────────── */}
       <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-4 sm:pb-6 bg-background border-b border-border">
         <div className={INNER}>
-          <ProjectHeader project={project} onProjectUpdate={() => {}} />
+          <ProjectHeader
+            project={project}
+            onProjectUpdate={handleProjectUpdate}
+            isUpdating={updateProjectMutation.isPending}
+            updateError={updateError}
+          />
         </div>
       </div>
 

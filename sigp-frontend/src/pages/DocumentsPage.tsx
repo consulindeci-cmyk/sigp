@@ -21,8 +21,11 @@ import {
   CONF_GLOBAL_DOC_OPTIONS, TYPE_FICHIER_OPTIONS,
 } from '@/mocks/globalDocumentsMocks';
 import {
-  useGlobalDocuments, useGlobalDocumentsKPIs, useUpdateGlobalDocument, useDeleteGlobalDocument,
+  useGlobalDocuments, useGlobalDocumentsKPIs, useCreateGlobalDocument,
+  useUpdateGlobalDocument, useDeleteGlobalDocument,
 } from '@/hooks/useGlobalDocuments';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/stores/authStore';
 import { useOrganisationsList } from '@/hooks/useOrganisationsAdmin';
 import { DocumentSlideOver } from '@/components/documents/DocumentSlideOver';
@@ -93,6 +96,29 @@ const PIE_COLORS = [
 export default function DocumentsPage() {
   const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
   const { data: organisationsForFilter } = useOrganisationsList(isSuperAdmin);
+  const currentUser = useAuthStore(s => s.user);
+  const currentUserName = currentUser ? `${currentUser.prenom} ${currentUser.nom}`.trim() : '';
+  // Miroir de requireRole(profile, ['COORDINATEUR','CHARGE_PROGRAMME','ADMIN','SUPER_ADMIN'])
+  // sur documents-create côté serveur.
+  const canCreateDocument = currentUser
+    ? ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentUser.role)
+    : false;
+
+  // Projets disponibles pour le sélecteur de rattachement à la création —
+  // RLS scope déjà à l'organisation courante.
+  const { data: projectsList } = useQuery({
+    queryKey: ['projects', 'list-minimal'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('projects').select('id, nom, code').is('deleted_at', null).order('nom');
+      if (error) throw error;
+      return data as Array<{ id: string; nom: string; code: string }>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const projectOptions = useMemo(
+    () => (projectsList ?? []).map(p => ({ id: p.id, label: `${p.nom} (${p.code})` })),
+    [projectsList],
+  );
 
   // ── État pagination/filtres serveur (page/recherche/statut/organisation) —
   // même modèle que Users/Projects. categorie/type/confidentialite/auteur
@@ -128,20 +154,22 @@ export default function DocumentsPage() {
   // découplé de la page de table affichée (même principe que useProjectsKPIs).
   const { data: kpiDocs } = useGlobalDocumentsKPIs(queryParams);
 
+  const createMutation = useCreateGlobalDocument();
   const updateMutation = useUpdateGlobalDocument();
   const deleteMutation = useDeleteGlobalDocument();
+
+  // Bannière d'erreur unique pour toutes les mutations de cette page (create/
+  // update/delete) — sans ça, un échec serveur (permission refusée, projet
+  // introuvable...) passait totalement inaperçu.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const handleMutationError = useCallback((err: unknown) => {
+    setActionError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
+  }, []);
 
   const pageDocs = useMemo(() => docsPage?.data ?? [], [docsPage]);
   const docs = useMemo(() => kpiDocs ?? [], [kpiDocs]);
   const pageCount = docsPage?.meta?.totalPages ?? 1;
   const rowCount = docsPage?.meta?.total ?? pageDocs.length;
-
-  // "Nouveau document" : documents_projet.project_id est NOT NULL — un document
-  // "global" (sans projet) ne peut littéralement pas y être inséré, useCreateGlobalDocument
-  // reste un stub qui ne persiste jamais réellement (comportement d'origine).
-  // draftDocs préserve l'illusion visuelle immédiate (prepend local), en dehors
-  // du cycle de pagination serveur — ces lignes disparaissent au prochain refetch.
-  const [draftDocs, setDraftDocs] = useState<DocumentGlobal[]>([]);
 
   const [slideOpen, setSlideOpen]   = useState(false);
   const [slideMode, setSlideMode]   = useState<'new' | 'edit' | 'view'>('new');
@@ -149,10 +177,10 @@ export default function DocumentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<DocumentGlobal | null>(null);
   const [selectedCat, setSelectedCat]   = useState<CategorieGlobalDoc | null>(null);
 
-  // ── Documents affichés dans le tableau : page serveur + brouillons locaux,
-  // filtrés côté client par catégorie (arbre) et par les filtres meta-encodés
-  // (categorie/type/confidentialite/auteur) — ces derniers ne s'appliquent
-  // donc qu'à la page courante, pas à l'ensemble de la bibliothèque.
+  // ── Documents affichés dans le tableau : page serveur, filtrés côté client
+  // par catégorie (arbre) et par les filtres meta-encodés (categorie/type/
+  // confidentialite/auteur) — ces derniers ne s'appliquent donc qu'à la page
+  // courante, pas à l'ensemble de la bibliothèque.
 
   const categorieFilter = columnFiltersState.find(f => f.id === 'categorie')?.value as CategorieGlobalDoc | undefined;
   const typeFilter = columnFiltersState.find(f => f.id === 'type')?.value as TypeFichier | undefined;
@@ -160,15 +188,14 @@ export default function DocumentsPage() {
   const auteurFilter = columnFiltersState.find(f => f.id === 'auteur')?.value as string | undefined;
 
   const filteredDocs = useMemo(() => {
-    const combined = [...draftDocs, ...pageDocs];
-    return combined.filter(d =>
+    return pageDocs.filter(d =>
       (!selectedCat || d.categorie === selectedCat) &&
       (!categorieFilter || d.categorie === categorieFilter) &&
       (!typeFilter || d.type === typeFilter) &&
       (!confidentialiteFilter || d.confidentialite === confidentialiteFilter) &&
       (!auteurFilter || d.auteur === auteurFilter)
     );
-  }, [draftDocs, pageDocs, selectedCat, categorieFilter, typeFilter, confidentialiteFilter, auteurFilter]);
+  }, [pageDocs, selectedCat, categorieFilter, typeFilter, confidentialiteFilter, auteurFilter]);
 
   // ── KPIs (sur l'agrégat, pas la page affichée) ─────────────────────────────
 
@@ -276,22 +303,11 @@ export default function DocumentsPage() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
-  // Un doc "brouillon" (créé via le stub, jamais vraiment persisté) doit être
-  // mis à jour localement plutôt que via une mutation réseau qui échouerait
-  // (id inexistant côté serveur) — même fragilité pré-existante, juste rendue
-  // explicite ici plutôt que masquée par la resynchronisation locale globale.
-  const isDraft = useCallback((id: string) => draftDocs.some(d => d.id === id), [draftDocs]);
-
   const handleSave = useCallback((payload: DocumentSavePayload, id?: string) => {
-    const now = new Date().toISOString();
+    setActionError(null);
     if (id) {
-      const current = [...draftDocs, ...docs].find(d => d.id === id);
+      const current = pageDocs.find(d => d.id === id) ?? docs.find(d => d.id === id);
       if (!current) return;
-
-      if (isDraft(id)) {
-        setDraftDocs(prev => prev.map(d => d.id === id ? { ...d, ...payload, updatedAt: now } : d));
-        return;
-      }
 
       updateMutation.mutate({
         id,
@@ -310,66 +326,39 @@ export default function DocumentsPage() {
           date_modification: payload.date_modification,
         },
         current,
-      });
+      }, { onError: handleMutationError });
     } else {
-      setDraftDocs(prev => {
-        const all = [...prev, ...docs];
-        const max = all.reduce((m, d) => {
-          const n = parseInt(d.id.replace('gdoc-', ''), 10);
-          return isNaN(n) ? m : Math.max(m, n);
-        }, 0);
-        const catCode = payload.categorie.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 3);
-        const catMax = all.filter(d => d.categorie === payload.categorie).length;
-        const newDoc: DocumentGlobal = {
-          id:                `gdoc-${String(max + 1).padStart(3, '0')}`,
-          code_document:     `DOC-${catCode}-${String(catMax + 1).padStart(3, '0')}`,
-          ...payload,
-          nb_telechargements: 0,
-          nb_commentaires:    0,
-          versions:           [{ version: payload.version, date: payload.date_creation, auteur: payload.auteur, changements: 'Version initiale' }],
-          createdAt:          now,
-          updatedAt:          now,
-        };
-        return [newDoc, ...prev];
-      });
+      if (!payload.projectId) return;
+      createMutation.mutate({ projectId: payload.projectId, payload }, { onError: handleMutationError });
     }
-  }, [docs, draftDocs, isDraft, updateMutation]);
+  }, [pageDocs, docs, updateMutation, createMutation, handleMutationError]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    if (isDraft(deleteTarget.id)) {
-      setDraftDocs(prev => prev.filter(d => d.id !== deleteTarget.id));
-    } else {
-      deleteMutation.mutate(deleteTarget.id);
-    }
+    setActionError(null);
+    deleteMutation.mutate(deleteTarget.id, { onError: handleMutationError });
     setDeleteTarget(null);
-  }, [deleteTarget, isDraft, deleteMutation]);
+  }, [deleteTarget, deleteMutation, handleMutationError]);
 
   const handleArchive = useCallback((doc: DocumentGlobal) => {
     const today = new Date().toISOString().slice(0, 10);
-    if (isDraft(doc.id)) {
-      setDraftDocs(prev => prev.map(d => d.id === doc.id ? { ...d, statut: 'ARCHIVE' as const, date_modification: today } : d));
-      return;
-    }
+    setActionError(null);
     updateMutation.mutate({
       id: doc.id,
       changes: { feStatut: 'ARCHIVE', date_modification: today },
       current: doc,
-    });
-  }, [isDraft, updateMutation]);
+    }, { onError: handleMutationError });
+  }, [updateMutation, handleMutationError]);
 
   const handleRestore = useCallback((doc: DocumentGlobal) => {
     const today = new Date().toISOString().slice(0, 10);
-    if (isDraft(doc.id)) {
-      setDraftDocs(prev => prev.map(d => d.id === doc.id ? { ...d, statut: 'PUBLIE' as const, date_modification: today } : d));
-      return;
-    }
+    setActionError(null);
     updateMutation.mutate({
       id: doc.id,
       changes: { feStatut: 'PUBLIE', date_modification: today },
       current: doc,
-    });
-  }, [isDraft, updateMutation]);
+    }, { onError: handleMutationError });
+  }, [updateMutation, handleMutationError]);
 
   const handleNewVersion = useCallback((doc: DocumentGlobal) => {
     const today = new Date().toISOString().slice(0, 10);
@@ -381,31 +370,23 @@ export default function DocumentsPage() {
       auteur:      doc.auteur,
       changements: `Mise à jour v${newVer}`,
     }];
-    if (isDraft(doc.id)) {
-      setDraftDocs(prev => prev.map(d =>
-        d.id === doc.id ? { ...d, version: newVer, statut: 'EN_VALIDATION', date_modification: today, versions: newVersions } : d,
-      ));
-      return;
-    }
+    setActionError(null);
     updateMutation.mutate({
       id: doc.id,
       changes: { version: newVer, feStatut: 'EN_VALIDATION', date_modification: today, versions: newVersions },
       current: doc,
-    });
-  }, [isDraft, updateMutation]);
+    }, { onError: handleMutationError });
+  }, [updateMutation, handleMutationError]);
 
   const handleDownload = useCallback((doc: DocumentGlobal) => {
     const today = new Date().toISOString().slice(0, 10);
-    if (isDraft(doc.id)) {
-      setDraftDocs(prev => prev.map(d => d.id === doc.id ? { ...d, nb_telechargements: d.nb_telechargements + 1, date_modification: today } : d));
-      return;
-    }
+    setActionError(null);
     updateMutation.mutate({
       id: doc.id,
       changes: { nb_telechargements: doc.nb_telechargements + 1, date_modification: today },
       current: doc,
-    });
-  }, [isDraft, updateMutation]);
+    }, { onError: handleMutationError });
+  }, [updateMutation, handleMutationError]);
 
   const openNew  = useCallback(() => {
     setSlideDoc(null); setSlideMode('new'); setSlideOpen(true);
@@ -635,15 +616,34 @@ export default function DocumentsPage() {
               <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
               Excel
             </Button>
-            <Button size="sm" className="h-8 text-xs" onClick={openNew}>
-              <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              Nouveau document
-            </Button>
+            {canCreateDocument && (
+              <Button size="sm" className="h-8 text-xs" onClick={openNew}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                Nouveau document
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex-1 px-4 sm:px-6 lg:px-8 pt-6 pb-20 sm:pb-20 lg:pb-20 flex flex-col gap-6">
+
+        {actionError && (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive flex items-center justify-between"
+          >
+            <span>{actionError}</span>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              className="ml-4 text-xs underline opacity-70 hover:opacity-100"
+              aria-label="Fermer le message d'erreur"
+            >
+              Fermer
+            </button>
+          </div>
+        )}
 
         {/* ── Alerte ────────────────────────────────────────────────────────── */}
         {alertDocs.length > 0 && (
@@ -825,10 +825,12 @@ export default function DocumentsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground font-mono">{filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}</span>
-                <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-                  <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-                  Ajouter
-                </Button>
+                {canCreateDocument && (
+                  <Button size="sm" className="h-7 text-xs" onClick={openNew}>
+                    <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+                    Ajouter
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -861,12 +863,14 @@ export default function DocumentsPage() {
         document={slideDoc}
         onSave={handleSave}
         onDelete={(id) => {
-          const target = [...draftDocs, ...docs].find(d => d.id === id);
+          const target = pageDocs.find(d => d.id === id) ?? docs.find(d => d.id === id);
           if (target) { setSlideOpen(false); setDeleteTarget(target); }
         }}
         onDownload={handleDownload}
         onNewVersion={handleNewVersion}
         auteurOptions={auteurOptions.map(o => o.value)}
+        projectOptions={projectOptions}
+        currentUserName={currentUserName}
       />
 
       {/* ── Modal suppression ──────────────────────────────────────────────────── */}

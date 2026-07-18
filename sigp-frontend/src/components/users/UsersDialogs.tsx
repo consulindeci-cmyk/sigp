@@ -20,12 +20,14 @@ export interface UsersDialogsProps {
   onSaveCreate: (data: CreateUserPayload) => void;
   onSaveUpdate: (data: UpdateUserPayload) => void;
   isSaving: boolean;
+  saveError: string | null;
 
   deleteModalOpen: boolean;
   onDeleteModalOpenChange: (open: boolean) => void;
   userToDelete: UserRow | null;
   onConfirmDelete: () => void;
   isDeleting: boolean;
+  deleteError: string | null;
 }
 
 export function UsersDialogs({
@@ -36,12 +38,14 @@ export function UsersDialogs({
   onSaveCreate,
   onSaveUpdate,
   isSaving,
+  saveError,
 
   deleteModalOpen,
   onDeleteModalOpenChange,
   userToDelete,
   onConfirmDelete,
   isDeleting,
+  deleteError,
 }: UsersDialogsProps) {
   return (
     <>
@@ -53,6 +57,7 @@ export function UsersDialogs({
         onSaveCreate={onSaveCreate}
         onSaveUpdate={onSaveUpdate}
         isSaving={isSaving}
+        saveError={saveError}
       />
 
       <Modal open={deleteModalOpen} onOpenChange={onDeleteModalOpenChange}>
@@ -65,6 +70,11 @@ export function UsersDialogs({
               . Cette action est irréversible dans l&apos;interface.
             </ModalDescription>
           </ModalHeader>
+          {deleteError && (
+            <div className="px-6" role="alert">
+              <p className="text-sm text-destructive">{deleteError}</p>
+            </div>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline" disabled={isDeleting}>

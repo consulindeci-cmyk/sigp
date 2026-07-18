@@ -616,8 +616,11 @@ export function useProjectsKPIs(filters?: Record<string, string | number | undef
 
       for (const p of rows) {
         if (p.statut === 'EN_COURS') {
-          enCours++;
+          // Un projet EN_COURS en retard compte dans "En retard", jamais
+          // aussi dans "En bonne voie" — sinon un même projet apparaît à la
+          // fois "avancement nominal" et "actions correctives requises".
           if (p.date_fin_prevue && p.date_fin_prevue < now) enRetard++;
+          else enCours++;
         } else if (p.statut === 'SUSPENDU') {
           suspendu++;
         } else if (p.statut === 'CLOTURE' || p.statut === 'ANNULE') {

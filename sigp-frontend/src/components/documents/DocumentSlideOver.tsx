@@ -35,6 +35,7 @@ interface FormState {
   mots_cles:      string;
   taille_ko:      string;
   date_expiration: string;
+  projectId:      string;
 }
 
 export interface DocumentSavePayload {
@@ -52,6 +53,9 @@ export interface DocumentSavePayload {
   date_creation:   string;
   date_modification: string;
   date_expiration?: string;
+  /** Obligatoire à la création uniquement — documents_projet.project_id est
+   * NOT NULL, un document ne peut exister sans être rattaché à un projet. */
+  projectId?:      string;
 }
 
 export interface DocumentSlideOverProps {
@@ -66,6 +70,10 @@ export interface DocumentSlideOverProps {
   /** Auteurs réels déjà présents dans les documents existants (dérivés côté
    * page, pas une liste figée). */
   auteurOptions: string[];
+  /** Projets disponibles pour le sélecteur — requis en mode création. */
+  projectOptions: { id: string; label: string }[];
+  /** Nom complet de l'utilisateur connecté — auteur par défaut d'un nouveau document. */
+  currentUserName: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -85,27 +93,31 @@ function statutVariant(s: StatutGlobalDoc): 'default' | 'success' | 'warning' | 
   return 'default';
 }
 
-const INIT: FormState = {
-  titre:           '',
-  description:     '',
-  categorie:       'Administration',
-  type:            'PDF',
-  statut:          'BROUILLON',
-  version:         '1.0',
-  confidentialite: 'INTERNE',
-  auteur:          'Amadou Diallo',
-  service:         'Direction Générale',
-  mots_cles:       '',
-  taille_ko:       '512',
-  date_expiration: '',
-};
+function buildInit(currentUserName: string): FormState {
+  return {
+    titre:           '',
+    description:     '',
+    categorie:       'Administration',
+    type:            'PDF',
+    statut:          'BROUILLON',
+    version:         '1.0',
+    confidentialite: 'INTERNE',
+    auteur:          currentUserName,
+    service:         'Direction Générale',
+    mots_cles:       '',
+    taille_ko:       '512',
+    date_expiration: '',
+    projectId:       '',
+  };
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function DocumentSlideOver({
   open, onOpenChange, mode, document: doc, onSave, onDelete, onDownload, onNewVersion, auteurOptions,
+  projectOptions, currentUserName,
 }: DocumentSlideOverProps) {
-  const [form, setForm]               = useState<FormState>(INIT);
+  const [form, setForm]               = useState<FormState>(() => buildInit(currentUserName));
   const [errors, setErrors]           = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -127,13 +139,14 @@ export function DocumentSlideOver({
         mots_cles:       doc.mots_cles.join(', '),
         taille_ko:       String(doc.taille_ko),
         date_expiration: doc.date_expiration ?? '',
+        projectId:       '',
       });
     } else {
-      setForm(INIT);
+      setForm(buildInit(currentUserName));
     }
     setErrors({});
     setConfirmDelete(false);
-  }, [open, mode, doc]);
+  }, [open, mode, doc, currentUserName]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -145,6 +158,9 @@ export function DocumentSlideOver({
     if (!form.titre.trim()) e.titre = 'Le titre est requis.';
     if (!form.description.trim()) e.description = 'La description est requise.';
     if (!form.version.trim()) e.version = 'La version est requise.';
+    // documents_projet.project_id est NOT NULL — un document ne peut être créé
+    // sans être rattaché à un projet existant.
+    if (mode === 'new' && !form.projectId) e.projectId = 'Le projet de rattachement est requis.';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -168,6 +184,7 @@ export function DocumentSlideOver({
         date_creation:    doc?.date_creation ?? today,
         date_modification: today,
         date_expiration:  form.date_expiration.trim() || undefined,
+        projectId:        mode === 'new' ? form.projectId : undefined,
       },
       doc?.id,
     );
@@ -249,6 +266,29 @@ export function DocumentSlideOver({
                       <Badge variant={statutVariant(doc.statut)} className="text-[10px]">
                         {STATUT_GLOBAL_DOC_LABEL[doc.statut]}
                       </Badge>
+                    </div>
+                  )}
+                  {mode === 'new' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground" htmlFor="gdoc-projet">
+                        Projet de rattachement <span className="text-destructive">*</span>
+                      </label>
+                      <Select
+                        id="gdoc-projet"
+                        value={form.projectId}
+                        onChange={e => set('projectId', e.target.value)}
+                        error={!!errors.projectId}
+                      >
+                        <option value="">Sélectionner un projet…</option>
+                        {projectOptions.map(p => (
+                          <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                      </Select>
+                      {errors.projectId && <p className="text-xs text-destructive">{errors.projectId}</p>}
+                      <p className="text-[11px] text-muted-foreground">
+                        Tout document doit être rattaché à un projet — ce document apparaîtra aussi dans
+                        l'onglet Documents de ce projet.
+                      </p>
                     </div>
                   )}
                   <div className="space-y-1.5">

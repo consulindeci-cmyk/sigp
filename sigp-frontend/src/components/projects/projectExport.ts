@@ -36,6 +36,7 @@ export async function exportAllProjectsToCSV({
   let bailleurFilter: string | undefined;
   let secteurFilter: string | undefined;
   let paysFilter: string | undefined;
+  let organisationFilter: string | undefined;
   if (filters) {
     for (const [key, value] of Object.entries(filters)) {
       if (value === undefined || value === null || value === '') continue;
@@ -45,6 +46,7 @@ export async function exportAllProjectsToCSV({
       } else if (key === 'donor' || key === 'bailleurPrincipal') bailleurFilter = String(value);
       else if (key === 'sector' || key === 'secteur') secteurFilter = String(value);
       else if (key === 'country' || key === 'pays') paysFilter = String(value);
+      else if (key === 'organisation') organisationFilter = String(value);
     }
   }
 
@@ -54,6 +56,18 @@ export async function exportAllProjectsToCSV({
   if (bailleurFilter) query = query.eq('bailleur_principal', bailleurFilter);
   if (secteurFilter) query = query.eq('secteur', secteurFilter);
   if (paysFilter) query = query.eq('pays', paysFilter);
+
+  // SUPER_ADMIN uniquement — même résolution organisation → programme_id que
+  // useProjects(), sinon l'export CSV ignore silencieusement le filtre
+  // "Organisation" actif à l'écran et renvoie les projets de toutes les
+  // organisations au lieu de la seule sélectionnée.
+  if (organisationFilter) {
+    const { data: programmeIds, error: programmeIdsError } = await supabase.rpc('organisation_programme_ids', {
+      p_organisation_id: organisationFilter,
+    });
+    if (programmeIdsError) throw programmeIdsError;
+    query = query.in('programme_id', (programmeIds ?? []).length > 0 ? programmeIds : ['00000000-0000-0000-0000-000000000000']);
+  }
 
   const sortColumnMap: Record<string, string> = {
     nom: 'nom', code: 'code', statut: 'statut', createdAt: 'created_at',

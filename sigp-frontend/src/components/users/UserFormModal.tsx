@@ -42,6 +42,7 @@ export interface UserFormModalProps {
   onSaveCreate?: (data: CreateUserPayload) => void;
   onSaveUpdate?: (data: UpdateUserPayload) => void;
   isSaving?: boolean;
+  saveError?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,6 +199,7 @@ export function UserFormModal({
   onSaveCreate,
   onSaveUpdate,
   isSaving,
+  saveError,
 }: UserFormModalProps) {
   const readOnly = mode === 'view';
 
@@ -506,6 +508,12 @@ export function UserFormModal({
                 </div>
               )}
             </form>
+          )}
+          {saveError && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{saveError}</span>
+            </div>
           )}
         </div>
 

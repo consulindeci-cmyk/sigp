@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useDashboard } from '@/hooks/useDashboard';
-import { useNavigate } from 'react-router-dom';
+import { useOrganisation } from '@/hooks/useOrganisation';
+import { formatCurrency } from '@/lib/utils';
 import {
   ResponsiveContainer,
   AreaChart, Area,
@@ -15,7 +16,7 @@ import { StatCard } from '@/components/ui/data-display/StatCard';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
 import {
-  Download, Plus, LayoutGrid, Activity, CheckCircle2, AlertTriangle,
+  Download, LayoutGrid, Activity, CheckCircle2, AlertTriangle,
   Banknote, Wallet, FileSignature, ShieldAlert, ArrowRight,
   Flag, Clock, Calendar, TrendingUp,
 } from 'lucide-react';
@@ -78,8 +79,6 @@ function SectionHeader({
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const navigate = useNavigate();
-
   const todayLabel = new Date().toLocaleDateString('fr-FR', {
     day: 'numeric', month: 'long', year: 'numeric',
   });
@@ -87,6 +86,12 @@ export default function DashboardPage() {
   // ── Backend data ─────────────────────────────────────────────────────────
   const { data: dashboard } = useDashboard();
   const { data: notifications } = useNotifications();
+  const { data: organisation } = useOrganisation();
+  const devise = organisation?.deviseDefaut ?? 'XOF';
+  // Utilisé pour les valeurs déjà pré-mises à l'échelle par le backend
+  // (décaissements mensuels en M, EVM en K) — formatCurrency() gère sa
+  // propre mise à l'échelle et ne convient pas à ces suffixes bruts.
+  const deviseLabel = devise === 'XOF' ? 'FCFA' : devise;
 
   // Derived KPIs — real API data; 0 when backend returns nothing
   const portfolioKPIs = useMemo(() => {
@@ -95,10 +100,7 @@ export default function DashboardPage() {
     const montantPaye    = api?.finances?.montantPaye    ?? 0;
     const montantEngage  = api?.finances?.montantEngage  ?? 0;
     const montantRestant = api?.finances?.montantRestant ?? 0;
-    const formatM = (n: number) =>
-      n >= 1_000_000
-        ? `${(n / 1_000_000).toFixed(1).replace('.', ',')} M FCFA`
-        : `${n.toLocaleString('fr-FR')} FCFA`;
+    const formatM = (n: number) => formatCurrency(n, devise);
     return {
       totalProjets:            api?.projets?.total          ?? 0,
       projetsActifs:           api?.projets?.actifs         ?? 0,
@@ -122,7 +124,7 @@ export default function DashboardPage() {
       _percentEngaged: api?.finances?.percentEngaged ?? 0,
       _percentDisbursed: api?.finances?.percentDisbursed ?? 0,
     };
-  }, [dashboard]);
+  }, [dashboard, devise]);
 
   // Derived budget consumption widget
   const budgetConsumption = useMemo(() => {
@@ -142,7 +144,7 @@ export default function DashboardPage() {
     if (!notifications?.length) return [];
     const CRITICAL_TYPES = new Set([
       'RISQUE_CRITIQUE', 'BUDGET_DEPASSE', 'EVM_ALERTE_CPI',
-      'EVM_ALERTE_SPI', 'CONTRAT_EXPIRE',
+      'EVM_ALERTE_SPI', 'CONTRAT_EXPIRE', 'LIVRABLE_EN_RETARD',
     ]);
     return notifications
       .filter(n => !n.lue)
@@ -213,8 +215,8 @@ export default function DashboardPage() {
       ['Contrats en approbation', String(portfolioKPIs.contratsEnApprobation)],
       ['Risques critiques', String(portfolioKPIs.risquesCritiques)],
       [],
-      ['DÉCAISSEMENTS MENSUELS (M FCFA)', ''],
-      ['Mois', 'Montant (M FCFA)'],
+      [`DÉCAISSEMENTS MENSUELS (M ${deviseLabel})`, ''],
+      ['Mois', `Montant (M ${deviseLabel})`],
       ...decaissementsMensuels.map(d => [d.label, String(d.value)]),
       [],
       ['RÉPARTITION PAR BAILLEUR', ''],
@@ -239,32 +241,15 @@ export default function DashboardPage() {
     URL.revokeObjectURL(url);
   }
 
-  // ── Derived KPIs (computed, never hardcoded) ─────────────────────────────
-  const pctActifs = Math.round(
-    (portfolioKPIs.projetsActifs / portfolioKPIs.totalProjets) * 100,
-  );
-  const pctTermines = Math.round(
-    (portfolioKPIs.projetsTermines / portfolioKPIs.totalProjets) * 100,
-  );
-
   const headerActions = (
-    <>
-      <Button
-        variant="outline"
-        leftIcon={<Download className="h-4 w-4" aria-hidden="true" />}
-        onClick={exportPortfolioCSV}
-        aria-label="Exporter le rapport du portefeuille en CSV"
-      >
-        Exporter
-      </Button>
-      <Button
-        leftIcon={<Plus className="h-4 w-4" aria-hidden="true" />}
-        onClick={() => navigate('/projects?new=1')}
-        aria-label="Créer un nouveau projet"
-      >
-        Nouveau Projet
-      </Button>
-    </>
+    <Button
+      variant="outline"
+      leftIcon={<Download className="h-4 w-4" aria-hidden="true" />}
+      onClick={exportPortfolioCSV}
+      aria-label="Exporter le rapport du portefeuille en CSV"
+    >
+      Exporter
+    </Button>
   );
 
   return (
@@ -294,14 +279,14 @@ export default function DashboardPage() {
             value={portfolioKPIs.projetsActifs}
             icon={<Activity className="h-5 w-5 text-success" aria-hidden="true" />}
             iconVariant="success"
-            description={`${pctActifs}% du portefeuille`}
+            description={`${portfolioKPIs.pctActifs}% du portefeuille`}
           />
           <StatCard
             title="Projets Terminés"
             value={portfolioKPIs.projetsTermines}
             icon={<CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
             iconVariant="default"
-            description={`${pctTermines}% du portefeuille`}
+            description={`${portfolioKPIs.pctTermines}% du portefeuille`}
           />
           <StatCard
             title="Projets Suspendus"
@@ -355,7 +340,7 @@ export default function DashboardPage() {
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Tendances de Décaissement"
-                subtitle="Décaissements mensuels — 12 derniers mois (M FCFA)"
+                subtitle={`Décaissements mensuels — 12 derniers mois (M ${deviseLabel})`}
                 action={
                   <Button
                     variant="ghost"
@@ -402,12 +387,12 @@ export default function DashboardPage() {
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(v: any) => [`${v} M FCFA`, 'Décaissé']}
+                      formatter={(v: any) => [`${v} M ${deviseLabel}`, 'Décaissé']}
                     />
                     <Area
                       type="monotone"
                       dataKey="value"
-                      name="Décaissé (M FCFA)"
+                      name={`Décaissé (M ${deviseLabel})`}
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       fill="url(#disbGrad)"
@@ -476,7 +461,7 @@ export default function DashboardPage() {
             <CardHeader className="pb-3">
               <SectionHeader
                 title="Performance EVM du Portefeuille"
-                subtitle="PV / EV / AC cumulés — valeurs en K FCFA"
+                subtitle={`PV / EV / AC cumulés — valeurs en K ${deviseLabel}`}
               />
             </CardHeader>
             <CardContent>
@@ -511,7 +496,7 @@ export default function DashboardPage() {
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(v: any, name: any) => [`${v} K FCFA`, name]}
+                      formatter={(v: any, name: any) => [`${v} K ${deviseLabel}`, name]}
                     />
                     <Legend
                       wrapperStyle={{ fontSize: '11px' }}
@@ -564,7 +549,7 @@ export default function DashboardPage() {
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Budget Total</span>
                 <span className="font-bold font-mono text-foreground">
-                  {budgetConsumption.total} M FCFA
+                  {budgetConsumption.total} M {deviseLabel}
                 </span>
               </div>
 
@@ -572,7 +557,7 @@ export default function DashboardPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Engagé</span>
                   <span className="font-semibold font-mono text-foreground">
-                    {budgetConsumption.engaged} M FCFA
+                    {budgetConsumption.engaged} M {deviseLabel}
                   </span>
                 </div>
                 <ProgressBar
@@ -588,7 +573,7 @@ export default function DashboardPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Décaissé</span>
                   <span className="font-semibold font-mono text-success">
-                    {budgetConsumption.disbursed} M FCFA
+                    {budgetConsumption.disbursed} M {deviseLabel}
                   </span>
                 </div>
                 <ProgressBar
@@ -603,7 +588,7 @@ export default function DashboardPage() {
               <div className="pt-3 border-t border-border flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Solde disponible</span>
                 <span className="font-bold font-mono text-foreground">
-                  {budgetConsumption.remaining} M FCFA
+                  {budgetConsumption.remaining} M {deviseLabel}
                 </span>
               </div>
             </CardContent>
@@ -650,7 +635,7 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(v: any) => [`${v}M$`, '']}
+                      formatter={(v: any) => [`${v} M ${deviseLabel}`, '']}
                     />
                     <Legend
                       wrapperStyle={{ fontSize: '11px' }}
@@ -698,7 +683,7 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(v: any) => [`${v}M$`, '']}
+                      formatter={(v: any) => [`${v} M ${deviseLabel}`, '']}
                     />
                     <Legend
                       wrapperStyle={{ fontSize: '11px' }}
@@ -1064,11 +1049,7 @@ export default function DashboardPage() {
                     <div className="flex justify-between text-sm font-medium mb-1.5">
                       <span className="text-foreground">{item.label}</span>
                       <span className="text-foreground font-mono tabular-nums">
-                        {typeof item.value === 'number'
-                          ? item.value >= 1_000_000
-                            ? `${(item.value / 1_000_000).toFixed(1).replace('.', ',')} M FCFA`
-                            : `${item.value.toLocaleString('fr-FR')} FCFA`
-                          : item.value}
+                        {typeof item.value === 'number' ? formatCurrency(item.value, devise) : item.value}
                       </span>
                     </div>
                     <ProgressBar
@@ -1169,7 +1150,7 @@ export default function DashboardPage() {
                 onClick={() => setShowAllDeadlines(true)}
                 aria-label="Voir toutes les échéances à venir"
               >
-                Calendrier <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
+                Voir tout <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
               </Button>
             </CardHeader>
             <CardContent className="p-0">
@@ -1262,7 +1243,7 @@ export default function DashboardPage() {
       <ModalContent className="max-w-xl">
         <ModalHeader>
           <ModalTitle>Rapport de Décaissement</ModalTitle>
-          <ModalDescription>Décaissements mensuels — 12 derniers mois (M FCFA)</ModalDescription>
+          <ModalDescription>{`Décaissements mensuels — 12 derniers mois (M ${deviseLabel})`}</ModalDescription>
         </ModalHeader>
         <div className="px-6 pb-2">
           <div className="rounded-lg border border-border overflow-hidden">
@@ -1282,8 +1263,8 @@ export default function DashboardPage() {
                   return (
                     <tr key={i} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-2 font-medium text-foreground">{d.label}</td>
-                      <td className="px-4 py-2 text-right font-mono tabular-nums text-foreground">{d.value} M FCFA</td>
-                      <td className="px-4 py-2 text-right font-mono tabular-nums text-muted-foreground">{cumul} M FCFA</td>
+                      <td className="px-4 py-2 text-right font-mono tabular-nums text-foreground">{d.value} M {deviseLabel}</td>
+                      <td className="px-4 py-2 text-right font-mono tabular-nums text-muted-foreground">{cumul} M {deviseLabel}</td>
                     </tr>
                   );
                 })}
@@ -1292,7 +1273,7 @@ export default function DashboardPage() {
                 <tr>
                   <td className="px-4 py-2 font-bold text-foreground text-sm">Total</td>
                   <td className="px-4 py-2 text-right font-bold font-mono tabular-nums text-foreground">
-                    {Math.round(decaissementsMensuels.reduce((s, d) => s + d.value, 0) * 10) / 10} M FCFA
+                    {Math.round(decaissementsMensuels.reduce((s, d) => s + d.value, 0) * 10) / 10} M {deviseLabel}
                   </td>
                   <td className="px-4 py-2 text-right text-muted-foreground">—</td>
                 </tr>
@@ -1305,13 +1286,13 @@ export default function DashboardPage() {
               <p className="text-base font-bold font-mono text-foreground mt-1">
                 {decaissementsMensuels.length > 0
                   ? (Math.round((decaissementsMensuels.reduce((s, d) => s + d.value, 0) / decaissementsMensuels.length) * 10) / 10)
-                  : 0} M FCFA
+                  : 0} M {deviseLabel}
               </p>
             </div>
             <div className="bg-success/10 rounded-lg p-3 text-center">
               <p className="text-[11px] text-muted-foreground">Pic mensuel</p>
               <p className="text-base font-bold font-mono text-success mt-1">
-                {decaissementsMensuels.length > 0 ? Math.max(...decaissementsMensuels.map(d => d.value)) : 0} M FCFA
+                {decaissementsMensuels.length > 0 ? Math.max(...decaissementsMensuels.map(d => d.value)) : 0} M {deviseLabel}
               </p>
             </div>
             <div className="bg-primary/10 rounded-lg p-3 text-center">

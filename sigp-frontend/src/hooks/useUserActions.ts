@@ -3,12 +3,19 @@ import { useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
 import { type UserRow, type CreateUserPayload, type UpdateUserPayload } from '@/lib/userAdapter';
 import { type UserFormModalMode } from '@/components/users/UserFormModal';
 
+function extractErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+}
+
 export interface UseUserActionsReturn {
   slideOverOpen: boolean;
   slideOverMode: UserFormModalMode;
   selectedUser: UserRow | null;
+  saveError: string | null;
   deleteModalOpen: boolean;
   userToDelete: UserRow | null;
+  deleteError: string | null;
+  toggleError: string | null;
   isSaving: boolean;
   isDeleting: boolean;
   openNew: () => void;
@@ -17,6 +24,7 @@ export interface UseUserActionsReturn {
   openDelete: (user: UserRow) => void;
   closeSlideOver: (open: boolean) => void;
   closeDeleteModal: (open: boolean) => void;
+  dismissToggleError: () => void;
   handleSaveCreate: (payload: CreateUserPayload) => void;
   handleSaveUpdate: (payload: UpdateUserPayload) => void;
   handleDeleteConfirm: () => void;
@@ -27,9 +35,16 @@ export function useUserActions(): UseUserActionsReturn {
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [slideOverMode, setSlideOverMode] = useState<UserFormModalMode>('view');
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<UserRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Bascule actif/inactif : action directe sans modale — surfacée via une
+  // bannière page-level (cf. UsersPage.tsx), pas de champ dédié à réinitialiser
+  // à l'ouverture d'une modale.
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
@@ -37,24 +52,28 @@ export function useUserActions(): UseUserActionsReturn {
 
   const openNew = useCallback(() => {
     setSelectedUser(null);
+    setSaveError(null);
     setSlideOverMode('new');
     setSlideOverOpen(true);
   }, []);
 
   const openView = useCallback((user: UserRow) => {
     setSelectedUser(user);
+    setSaveError(null);
     setSlideOverMode('view');
     setSlideOverOpen(true);
   }, []);
 
   const openEdit = useCallback((user: UserRow) => {
     setSelectedUser(user);
+    setSaveError(null);
     setSlideOverMode('edit');
     setSlideOverOpen(true);
   }, []);
 
   const openDelete = useCallback((user: UserRow) => {
     setUserToDelete(user);
+    setDeleteError(null);
     setDeleteModalOpen(true);
   }, []);
 
@@ -62,6 +81,7 @@ export function useUserActions(): UseUserActionsReturn {
     setSlideOverOpen(open);
     if (!open) {
       setSelectedUser(null);
+      setSaveError(null);
     }
   }, []);
 
@@ -69,16 +89,21 @@ export function useUserActions(): UseUserActionsReturn {
     setDeleteModalOpen(open);
     if (!open) {
       setUserToDelete(null);
+      setDeleteError(null);
     }
   }, []);
 
+  const dismissToggleError = useCallback(() => setToggleError(null), []);
+
   const handleSaveCreate = useCallback(
     (payload: CreateUserPayload) => {
+      setSaveError(null);
       createMutation.mutate(payload, {
         onSuccess: () => {
           setSlideOverOpen(false);
           setSelectedUser(null);
         },
+        onError: (err) => setSaveError(extractErrorMessage(err)),
       });
     },
     [createMutation]
@@ -87,6 +112,7 @@ export function useUserActions(): UseUserActionsReturn {
   const handleSaveUpdate = useCallback(
     (payload: UpdateUserPayload) => {
       if (!selectedUser) return;
+      setSaveError(null);
       updateMutation.mutate(
         { id: selectedUser.id, data: payload },
         {
@@ -94,6 +120,7 @@ export function useUserActions(): UseUserActionsReturn {
             setSlideOverOpen(false);
             setSelectedUser(null);
           },
+          onError: (err) => setSaveError(extractErrorMessage(err)),
         }
       );
     },
@@ -102,20 +129,23 @@ export function useUserActions(): UseUserActionsReturn {
 
   const handleDeleteConfirm = useCallback(() => {
     if (!userToDelete) return;
+    setDeleteError(null);
     deleteMutation.mutate(userToDelete.id, {
       onSuccess: () => {
         setDeleteModalOpen(false);
         setUserToDelete(null);
       },
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
     });
   }, [userToDelete, deleteMutation]);
 
   const handleToggleActive = useCallback(
     (user: UserRow) => {
-      updateMutation.mutate({
-        id: user.id,
-        data: { actif: !user.actif },
-      });
+      setToggleError(null);
+      updateMutation.mutate(
+        { id: user.id, data: { actif: !user.actif } },
+        { onError: (err) => setToggleError(extractErrorMessage(err)) }
+      );
     },
     [updateMutation]
   );
@@ -124,8 +154,11 @@ export function useUserActions(): UseUserActionsReturn {
     slideOverOpen,
     slideOverMode,
     selectedUser,
+    saveError,
     deleteModalOpen,
     userToDelete,
+    deleteError,
+    toggleError,
     isSaving: createMutation.isPending || updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
     openNew,
@@ -134,6 +167,7 @@ export function useUserActions(): UseUserActionsReturn {
     openDelete,
     closeSlideOver,
     closeDeleteModal,
+    dismissToggleError,
     handleSaveCreate,
     handleSaveUpdate,
     handleDeleteConfirm,

@@ -10,7 +10,7 @@ import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
   ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
-import { ProjectSlideOver } from '@/components/projects/ProjectSlideOver';
+import { ProjectEditModal } from '@/components/projects/ProjectEditModal';
 import type { Project } from '@/lib/projectAdapter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -64,12 +64,14 @@ function GaugeBar({
 
 interface ProjectHeaderProps {
   project: Project;
-  onProjectUpdate: (p: Project) => void;
+  onProjectUpdate: (data: Partial<Project>) => Promise<void>;
+  isUpdating?: boolean;
+  updateError?: string | null;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeaderProps) {
+export default function ProjectHeader({ project, onProjectUpdate, isUpdating = false, updateError = null }: ProjectHeaderProps) {
   const [showEdit,    setShowEdit]    = useState(false);
   const [showShare,   setShowShare]   = useState(false);
   const [showRapport, setShowRapport] = useState(false);
@@ -81,9 +83,13 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
   const [rapportGenerating, setRapportGenerating] = useState(false);
   const [rapportDone,       setRapportDone]       = useState(false);
 
-  function handleSaveProject(data: Partial<Project>) {
-    onProjectUpdate({ ...project, ...data });
-    setShowEdit(false);
+  async function handleSaveProject(data: Partial<Project>) {
+    try {
+      await onProjectUpdate(data);
+      setShowEdit(false);
+    } catch {
+      // Erreur affichée via updateError — le panneau reste ouvert.
+    }
   }
 
   function handleCopyLink() {
@@ -266,13 +272,14 @@ export default function ProjectHeader({ project, onProjectUpdate }: ProjectHeade
         </CardContent>
       </Card>
 
-      {/* ── SlideOver modification ─────────────────────────────────────── */}
-      <ProjectSlideOver
+      {/* ── Modale de modification ───────────────────────────────────────── */}
+      <ProjectEditModal
         open={showEdit}
         onOpenChange={setShowEdit}
         project={project}
-        mode="edit"
         onSave={handleSaveProject}
+        isSaving={isUpdating}
+        saveError={updateError}
       />
 
       {/* ── Modal Partager ─────────────────────────────────────────────── */}

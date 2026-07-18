@@ -372,6 +372,13 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
                   <span className="font-mono text-foreground">{totalSources.toLocaleString('fr-FR')} {devise}</span>
                 </div>
               )}
+
+              {sources.length > 0 && !sourcesValid && (
+                <div className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  Chaque source doit avoir un nom et un montant supérieur à 0 pour continuer.
+                </div>
+              )}
             </div>
           )}
 
@@ -420,7 +427,13 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
                   <span className="text-muted-foreground">Total des sources de financement (Étape 2)</span>
                   <span className="font-mono text-foreground">{totalSources.toLocaleString('fr-FR')} {devise}</span>
                 </div>
-                {!balanced && (
+                {lignes.length > 0 && !lignesValid && (
+                  <div className="flex items-center gap-1.5 text-xs text-destructive mt-1" role="alert">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    Chaque ligne doit avoir un code, un libellé et un montant supérieur à 0.
+                  </div>
+                )}
+                {lignesValid && !balanced && (
                   <div className="flex items-center gap-1.5 text-xs text-destructive mt-1" role="alert">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                     Le total des lignes budgétaires doit être strictement égal au total des sources de financement.

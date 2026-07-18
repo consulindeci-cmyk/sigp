@@ -246,15 +246,40 @@ export interface GlobalDocumentPayload {
 // ── Mutation hooks ────────────────────────────────────────────────────────────
 // CREATE : la table `documents_projet` exige un project_id NOT NULL — un
 // document "global" (sans projet) ne peut littéralement pas y être inséré.
-// Comportement d'origine fidèlement conservé : stub local, ne persiste jamais
-// réellement (déjà le cas côté NestJS, pas une régression introduite ici).
+// La bibliothèque exige donc un projet réel au moment de la création
+// (sélecteur côté formulaire) et persiste via documents-create, comme le fait
+// déjà l'onglet Documents d'un projet.
 // UPDATE / DELETE : réellement connectés (documents-update/delete existants).
 
 export function useCreateGlobalDocument() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (_payload: GlobalDocumentPayload): Promise<DocumentGlobal> => {
-      return Promise.resolve({} as DocumentGlobal);
+    mutationFn: async ({ projectId, payload }: { projectId: string; payload: GlobalDocumentPayload }): Promise<DocumentGlobal> => {
+      const meta: GDocMeta = {
+        code_document:      `GDOC-${Date.now().toString(36).toUpperCase()}`,
+        categorie:          payload.categorie,
+        type:               payload.type,
+        version:            payload.version,
+        auteur:             payload.auteur,
+        service:            payload.service,
+        mots_cles:          payload.mots_cles,
+        confidentialite:    payload.confidentialite,
+        feStatut:           payload.statut,
+        taille_ko:          payload.taille_ko,
+        nb_telechargements: 0,
+        nb_commentaires:    0,
+        date_creation:      payload.date_creation,
+        date_modification:  payload.date_modification,
+        date_expiration:    payload.date_expiration,
+        versions:           [{ version: payload.version, date: payload.date_creation, auteur: payload.auteur, changements: 'Version initiale' }],
+      };
+      const { data: resp } = await invokeEdgeFunction<{ data: DocumentRow }>('documents-create', {
+        projectId,
+        titre:       payload.titre,
+        description: encodeMeta(meta),
+        statut:      feToBeStatut(payload.statut),
+      });
+      return adaptGlobalDocument(resp);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: globalDocumentKeys.all });

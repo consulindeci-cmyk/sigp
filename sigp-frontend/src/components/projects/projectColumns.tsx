@@ -155,7 +155,7 @@ export function getProjectColumns(
         return (
           <div className="min-w-[80px] flex flex-col gap-0.5">
             <span className="font-mono text-[10px] text-foreground">{score}%</span>
-            <ProgressBar value={score} size="xs" color="warning" aria-label={`Profil ${score}%`} />
+            <ProgressBar value={score} size="xs" color={progressColor(score)} aria-label={`Profil ${score}%`} />
           </div>
         );
       },

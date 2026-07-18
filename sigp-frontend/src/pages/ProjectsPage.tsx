@@ -20,8 +20,9 @@ import { ProjectsToolbar } from '@/components/projects/ProjectsToolbar';
 import { ProjectKPIs } from '@/components/projects/ProjectKPIs';
 import { ProjectsGrid } from '@/components/projects/ProjectsGrid';
 import { ProjectsDialogs } from '@/components/projects/ProjectsDialogs';
-import { ProjectSlideOver, type ProjectSlideOverMode } from '@/components/projects/ProjectSlideOver';
+import { ProjectSlideOver } from '@/components/projects/ProjectSlideOver';
 import { ProjectCreateModal } from '@/components/projects/ProjectCreateModal';
+import { ProjectEditModal } from '@/components/projects/ProjectEditModal';
 import { type ActionItem } from '@/components/projects/ActionsMenu';
 import { getProjectColumns } from '@/components/projects/projectColumns';
 import { exportAllProjectsToCSV } from '@/components/projects/projectExport';
@@ -49,6 +50,13 @@ const STATUS_OPTIONS = [
 export default function ProjectsPage() {
   // ── Super Admin : vue plateforme, lecture seule + filtre par organisation ──
   const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
+  const currentRole = useAuthStore(s => s.user?.role);
+  // Miroir de requireRole(profile, ['COORDINATEUR', 'ADMIN']) sur
+  // projects-create/update côté serveur — sans ce garde-fou, un FINANCIER/
+  // AUDITEUR/VIEWER voyait le bouton "Nouveau Projet", pouvait remplir tout
+  // l'assistant en 3 étapes, et n'apprenait qu'à la toute dernière étape
+  // (403 serveur) qu'il n'était pas autorisé à créer un projet.
+  const canCreateProject = currentRole === 'COORDINATEUR' || currentRole === 'ADMIN';
   const { data: organisationsForFilter } = useOrganisationsList(isSuperAdmin);
 
   // ── API data & Default Programme ──────────────────────────────────────────
@@ -137,7 +145,7 @@ export default function ProjectsPage() {
   // ── UI Modals State ────────────────────────────────────────────────────────
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
-  const [slideOverMode, setSlideOverMode] = useState<ProjectSlideOverMode>('view');
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -180,9 +188,10 @@ export default function ProjectsPage() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
   function openNew() {
-    // Supervision Super Admin : pas de création de projet, même via le
-    // raccourci ?new=1 (cf. effect ci-dessous).
-    if (isSuperAdmin) return;
+    // Réservé COORDINATEUR/ADMIN (miroir du rôle serveur) — bloque aussi
+    // bien SUPER_ADMIN (supervision) que FINANCIER/AUDITEUR/VIEWER, y
+    // compris via le raccourci ?new=1 (cf. effect ci-dessous).
+    if (!canCreateProject) return;
     setCreateModalOpen(true);
   }
 
@@ -198,14 +207,13 @@ export default function ProjectsPage() {
 
   function openView(project: ProjectRow) {
     setSelectedProject(project);
-    setSlideOverMode('view');
     setSlideOverOpen(true);
   }
 
   function openEdit(project: ProjectRow) {
     setSelectedProject(project);
-    setSlideOverMode('edit');
-    setSlideOverOpen(true);
+    setSaveError(null);
+    setEditModalOpen(true);
   }
 
   async function handleSave(data: Partial<Project>) {
@@ -233,7 +241,7 @@ export default function ProjectsPage() {
           payload,
         });
       }
-      setSlideOverOpen(false);
+      setEditModalOpen(false);
     } catch (err: unknown) {
       const errObj = err as { response?: { data?: { message?: string; error?: { message?: string } } }; message?: string };
       const msg =
@@ -348,7 +356,7 @@ export default function ProjectsPage() {
         onOpenNew={openNew}
         onExport={handleExport}
         isExporting={isExporting}
-        canCreate={!isSuperAdmin}
+        canCreate={canCreateProject}
         showOrganisationFilter={isSuperAdmin}
         organisationOptions={(organisationsForFilter ?? []).map((o) => ({ label: o.nom, value: o.id }))}
         organisationValue={String(columnFiltersState.find((f) => f.id === 'organisation')?.value ?? '')}
@@ -420,9 +428,14 @@ export default function ProjectsPage() {
 
       <ProjectSlideOver
         open={slideOverOpen}
-        onOpenChange={(v) => { setSlideOverOpen(v); if (!v) setSaveError(null); }}
+        onOpenChange={setSlideOverOpen}
         project={selectedProject}
-        mode={slideOverMode}
+      />
+
+      <ProjectEditModal
+        open={editModalOpen}
+        onOpenChange={(v) => { setEditModalOpen(v); if (!v) setSaveError(null); }}
+        project={selectedProject}
         onSave={handleSave}
         saveError={saveError}
         isSaving={updateProjectMutation.isPending}

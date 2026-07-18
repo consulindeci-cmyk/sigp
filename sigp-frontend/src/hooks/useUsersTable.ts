@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   type PaginationState,
   type SortingState,
   type ColumnFiltersState,
+  type Updater,
 } from '@tanstack/react-table';
 import { useUsers } from '@/hooks/useUsers';
 import { type UserRole, type UserRow } from '@/lib/userAdapter';
@@ -17,9 +18,9 @@ export interface UseUsersTableReturn {
   paginationState: PaginationState;
   setPaginationState: React.Dispatch<React.SetStateAction<PaginationState>>;
   sortingState: SortingState;
-  setSortingState: React.Dispatch<React.SetStateAction<SortingState>>;
+  setSortingState: (updater: Updater<SortingState>) => void;
   columnFiltersState: ColumnFiltersState;
-  setColumnFiltersState: React.Dispatch<React.SetStateAction<ColumnFiltersState>>;
+  setColumnFiltersState: (updater: Updater<ColumnFiltersState>) => void;
 }
 
 export interface UseUsersTableOptions {
@@ -32,8 +33,21 @@ export function useUsersTable(options?: UseUsersTableOptions): UseUsersTableRetu
     pageIndex: 0,
     pageSize: 10,
   });
-  const [sortingState, setSortingState] = useState<SortingState>([]);
-  const [columnFiltersState, setColumnFiltersState] = useState<ColumnFiltersState>([]);
+  const [sortingState, setSortingStateRaw] = useState<SortingState>([]);
+  const [columnFiltersState, setColumnFiltersStateRaw] = useState<ColumnFiltersState>([]);
+
+  // Revenir en page 1 à chaque changement de tri/filtre — sinon un utilisateur
+  // resté sur une page avancée se retrouve bloqué sur une page désormais hors
+  // limites une fois le nombre de résultats réduit par le nouveau filtre.
+  const setSortingState = useCallback((updater: Updater<SortingState>) => {
+    setSortingStateRaw(prev => typeof updater === 'function' ? updater(prev) : updater);
+    setPaginationState(prev => ({ ...prev, pageIndex: 0 }));
+  }, []);
+
+  const setColumnFiltersState = useCallback((updater: Updater<ColumnFiltersState>) => {
+    setColumnFiltersStateRaw(prev => typeof updater === 'function' ? updater(prev) : updater);
+    setPaginationState(prev => ({ ...prev, pageIndex: 0 }));
+  }, []);
 
   const queryParams = useMemo(() => {
     const searchFilter = columnFiltersState.find((f) => f.id === 'search');

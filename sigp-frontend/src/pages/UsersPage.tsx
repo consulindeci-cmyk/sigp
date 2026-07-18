@@ -19,6 +19,13 @@ export default function UsersPage() {
   // SUPER_ADMIN : vue plateforme, filtre + colonne Organisation.
   const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
   const { data: organisationsForFilter } = useOrganisationsList(isSuperAdmin);
+  // Miroir de requireRole(profile, ['ADMIN', 'SUPER_ADMIN']) sur users-create/
+  // update/delete côté serveur — sans ce garde-fou, tout rôle (VIEWER,
+  // AUDITEUR, FINANCIER...) voyait un bouton "Nouvel utilisateur" et des
+  // actions Modifier/Activer/Supprimer sur chaque ligne, garanties d'échouer
+  // en 403 à l'usage.
+  const canManageUsers = useAuthStore(s => s.user?.role === 'ADMIN' || s.user?.role === 'SUPER_ADMIN');
+  const currentUserId = useAuthStore(s => s.user?.id);
 
   // Hook d'état du tableau (pagination, tri, filtres et requête API)
   const {
@@ -44,8 +51,11 @@ export default function UsersPage() {
     slideOverOpen,
     slideOverMode,
     selectedUser,
+    saveError,
     deleteModalOpen,
     userToDelete,
+    deleteError,
+    toggleError,
     isSaving,
     isDeleting,
     openNew,
@@ -54,41 +64,49 @@ export default function UsersPage() {
     openDelete,
     closeSlideOver,
     closeDeleteModal,
+    dismissToggleError,
     handleSaveCreate,
     handleSaveUpdate,
     handleDeleteConfirm,
     handleToggleActive,
   } = useUserActions();
 
-  // Actions stables par ligne
+  // Actions stables par ligne — Modifier/Activer/Supprimer réservées à
+  // ADMIN/SUPER_ADMIN (miroir des rôles serveur), sauf sur son propre compte.
   const getActions = useCallback(
-    (user: UserRow): ActionItem[] => [
-      {
-        label: 'Consulter le profil',
-        icon: <Eye className="h-3.5 w-3.5" />,
-        onClick: () => openView(user),
-      },
-      {
-        label: 'Modifier les informations',
-        icon: <Edit className="h-3.5 w-3.5" />,
-        onClick: () => openEdit(user),
-      },
-      {
-        label: user.actif ? 'Désactiver le compte' : 'Activer le compte',
-        icon: user.actif ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />,
-        onClick: () => handleToggleActive(user),
-        variant: 'default',
-        separator: true,
-      },
-      {
-        label: 'Supprimer définitivement',
-        icon: <Trash2 className="h-3.5 w-3.5" />,
-        onClick: () => openDelete(user),
-        variant: 'destructive',
-        separator: true,
-      },
-    ],
-    [openView, openEdit, handleToggleActive, openDelete]
+    (user: UserRow): ActionItem[] => {
+      const actions: ActionItem[] = [
+        {
+          label: 'Consulter le profil',
+          icon: <Eye className="h-3.5 w-3.5" />,
+          onClick: () => openView(user),
+        },
+      ];
+      if (!canManageUsers && user.id !== currentUserId) return actions;
+      actions.push(
+        {
+          label: 'Modifier les informations',
+          icon: <Edit className="h-3.5 w-3.5" />,
+          onClick: () => openEdit(user),
+        },
+        {
+          label: user.actif ? 'Désactiver le compte' : 'Activer le compte',
+          icon: user.actif ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />,
+          onClick: () => handleToggleActive(user),
+          variant: 'default',
+          separator: true,
+        },
+        {
+          label: 'Supprimer définitivement',
+          icon: <Trash2 className="h-3.5 w-3.5" />,
+          onClick: () => openDelete(user),
+          variant: 'destructive',
+          separator: true,
+        },
+      );
+      return actions;
+    },
+    [openView, openEdit, handleToggleActive, openDelete, canManageUsers, currentUserId]
   );
 
   // Colonnes mémorisées et indépendantes des données
@@ -112,7 +130,24 @@ export default function UsersPage() {
 
   return (
     <ContentLayout>
-      <UsersToolbar onOpenNew={openNew} />
+      <UsersToolbar onOpenNew={openNew} canCreate={canManageUsers} />
+
+      {toggleError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive flex items-center justify-between"
+        >
+          <span>{toggleError}</span>
+          <button
+            type="button"
+            onClick={dismissToggleError}
+            className="ml-4 text-xs underline opacity-70 hover:opacity-100"
+            aria-label="Fermer le message d'erreur"
+          >
+            Fermer
+          </button>
+        </div>
+      )}
 
       <UserKPIs kpis={kpisData} />
 
@@ -146,11 +181,13 @@ export default function UsersPage() {
         onSaveCreate={handleSaveCreate}
         onSaveUpdate={handleSaveUpdate}
         isSaving={isSaving}
+        saveError={saveError}
         deleteModalOpen={deleteModalOpen}
         onDeleteModalOpenChange={closeDeleteModal}
         userToDelete={userToDelete}
         onConfirmDelete={handleDeleteConfirm}
         isDeleting={isDeleting}
+        deleteError={deleteError}
       />
     </ContentLayout>
   );
