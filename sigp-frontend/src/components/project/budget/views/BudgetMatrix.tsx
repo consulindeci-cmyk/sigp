@@ -41,8 +41,8 @@ export interface LigneHistoryEntry {
 
 interface ImportRow {
   rowIndex: number;
-  wbs_nom:  string;
-  wbs_id:   string;
+  libelle:    string;
+  code_ligne: string;
   bailleur_id:   string;
   bailleur_nom:  string;
   categorie_id:  string;
@@ -103,8 +103,8 @@ async function parseImportFile(file: File): Promise<ImportRow[]> {
   return rows
     .filter(row => Object.values(row).some(v => String(v).trim() !== ''))
     .map((row, i) => {
-      const wbs_nom = String(colVal(row, 'composante', 'wbs nom', 'wbs_nom', 'libellé', 'libelle')).trim();
-      const wbs_id  = String(colVal(row, 'code wbs', 'wbs_id', 'wbs id', 'code')).trim()
+      const libelle    = String(colVal(row, 'composante', 'wbs nom', 'wbs_nom', 'libellé', 'libelle')).trim();
+      const codeLigne  = String(colVal(row, 'code wbs', 'wbs_id', 'wbs id', 'code')).trim()
                       || `wbs-import-${i + 1}`;
       const bailleurRaw  = String(colVal(row, 'bailleur')).trim();
       const categorieRaw = String(colVal(row, 'catégorie', 'categorie', 'categ')).trim();
@@ -122,15 +122,15 @@ async function parseImportFile(file: File): Promise<ImportRow[]> {
       const montant_decaisse   = parseNum(colVal(row, 'décaissé', 'decaisse', 'décaisse'));
 
       const errors: string[] = [];
-      if (!wbs_nom)       errors.push('Composante/WBS manquant');
+      if (!libelle)       errors.push('Composante/WBS manquant');
       if (!bailleur)      errors.push(`Bailleur inconnu : "${bailleurRaw}"`);
       if (!categorie)     errors.push(`Catégorie inconnue : "${categorieRaw}"`);
       if (montant_initial <= 0) errors.push('Montant initial requis (> 0)');
 
       return {
         rowIndex:              i + 2,
-        wbs_nom,
-        wbs_id,
+        libelle,
+        code_ligne: codeLigne,
         bailleur_id:           bailleur?.id            || '',
         bailleur_nom:          bailleur?.nom           || bailleurRaw,
         categorie_id:          categorie?.id           || '',
@@ -159,7 +159,7 @@ function exportToCsv(lignes: BudgetLigne[], filename: string) {
     'Solde disponible', 'Reste à payer',
   ];
   const rows = lignes.map(l => [
-    l.wbs_nom || l.wbs_id, l.wbs_id,
+    l.libelle || l.code_ligne, l.code_ligne,
     l.bailleur_nom || l.bailleur_id, l.source_financement_id, l.categorie_id,
     l.compte_comptable_id || '',
     l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
@@ -186,7 +186,7 @@ function exportToXlsx(lignes: BudgetLigne[], filename: string) {
     'Solde disponible', 'Reste à payer',
   ];
   const rows = lignes.map(l => [
-    l.wbs_nom || l.wbs_id, l.wbs_id,
+    l.libelle || l.code_ligne, l.code_ligne,
     l.bailleur_nom || l.bailleur_id, l.source_financement_id, l.categorie_id,
     l.compte_comptable_id || '',
     l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
@@ -275,7 +275,7 @@ function printLignes(lignes: BudgetLigne[]) {
 </thead>
 <tbody>
 ${lignes.map(l => `<tr>
-  ${td(l.wbs_nom || l.wbs_id)}${td(l.bailleur_nom || l.bailleur_id)}
+  ${td(l.libelle || l.code_ligne)}${td(l.bailleur_nom || l.bailleur_id)}
   ${td(l.categorie_id)}${td(l.compte_comptable_id || '—')}
   ${td(fmt(l.montant_initial), 'right')}${td(fmt(l.montant_revise), 'right')}
   ${td(fmt(l.montant_pre_engage), 'right')}${td(fmt(l.montant_engage), 'right')}
@@ -394,7 +394,7 @@ export function BudgetMatrix({
       if (filterBailleur  && l.bailleur_id  !== filterBailleur)  return false;
       if (filterCategorie && l.categorie_id !== filterCategorie) return false;
       if (q) {
-        const hay = [l.wbs_nom, l.wbs_id, l.bailleur_nom, l.bailleur_id, l.categorie_id, l.compte_comptable_id].join(' ').toLowerCase();
+        const hay = [l.libelle, l.code_ligne, l.bailleur_nom, l.bailleur_id, l.categorie_id, l.compte_comptable_id].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -423,8 +423,8 @@ export function BudgetMatrix({
 
   const ligneHistoriqueNom = useMemo(() => {
     if (!ligneHistoriqueId) return '';
-    return lignes.find(l => l.id === ligneHistoriqueId)?.wbs_nom
-      || lineHistory.find(h => h.ligneId === ligneHistoriqueId)?.after?.wbs_nom
+    return lignes.find(l => l.id === ligneHistoriqueId)?.libelle
+      || lineHistory.find(h => h.ligneId === ligneHistoriqueId)?.after?.libelle
       || ligneHistoriqueId;
   }, [ligneHistoriqueId, lignes, lineHistory]);
 
@@ -434,11 +434,11 @@ export function BudgetMatrix({
   // ── Journal global dérivé du lineHistory réel de la session ──────────────
   const globalAuditEntries = useMemo(() =>
     [...lineHistory].reverse().map(h => {
-      const wbsNom = h.after?.wbs_nom ?? h.before?.wbs_nom ?? '';
+      const ligneLibelle = h.after?.libelle ?? h.before?.libelle ?? '';
       const actionStr = h.comment
         ? `${ACTION_LABELS[h.action]} — ${h.comment}`
-        : wbsNom
-          ? `${ACTION_LABELS[h.action]} : ${wbsNom}`
+        : ligneLibelle
+          ? `${ACTION_LABELS[h.action]} : ${ligneLibelle}`
           : ACTION_LABELS[h.action];
       return {
         id:     h.id,
@@ -527,8 +527,8 @@ export function BudgetMatrix({
       const solde = Math.max(0, r.montant_revise - r.montant_pre_engage - r.montant_engage);
       const rap   = Math.max(0, r.montant_engage - r.montant_decaisse);
       return {
-        wbs_nom:               r.wbs_nom,
-        wbs_id:                r.wbs_id,
+        libelle:               r.libelle,
+        code_ligne:            r.code_ligne,
         bailleur_id:           r.bailleur_id,
         bailleur_nom:          r.bailleur_nom,
         source_financement_id: r.source_financement_id,
@@ -862,7 +862,7 @@ export function BudgetMatrix({
               <tbody className="divide-y divide-border">
                 {importRows.map(r => (
                   <tr key={r.rowIndex} className={`${r.isValid ? '' : 'bg-destructive/5'}`}>
-                    <td className="px-3 py-2 font-medium text-foreground">{r.wbs_nom || <span className="text-destructive italic">—</span>}</td>
+                    <td className="px-3 py-2 font-medium text-foreground">{r.libelle || <span className="text-destructive italic">—</span>}</td>
                     <td className="px-3 py-2 text-muted-foreground">{r.bailleur_nom || <span className="text-destructive italic">Inconnu</span>}</td>
                     <td className="px-3 py-2 text-muted-foreground">{r.categorie_id || <span className="text-destructive italic">Inconnue</span>}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatMoney(r.montant_initial)}</td>

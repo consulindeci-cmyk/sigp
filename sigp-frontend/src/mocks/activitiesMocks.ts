@@ -15,6 +15,9 @@ export interface Activity {
   composante: string;
   description: string;
   budgetAlloue: number;
+  // Nœud WBS terminal auquel cette activité est rattachée (ptba_activites.wbs_id)
+  // — permet l'agrégation automatique du budget/avancement du WBS (cf. useWBS.ts).
+  wbsNodeId?: string | null;
 }
 
 export interface ActivitiesKPIs {

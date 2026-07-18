@@ -64,14 +64,10 @@ export const createUserSchema = z.object({
   telephone: z.string().trim().max(30, 'Maximum 30 caractères').optional().or(z.literal('')),
   role: z.enum(['ADMIN', 'COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'AUDITEUR', 'VIEWER']),
   actif: z.boolean().default(true),
-  password: z
-    .string()
-    .min(8, 'Le mot de passe doit contenir au moins 8 caractères')
-    .max(128, 'Maximum 128 caractères')
-    .regex(
-      PASSWORD_REGEX,
-      'Doit contenir au moins 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial'
-    ),
+  // Pas de mot de passe à saisir ici : invitation d'équipe par un org_admin —
+  // le serveur génère un mot de passe temporaire, le collaborateur définit le
+  // sien via le lien d'invitation envoyé par e-mail (inviteUserByEmail).
+  password: z.string().optional().or(z.literal('')),
 });
 
 // Création par un SUPER_ADMIN — le seul rôle qu'il peut provisionner est
@@ -291,7 +287,7 @@ export function UserFormModal({
         nom: data.nom,
         prenom: data.prenom,
         email: data.email,
-        password: data.password || '',
+        password: data.password || undefined,
         role: restrictToOrgAdmin ? 'ADMIN' : (data.role as UserRole),
         telephone: data.telephone || undefined,
         organisationId: restrictToOrgAdmin ? data.organisationId : undefined,
@@ -402,8 +398,9 @@ export function UserFormModal({
                 )}
               </div>
 
-              {/* Mot de passe (uniquement en création) */}
-              {mode === 'new' && (
+              {/* Mot de passe — uniquement pour le provisioning direct d'un
+                  administrateur d'organisation par un SUPER_ADMIN */}
+              {mode === 'new' && restrictToOrgAdmin && (
                 <div className="flex flex-col gap-1.5 sm:col-span-2">
                   <label className="text-sm font-medium text-foreground" htmlFor="u-password">
                     Mot de passe *
@@ -426,6 +423,19 @@ export function UserFormModal({
                       Critères robustes exigés par le système (Argon2id).
                     </span>
                   )}
+                </div>
+              )}
+
+              {/* Flux d'invitation d'équipe (org_admin) — pas de mot de passe
+                  à saisir : le collaborateur définit le sien via le lien
+                  d'invitation envoyé par e-mail. */}
+              {mode === 'new' && !restrictToOrgAdmin && (
+                <div className="flex items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 sm:col-span-2">
+                  <Mail className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+                  <p className="text-xs text-muted-foreground">
+                    Un e-mail d'invitation sera envoyé à ce collaborateur pour qu'il définisse
+                    lui-même son mot de passe et active son compte.
+                  </p>
                 </div>
               )}
 

@@ -4,6 +4,7 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 interface UpdateContractBody {
   id: string;
   marcheId?: string;
+  budgetLigneId?: string;
   numero?: string;
   intitule?: string;
   type?: 'MARCHE' | 'CONVENTION' | 'PROTOCOLE' | 'LETTRE_ACCORD';
@@ -47,11 +48,28 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (body.budgetLigneId) {
+      const { data: ligne, error: ligneError } = await admin
+        .from('budget_lignes')
+        .select('id, version:budget_versions!inner(project_id)')
+        .eq('id', body.budgetLigneId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (ligneError) throw ligneError;
+      if (!ligne) return json({ error: 'Ligne budgétaire introuvable' }, 404);
+      const ligneProjectId = Array.isArray(ligne.version) ? ligne.version[0]?.project_id : ligne.version?.project_id;
+      if (ligneProjectId !== existing.project_id) {
+        return json({ error: "Cette ligne budgétaire n'appartient pas au même projet" }, 409);
+      }
+    }
+
     const updatePayload: Record<string, unknown> = {
       updated_by: profile.id,
       updated_at: new Date().toISOString(),
     };
     if (body.marcheId !== undefined) updatePayload.marche_id = body.marcheId;
+    // '' délie explicitement (→ null) ; absent ne touche pas au lien existant.
+    if (body.budgetLigneId !== undefined) updatePayload.budget_ligne_id = body.budgetLigneId || null;
     if (body.numero !== undefined) updatePayload.numero = body.numero.trim();
     if (body.intitule !== undefined) updatePayload.intitule = body.intitule.trim();
     if (body.type !== undefined) updatePayload.type = body.type;
@@ -76,6 +94,16 @@ Deno.serve(async (req: Request) => {
         return json({ error: 'Conflit de données sur le contrat' }, 409);
       }
       throw updateError;
+    }
+
+    // Recalcule l'ancienne ligne liée (si elle a changé ou si le contrat a
+    // été délié) ET la nouvelle — montant/statut/lien ont pu changer.
+    const linesToRecalc = new Set<string>();
+    if (existing.budget_ligne_id) linesToRecalc.add(existing.budget_ligne_id);
+    if (updated.budget_ligne_id) linesToRecalc.add(updated.budget_ligne_id);
+    for (const ligneId of linesToRecalc) {
+      const { error: recalcError } = await admin.rpc('recalc_budget_ligne_montants', { p_budget_ligne_id: ligneId });
+      if (recalcError) console.error('[contracts-update] recalc_budget_ligne_montants', recalcError);
     }
 
     await admin.from('historique').insert({

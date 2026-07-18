@@ -1,4 +1,3 @@
-import { PageHeader } from '@/components/layout/PageHeader';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -38,7 +37,7 @@ const formatMoney = (n: number) =>
 
 function LoadingView() {
   return (
-    <div className="flex h-full items-center justify-center">
+    <div className="flex min-h-[300px] items-center justify-center">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
     </div>
   );
@@ -46,7 +45,7 @@ function LoadingView() {
 
 function ErrorView() {
   return (
-    <div className="flex flex-col h-full items-center justify-center gap-2">
+    <div className="flex flex-col min-h-[300px] items-center justify-center gap-2">
       <AlertCircle className="h-8 w-8 text-destructive" />
       <p className="text-sm font-medium text-destructive">Erreur de chargement</p>
       <p className="text-xs text-muted-foreground">Impossible de charger la structure WBS.</p>
@@ -181,7 +180,7 @@ export default function WBSPage() {
 
   if (!resolvedProjectId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+      <div className="flex flex-col items-center justify-center p-8 text-center">
         <AlertCircle className="h-12 w-12 text-muted-foreground opacity-40 mb-4" />
         <h2 className="text-xl font-bold text-foreground mb-2">Aucun projet sélectionné</h2>
         <p className="text-sm text-muted-foreground">
@@ -192,14 +191,15 @@ export default function WBSPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex flex-col gap-4">
 
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border">
         <div>
-          <PageHeader title="Work Breakdown Structure" description="
+          <h2 className="text-sm font-semibold text-foreground">Work Breakdown Structure</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
             Structure hiérarchique des travaux et des composantes du projet
-          " />
+          </p>
         </div>
         <Button
           variant="default"
@@ -213,7 +213,7 @@ export default function WBSPage() {
       </div>
 
       {/* ── KPI STRIP ───────────────────────────────────────────────────────── */}
-      <div className="shrink-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 px-4 py-3 border-b border-border bg-muted/10">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
           title="Composantes"
           value={kpis.composantes}
@@ -259,12 +259,12 @@ export default function WBSPage() {
       </div>
 
       {/* ── TREE ────────────────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+      <div className="border border-border rounded-lg overflow-hidden flex flex-col">
         <div className="shrink-0 px-4 py-2.5 border-b border-border bg-muted/5 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Arborescence du Projet</h2>
+          <h3 className="text-sm font-semibold text-foreground">Arborescence du Projet</h3>
           <span className="text-xs text-muted-foreground">{wbsItems.length} élément{wbsItems.length !== 1 ? 's' : ''}</span>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="max-h-[600px] overflow-y-auto">
           {isLoading ? (
             <LoadingView />
           ) : error ? (

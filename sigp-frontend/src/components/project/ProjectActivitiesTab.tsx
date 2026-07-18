@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from '@/hooks/useTasks';
+import { useWBS } from '@/hooks/useWBS';
 import { useUIStore } from '@/stores/uiStore';
 import type { Tache } from '@/types';
 import { ColumnDef } from '@tanstack/react-table';
@@ -60,6 +61,7 @@ function adaptTache(t: Tache): Activity {
     statut: STATUT_TO_ACTIVITY[t.statut] ?? 'Non démarré',
     composante: '',
     budgetAlloue: parseFloat(t.cout_prevu) || 0,
+    wbsNodeId: t.wbs_id ?? null,
   };
 }
 
@@ -75,6 +77,7 @@ function activityToDto(data: Omit<Activity, 'id'>, projectId: string): Partial<T
     statut:      ACTIVITY_TO_STATUT[data.statut] as Tache['statut'],
     cout_prevu:  String(data.budgetAlloue || 0),
     cout_reel:   '0',
+    wbs_id:      data.wbsNodeId || undefined,
   };
 }
 
@@ -144,6 +147,7 @@ type ActivityFormState = {
   dateDebut:    string;
   dateFin:      string;
   composante:   string;
+  wbsNodeId:    string;
 };
 
 const EMPTY_FORM: ActivityFormState = {
@@ -151,6 +155,7 @@ const EMPTY_FORM: ActivityFormState = {
   statut: 'Non démarré', priorite: 'Moyenne',
   avancement: '0', budgetAlloue: '',
   dateDebut: '', dateFin: '', composante: '',
+  wbsNodeId: '',
 };
 
 function formFromActivity(a: Activity): ActivityFormState {
@@ -166,6 +171,7 @@ function formFromActivity(a: Activity): ActivityFormState {
     dateDebut:    a.dateDebut,
     dateFin:      a.dateFin,
     composante:   a.composante,
+    wbsNodeId:    a.wbsNodeId ?? '',
   };
 }
 
@@ -176,13 +182,14 @@ function formFromActivity(a: Activity): ActivityFormState {
 type SlideOverMode = 'view' | 'edit' | 'new';
 
 function ActivitySlideOver({
-  open, onOpenChange, activity, mode, onSave,
+  open, onOpenChange, activity, mode, onSave, projectId,
 }: {
   open:          boolean;
   onOpenChange:  (open: boolean) => void;
   activity:      Activity | null;
   mode:          SlideOverMode;
   onSave:        (data: Omit<Activity, 'id'>) => void;
+  projectId:     string;
 }) {
   const titles: Record<SlideOverMode, string> = {
     view: "Détails de l'activité",
@@ -193,6 +200,13 @@ function ActivitySlideOver({
 
   const [form, setForm]     = useState<ActivityFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Nœuds WBS terminaux du projet — seuls éligibles au rattachement d'une activité.
+  const { data: wbsNodes } = useWBS(projectId);
+  const terminalWbsNodes = useMemo(() => {
+    const all = wbsNodes?.data ?? [];
+    return all.filter(n => !all.some(other => other.parent_id === n.id));
+  }, [wbsNodes]);
 
   // Réinitialisation à chaque ouverture
   useEffect(() => {
@@ -235,6 +249,7 @@ function ActivitySlideOver({
       dateDebut:            form.dateDebut,
       dateFin:              form.dateFin,
       composante:           form.composante.trim(),
+      wbsNodeId:            form.wbsNodeId || null,
     });
   }
 
@@ -279,6 +294,12 @@ function ActivitySlideOver({
                 <div className="sm:col-span-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Composante</p>
                   <p className="text-[12px] text-muted-foreground">{activity.composante}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Nœud WBS lié</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    {(wbsNodes?.data ?? []).find(n => n.id === activity.wbsNodeId)?.titre ?? '—'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Responsable</p>
@@ -439,6 +460,24 @@ function ActivitySlideOver({
                   onChange={e => set('composante', e.target.value)}
                   placeholder="Composante du projet"
                 />
+              </div>
+
+              <div className="flex flex-col gap-1.5 sm:col-span-2">
+                <label className="text-sm font-medium text-foreground" htmlFor="act-wbs">Nœud WBS lié</label>
+                <Select
+                  id="act-wbs"
+                  value={form.wbsNodeId}
+                  onChange={e => set('wbsNodeId', e.target.value)}
+                >
+                  <option value="">Aucun</option>
+                  {terminalWbsNodes.map(n => (
+                    <option key={n.id} value={n.id}>{n.code_wbs} — {n.titre}</option>
+                  ))}
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Le budget et l'avancement du nœud WBS choisi seront calculés automatiquement
+                  à partir des activités qui lui sont rattachées.
+                </p>
               </div>
 
             </div>
@@ -799,6 +838,7 @@ export default function ProjectActivitiesTab() {
         activity={selected}
         mode={slideOverMode}
         onSave={handleSave}
+        projectId={projectId}
       />
 
       {/* ── Modal de confirmation de suppression ──────────────────────────────── */}

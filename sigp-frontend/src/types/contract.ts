@@ -36,6 +36,10 @@ export interface Contract {
   wbs_id: string;
   budget_ligne_id: string;
   ppm_ligne_id: string;
+  // Marché du plan de passation (ppm_marches) dont ce contrat est issu —
+  // colonne réelle contracts.marche_id, contrairement aux champs ci-dessus
+  // qui restent des placeholders sérialisés dans `notes`.
+  marche_id: string;
   bailleur_id: string;
   fournisseur_id: string;
 

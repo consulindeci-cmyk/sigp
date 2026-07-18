@@ -45,6 +45,14 @@ Deno.serve(async (req: Request) => {
       .eq('id', body.id);
     if (deleteError) throw deleteError;
 
+    // Le décaissement supprimé ne doit plus compter dans montant_paye.
+    if (existing.budget_ligne_id) {
+      const { error: recalcError } = await admin.rpc('recalc_budget_ligne_montants', {
+        p_budget_ligne_id: existing.budget_ligne_id,
+      });
+      if (recalcError) console.error('[disbursements-delete] recalc_budget_ligne_montants', recalcError);
+    }
+
     await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,

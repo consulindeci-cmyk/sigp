@@ -5,8 +5,13 @@ import { supabase } from '@/lib/supabaseClient';
 // Réplique fidèlement EvmService.getEvmSummary/getEvmHistory (project.controller.ts
 // délègue à src/projects/evm.service.ts, routes réelles :id/evm/summary et
 // :id/evm/history — confirmées existantes, contrairement au reste du module).
-// Calcul entièrement lecture seule à partir de tables déjà RLS-protégées
-// (budget_lignes, ptba_activites, evm_snapshots) — pas besoin d'Edge Function.
+//
+// Vague 3 (automatisation EVM) : la formule PV/EV/AC/BAC est désormais
+// calculée par la fonction SQL calculate_project_evm() (une seule
+// implémentation, partagée avec generate_evm_snapshots() qui alimente
+// evm_snapshots pour l'historique/dashboard-summary) — ce hook ne fait plus
+// que l'appeler via RPC et dériver les ratios (SV/CV/SPI/CPI/EAC/etc.), qui
+// restent du calcul pur sans accès aux données.
 //
 // NOTE nettoyage (per feedback_proactive_improvements) : l'ancienne section
 // "OLD HOOKS" (useEvm/useEvmTasks/useEvmTrend, appelant /projects/:id/evm,
@@ -42,44 +47,16 @@ export const useProjectEvmSummary = (projectId: string) => {
   return useQuery<EvmSummary>({
     queryKey: ['projects', projectId, 'evm', 'summary'],
     queryFn: async () => {
-      const [budgetRes, activitesRes] = await Promise.all([
-        supabase
-          .from('budget_lignes')
-          .select('montant_prevu, montant_paye, version:budget_versions!inner(project_id)')
-          .is('deleted_at', null)
-          .eq('version.project_id', projectId),
-        supabase
-          .from('ptba_activites')
-          .select('montant_prevu, taux_realisation, date_debut_prevue, date_fin_prevue')
-          .is('deleted_at', null)
-          .eq('project_id', projectId),
-      ]);
-      if (budgetRes.error) throw budgetRes.error;
-      if (activitesRes.error) throw activitesRes.error;
+      const { data, error } = await supabase
+        .rpc('calculate_project_evm', { p_project_id: projectId })
+        .single();
+      if (error) throw error;
 
-      const bac = (budgetRes.data ?? []).reduce((s, l) => s + Number(l.montant_prevu ?? 0), 0);
-      const ac = (budgetRes.data ?? []).reduce((s, l) => s + Number(l.montant_paye ?? 0), 0);
-
-      let pv = 0;
-      let ev = 0;
-      const now = Date.now();
-
-      for (const act of activitesRes.data ?? []) {
-        const budget = Number(act.montant_prevu ?? 0);
-        const taux = Number(act.taux_realisation ?? 0);
-        ev += budget * (taux / 100);
-
-        if (act.date_debut_prevue && act.date_fin_prevue) {
-          const debut = new Date(act.date_debut_prevue).getTime();
-          const fin = new Date(act.date_fin_prevue).getTime();
-          if (now >= fin) {
-            pv += budget;
-          } else if (now > debut) {
-            pv += budget * ((now - debut) / (fin - debut));
-          }
-        }
-        // Fallback si pas de dates : aucune PV planifiée pour cette activité (fidèle à evm.service.ts).
-      }
+      const row = data as { pv: number; ev: number; ac: number; bac: number };
+      const bac = Number(row.bac ?? 0);
+      const ac = Number(row.ac ?? 0);
+      const pv = Number(row.pv ?? 0);
+      const ev = Number(row.ev ?? 0);
 
       const sv = ev - pv;
       const cv = ev - ac;

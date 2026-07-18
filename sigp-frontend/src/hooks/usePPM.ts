@@ -413,3 +413,50 @@ export function usePPM(projectId: string, versionId?: string) {
     isDeleting: deleteMutation.isPending,
   };
 }
+
+// ─── Liaison PTBA ⟷ Marchés (many-to-many, ptba_activite_marches) ─────────────
+
+export interface PpmActiviteLink {
+  id: string;
+  code: string;
+  libelle: string;
+}
+
+interface PtbaActiviteMarcheRow {
+  activite_id: string;
+  activite: { id: string; code: string; libelle: string } | { id: string; code: string; libelle: string }[] | null;
+}
+
+export function usePpmMarcheActivites(marcheId: string) {
+  return useQuery({
+    queryKey: ['ppm-marche-activites', marcheId],
+    queryFn: async (): Promise<PpmActiviteLink[]> => {
+      const { data, error } = await supabase
+        .from('ptba_activite_marches')
+        .select('activite_id, activite:ptba_activites(id, code, libelle)')
+        .eq('marche_id', marcheId);
+      if (error) throw error;
+      return (data as unknown as PtbaActiviteMarcheRow[]).map((row) => {
+        const a = Array.isArray(row.activite) ? row.activite[0] : row.activite;
+        return { id: row.activite_id, code: a?.code ?? '', libelle: a?.libelle ?? '' };
+      });
+    },
+    enabled: !!marcheId,
+  });
+}
+
+export function useSetPpmMarcheActivites() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ marcheId, activiteIds }: { marcheId: string; activiteIds: string[] }) => {
+      const { data } = await invokeEdgeFunction<{ data: { marcheId: string; activiteIds: string[] } }>(
+        'ppm-activites-set',
+        { marcheId, activiteIds },
+      );
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['ppm-marche-activites', variables.marcheId] });
+    },
+  });
+}

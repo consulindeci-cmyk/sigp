@@ -237,6 +237,7 @@ export default function ContractsPage() {
         onSave={handleSave}
         onDelete={handleDelete}
         onSwitchToEdit={() => setSlideMode('edit')}
+        projectId={resolvedProjectId}
       />
     </div>
   );

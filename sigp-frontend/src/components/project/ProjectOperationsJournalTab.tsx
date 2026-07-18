@@ -3,13 +3,14 @@ import { useParams } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   Clock, Eye, X, Download, CheckCircle2, AlertTriangle,
-  Info, AlertCircle, Activity,
+  Info, AlertCircle, Activity, Network,
 } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/navigation/Tabs';
 import {
   SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
   SlideOverBody, SlideOverFooter, SlideOverClose,
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { type OperationLog, type LogLevel } from '@/mocks/operationsJournalMocks';
 import { useJournal, type JournalOperation } from '@/hooks/useJournal';
 import { useUIStore } from '@/stores/uiStore';
+import WBSPage from '@/pages/project/WBSPage';
 
 function adaptJournalOp(op: JournalOperation): OperationLog {
   const statutToNiveau: Record<string, LogLevel> = {
@@ -304,6 +306,7 @@ export default function ProjectOperationsJournalTab() {
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [selected,      setSelected]      = useState<OperationLog | null>(null);
   const [exported,      setExported]      = useState(false);
+  const [activeSubTab,  setActiveSubTab]  = useState<'journal' | 'wbs'>('journal');
 
   const kpis = useMemo(() => ({
     total:   logs.length,
@@ -323,142 +326,163 @@ export default function ProjectOperationsJournalTab() {
   const columns = buildLogColumns((log) => { setSelected(log); setSlideOverOpen(true); });
 
   return (
-    <section aria-label="Journal des Opérations" className="flex flex-col gap-6">
+    <section aria-label="Journal des Opérations & Structure (WBS)" className="flex flex-col gap-6">
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
         <div>
           <h1 className="text-base font-bold text-foreground">Journal des Opérations</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Traçabilité complète des actions et événements système
+            Traçabilité complète des actions système et structure de découpage du projet (WBS)
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={handleExportCsv}
-        >
-          <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-          Exporter CSV
-        </Button>
+        {activeSubTab === 'journal' && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleExportCsv}
+          >
+            <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Exporter CSV
+          </Button>
+        )}
       </div>
 
-      {/* ── Feedback export ───────────────────────────────────────────────── */}
-      {exported && (
-        <div className="flex items-center gap-2 text-success text-xs bg-success/10 border border-success/20 rounded-md px-3 py-2">
-          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Export CSV téléchargé avec succès.
-        </div>
-      )}
+      <Tabs value={activeSubTab} onValueChange={(v) => setActiveSubTab(v as 'journal' | 'wbs')} className="flex flex-col gap-6">
+        <TabsList className="self-start">
+          <TabsTrigger value="journal" className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <Clock className="h-3.5 w-3.5" />
+            Journal
+          </TabsTrigger>
+          <TabsTrigger value="wbs" className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <Network className="h-3.5 w-3.5" />
+            Structure (WBS)
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ── KPI Strip ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total opérations"
-          value={kpis.total}
-          icon={<Activity className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="primary"
-          description="Entrées enregistrées"
-        />
-        <StatCard
-          title="Opérations réussies"
-          value={kpis.succes}
-          icon={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="success"
-          description="Statut Succès"
-        />
-        <StatCard
-          title="Alertes & Erreurs"
-          value={kpis.erreurs}
-          icon={<AlertTriangle className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="warning"
-          description="Avertissements + Erreurs"
-        />
-        <StatCard
-          title="Modules tracés"
-          value={kpis.modules}
-          icon={<Info className="h-4 w-4" aria-hidden="true" />}
-          iconVariant="default"
-          description="Modules distincts"
-        />
-      </div>
+        <TabsContent value="journal" className="flex flex-col gap-6 mt-0">
+          {/* ── Feedback export ───────────────────────────────────────────── */}
+          {exported && (
+            <div className="flex items-center gap-2 text-success text-xs bg-success/10 border border-success/20 rounded-md px-3 py-2">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Export CSV téléchargé avec succès.
+            </div>
+          )}
 
-      {/* ── Timeline récente ──────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Activité récente</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RecentLogsTimeline logs={recent} />
-        </CardContent>
-      </Card>
+          {/* ── KPI Strip ─────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              title="Total opérations"
+              value={kpis.total}
+              icon={<Activity className="h-4 w-4" aria-hidden="true" />}
+              iconVariant="primary"
+              description="Entrées enregistrées"
+            />
+            <StatCard
+              title="Opérations réussies"
+              value={kpis.succes}
+              icon={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+              iconVariant="success"
+              description="Statut Succès"
+            />
+            <StatCard
+              title="Alertes & Erreurs"
+              value={kpis.erreurs}
+              icon={<AlertTriangle className="h-4 w-4" aria-hidden="true" />}
+              iconVariant="warning"
+              description="Avertissements + Erreurs"
+            />
+            <StatCard
+              title="Modules tracés"
+              value={kpis.modules}
+              icon={<Info className="h-4 w-4" aria-hidden="true" />}
+              iconVariant="default"
+              description="Modules distincts"
+            />
+          </div>
 
-      {/* ── DataTable complète ────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Journal complet des opérations</CardTitle>
-          <span className="text-xs text-muted-foreground">{logs.length} entrées</span>
-        </CardHeader>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={logs}
-            isLoading={isLoading}
-            searchKey="action"
-            searchPlaceholder="Rechercher une opération..."
-            filters={[
-              {
-                id: 'niveau',
-                title: 'Niveau',
-                options: [
-                  { label: 'Succès',        value: 'Succès'        },
-                  { label: 'Info',          value: 'Info'          },
-                  { label: 'Avertissement', value: 'Avertissement' },
-                  { label: 'Erreur',        value: 'Erreur'        },
-                ],
-              },
-              {
-                id: 'module',
-                title: 'Module',
-                options: [
-                  { label: 'Budget',         value: 'Budget'        },
-                  { label: 'Activités',      value: 'Activités'     },
-                  { label: 'Livrables',      value: 'Livrables'     },
-                  { label: 'Décaissements',  value: 'Décaissements' },
-                  { label: 'Gouvernance',    value: 'Gouvernance'   },
-                  { label: 'Risques',        value: 'Risques'       },
-                  { label: 'Documents',      value: 'Documents'     },
-                ],
-              },
-              {
-                id: 'utilisateur',
-                title: 'Utilisateur',
-                options: [
-                  { label: 'Amadou Diallo',    value: 'Amadou Diallo'    },
-                  { label: 'Fatoumata Moussa', value: 'Fatoumata Moussa' },
-                  { label: 'Aïchata Koné',     value: 'Aïchata Koné'     },
-                  { label: 'Rabiou Hamidou',   value: 'Rabiou Hamidou'   },
-                  { label: 'Boubacar Issa',    value: 'Boubacar Issa'    },
-                  { label: 'Salif Traoré',     value: 'Salif Traoré'     },
-                ],
-              },
-            ]}
-          />
-        </CardContent>
-      </Card>
+          {/* ── Timeline récente ──────────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Activité récente</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RecentLogsTimeline logs={recent} />
+            </CardContent>
+          </Card>
 
-      {/* ── Notice registre immuable ──────────────────────────────────────── */}
-      <div className="flex items-start gap-3 bg-primary/5 border border-primary/20 rounded-lg p-4">
-        <AlertCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
-        <div>
-          <h4 className="text-sm font-semibold text-foreground">Registre en lecture seule</h4>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Ce journal est <strong>immuable</strong> (Append-Only). Les entrées ne peuvent pas être
-            modifiées ni supprimées. Il constitue la trace d'audit officielle du projet.
-          </p>
-        </div>
-      </div>
+          {/* ── DataTable complète ──────────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Journal complet des opérations</CardTitle>
+              <span className="text-xs text-muted-foreground">{logs.length} entrées</span>
+            </CardHeader>
+            <CardContent className="p-0">
+              <DataTable
+                columns={columns}
+                data={logs}
+                isLoading={isLoading}
+                searchKey="action"
+                searchPlaceholder="Rechercher une opération..."
+                filters={[
+                  {
+                    id: 'niveau',
+                    title: 'Niveau',
+                    options: [
+                      { label: 'Succès',        value: 'Succès'        },
+                      { label: 'Info',          value: 'Info'          },
+                      { label: 'Avertissement', value: 'Avertissement' },
+                      { label: 'Erreur',        value: 'Erreur'        },
+                    ],
+                  },
+                  {
+                    id: 'module',
+                    title: 'Module',
+                    options: [
+                      { label: 'Budget',         value: 'Budget'        },
+                      { label: 'Activités',      value: 'Activités'     },
+                      { label: 'Livrables',      value: 'Livrables'     },
+                      { label: 'Décaissements',  value: 'Décaissements' },
+                      { label: 'Gouvernance',    value: 'Gouvernance'   },
+                      { label: 'Risques',        value: 'Risques'       },
+                      { label: 'Documents',      value: 'Documents'     },
+                    ],
+                  },
+                  {
+                    id: 'utilisateur',
+                    title: 'Utilisateur',
+                    options: [
+                      { label: 'Amadou Diallo',    value: 'Amadou Diallo'    },
+                      { label: 'Fatoumata Moussa', value: 'Fatoumata Moussa' },
+                      { label: 'Aïchata Koné',     value: 'Aïchata Koné'     },
+                      { label: 'Rabiou Hamidou',   value: 'Rabiou Hamidou'   },
+                      { label: 'Boubacar Issa',    value: 'Boubacar Issa'    },
+                      { label: 'Salif Traoré',     value: 'Salif Traoré'     },
+                    ],
+                  },
+                ]}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── Notice registre immuable ────────────────────────────────────── */}
+          <div className="flex items-start gap-3 bg-primary/5 border border-primary/20 rounded-lg p-4">
+            <AlertCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <h4 className="text-sm font-semibold text-foreground">Registre en lecture seule</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Ce journal est <strong>immuable</strong> (Append-Only). Les entrées ne peuvent pas être
+                modifiées ni supprimées. Il constitue la trace d'audit officielle du projet.
+              </p>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="wbs" className="mt-0">
+          <WBSPage />
+        </TabsContent>
+      </Tabs>
 
       {/* ── SlideOver détail ──────────────────────────────────────────────── */}
       <LogDetailSlideOver

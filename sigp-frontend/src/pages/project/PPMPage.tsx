@@ -214,6 +214,7 @@ export default function PPMPage() {
         ligne={selectedLigne}
         onSave={handleSaveForm}
         onDelete={deleteLigne}
+        projectId={resolvedProjectId}
       />
     </div>
   );

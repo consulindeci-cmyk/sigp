@@ -40,8 +40,9 @@ function adapt(row: OrganisationRow): Organisation {
 const organisationKeys = { all: () => ['organisation'] as const };
 
 // RLS (organisations_select) ne laisse voir que l'organisation de l'utilisateur
-// courant (ou toutes si ADMIN/is_admin) — pas de filtre explicite nécessaire ici,
-// une organisation par utilisateur dans ce déploiement.
+// courant (is_admin() = SUPER_ADMIN excepté, mais ce hook n'est jamais appelé
+// pour ce rôle — cf. SettingsPage.tsx) — pas de filtre explicite nécessaire
+// ici, une seule organisation visible par utilisateur dans ce déploiement.
 export function useOrganisation() {
   return useQuery({
     queryKey: organisationKeys.all(),

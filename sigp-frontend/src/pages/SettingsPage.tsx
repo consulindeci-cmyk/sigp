@@ -828,7 +828,8 @@ const EMPTY_ORG: Organisation = {
   id: '', nom: '', adresse: '', ville: '', pays: '', telephone: '', email: '', siteWeb: '',
 };
 
-function OrgSection() {
+function OrgSection({ role }: { role: string }) {
+  const isAdmin = role === 'ADMIN';
   const { data: organisation, isLoading } = useOrganisation();
   const updateMutation = useUpdateOrganisation();
   const [form, setForm]     = useState<Organisation>(EMPTY_ORG);
@@ -853,7 +854,9 @@ function OrgSection() {
       <SectionHeader title="Organisation" description="Informations officielles. ✅ Fonctionnel — table organisations, réservé aux ADMIN." />
       <Card>
         <CardContent className="pt-6">
-          {isLoading ? (
+          {!isAdmin ? (
+            <p className="text-sm text-muted-foreground">Réservé à l'administrateur de l'organisation.</p>
+          ) : isLoading ? (
             <p className="text-sm text-muted-foreground">Chargement…</p>
           ) : (
             <>
@@ -2066,7 +2069,7 @@ export default function SettingsPage() {
       case 'apparence':
         return <ApparenceSection />;
       case 'organisation':
-        return isSuperAdmin ? <OrganisationVerrouilleeSection /> : <OrgSection />;
+        return isSuperAdmin ? <OrganisationVerrouilleeSection /> : <OrgSection role={profile.role} />;
       case 'sauvegarde':
         return <SauvegardeSection role={profile.role} />;
       case 'archivage':

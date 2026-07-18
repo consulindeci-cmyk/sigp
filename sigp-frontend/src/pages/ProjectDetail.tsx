@@ -6,7 +6,6 @@ import ProjectHeader from '../components/project/layout/ProjectHeader';
 // Full-height tabs (manage their own layout, header and scroll)
 import PTBAPage from './project/PTBAPage';
 import LogframePage from './project/LogframePage';
-import WBSPage from './project/WBSPage';
 import BudgetPage from './project/BudgetPage';
 import PPMPage from './project/PPMPage';
 import ContractsPage from './project/ContractsPage';
@@ -22,7 +21,6 @@ import ProjectGovernanceTab from '../components/project/ProjectGovernanceTab';
 import ProjectFundingTab from '../components/project/ProjectFundingTab';
 import ProjectDisbursementTab from '../components/project/ProjectDisbursementTab';
 import ProjectDeliverablesTab from '../components/project/ProjectDeliverablesTab';
-import ProjectActivitiesTab from '../components/project/ProjectActivitiesTab';
 import ProjectOperationsJournalTab from '../components/project/ProjectOperationsJournalTab';
 import TabHistory from '../components/project/TabHistory';
 import TabComments from '../components/project/TabComments';
@@ -94,7 +92,6 @@ export default function ProjectDetail() {
 
         {/* Full-height tabs: fill the container, manage their own scroll */}
         {activeProjectTab === 'logframe'  && <LogframePage />}
-        {activeProjectTab === 'wbs'       && <WBSPage />}
         {activeProjectTab === 'ptba'      && <PTBAPage />}
         {activeProjectTab === 'budget'    && <BudgetPage />}
         {activeProjectTab === 'ppm'       && <PPMPage />}
@@ -106,9 +103,6 @@ export default function ProjectDetail() {
         )}
         {activeProjectTab === 'governance' && (
           <div className={PAD}><div className={INNER}><ProjectGovernanceTab /></div></div>
-        )}
-        {activeProjectTab === 'activities' && (
-          <div className={PAD}><div className={INNER}><ProjectActivitiesTab /></div></div>
         )}
         {activeProjectTab === 'journal' && (
           <div className={PAD}><div className={INNER}><ProjectOperationsJournalTab /></div></div>

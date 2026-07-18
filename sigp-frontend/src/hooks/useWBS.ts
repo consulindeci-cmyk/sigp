@@ -28,7 +28,17 @@ interface WbsNodeRow {
 
 const WBS_SELECT = 'id, project_id, parent_id, objective_id, code, libelle, type, ordre, niveau, responsable_id, date_debut, date_fin';
 
+// ── Ligne Supabase (colonnes utiles de `ptba_activites` pour l'agrégation) ────
+
+interface ActiviteAggRow {
+  wbs_id: string | null;
+  montant_prevu: number | null;
+  taux_realisation: number | null;
+}
+
 // ── Adapter: ligne Supabase → frontend ────────────────────────────────────────
+// budget_alloue/progression_physique initialisés à 0 ici, TOUJOURS écrasés par
+// aggregateBudgetProgression() juste après — jamais la valeur finale affichée.
 
 function adaptNode(row: WbsNodeRow): WBS {
   return {
@@ -49,19 +59,52 @@ function adaptNode(row: WbsNodeRow): WBS {
   };
 }
 
-// ── Budget / progression aggregation (upward through tree) ────────────────────
+// ── Agrégation des activités PTBA liées (ptba_activites.wbs_id), par nœud ────
+// Regroupement fait côté client (une seule requête, pas de N+1) plutôt qu'en
+// SQL : même approche déjà utilisée pour dashboard-summary/useEvm dans ce projet.
 
-function aggregateBudgetProgression(nodes: WBS[]): WBS[] {
+function buildActivityAggregation(rows: ActiviteAggRow[]): Map<string, { budget: number; progressionWeighted: number }> {
+  const map = new Map<string, { budget: number; progressionWeighted: number }>();
+  for (const row of rows) {
+    if (!row.wbs_id) continue;
+    const budget = Number(row.montant_prevu ?? 0);
+    const taux = Number(row.taux_realisation ?? 0);
+    const existing = map.get(row.wbs_id) ?? { budget: 0, progressionWeighted: 0 };
+    existing.budget += budget;
+    existing.progressionWeighted += budget * taux;
+    map.set(row.wbs_id, existing);
+  }
+  return map;
+}
+
+// ── Budget / progression aggregation (upward through tree) ────────────────────
+// Nœuds terminaux : somme réelle des activités PTBA liées (ptba_activites.wbs_id).
+// Nœuds parents : somme des enfants + activités directement liées (défensif),
+// progression = moyenne pondérée par le budget (cohérent avec le calcul EVM).
+
+function aggregateBudgetProgression(
+  nodes: WBS[],
+  activityAgg: Map<string, { budget: number; progressionWeighted: number }>,
+): WBS[] {
   const result = nodes.map(n => ({ ...n }));
 
   const aggregate = (node: WBS) => {
     const children = result.filter(n => n.parent_id === node.id);
-    if (children.length > 0) {
-      children.forEach(aggregate);
-      node.budget_alloue = children.reduce((sum, c) => sum + (c.budget_alloue || 0), 0);
-      node.progression_physique =
-        children.reduce((sum, c) => sum + (c.progression_physique || 0), 0) / children.length;
-    }
+    const direct = activityAgg.get(node.id);
+    const directBudget = direct?.budget ?? 0;
+    const directProgressionWeighted = direct?.progressionWeighted ?? 0;
+
+    children.forEach(aggregate);
+    const childrenBudget = children.reduce((sum, c) => sum + (c.budget_alloue || 0), 0);
+    const childrenProgressionWeighted = children.reduce(
+      (sum, c) => sum + (c.progression_physique || 0) * (c.budget_alloue || 0),
+      0,
+    );
+
+    const budget = childrenBudget + directBudget;
+    const progressionWeighted = childrenProgressionWeighted + directProgressionWeighted;
+    node.budget_alloue = budget;
+    node.progression_physique = budget > 0 ? Math.round(progressionWeighted / budget) : 0;
   };
 
   result.filter(n => !n.parent_id).forEach(aggregate);
@@ -71,16 +114,26 @@ function aggregateBudgetProgression(nodes: WBS[]): WBS[] {
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchWBSList(projectId: string): Promise<WBS[]> {
-  const { data, error } = await supabase
-    .from('wbs_nodes')
-    .select(WBS_SELECT)
-    .eq('project_id', projectId)
-    .is('deleted_at', null)
-    .order('niveau', { ascending: true })
-    .order('ordre', { ascending: true });
-  if (error) throw error;
-  const nodes = (data as unknown as WbsNodeRow[]).map(adaptNode);
-  return aggregateBudgetProgression(nodes);
+  const [nodesRes, activitiesRes] = await Promise.all([
+    supabase
+      .from('wbs_nodes')
+      .select(WBS_SELECT)
+      .eq('project_id', projectId)
+      .is('deleted_at', null)
+      .order('niveau', { ascending: true })
+      .order('ordre', { ascending: true }),
+    supabase
+      .from('ptba_activites')
+      .select('wbs_id, montant_prevu, taux_realisation')
+      .eq('project_id', projectId)
+      .is('deleted_at', null),
+  ]);
+  if (nodesRes.error) throw nodesRes.error;
+  if (activitiesRes.error) throw activitiesRes.error;
+
+  const nodes = (nodesRes.data as unknown as WbsNodeRow[]).map(adaptNode);
+  const activityAgg = buildActivityAggregation((activitiesRes.data ?? []) as ActiviteAggRow[]);
+  return aggregateBudgetProgression(nodes, activityAgg);
 }
 
 // ── Payload helpers ───────────────────────────────────────────────────────────

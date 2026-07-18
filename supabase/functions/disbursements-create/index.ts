@@ -8,6 +8,7 @@ interface CreateDisbursementBody {
   fundingSourceId?: string;
   statut?: 'PLANIFIE' | 'DEMANDE' | 'APPROUVE' | 'DECAISSE' | 'REJETE';
   montant: number;
+  devise?: string;
   datePrevue?: string;
   dateReelle?: string;
   reference?: string;
@@ -57,6 +58,15 @@ Deno.serve(async (req: Request) => {
           { error: "La ligne budgétaire n'appartient pas à la version budgétaire indiquée" },
           409,
         );
+      }
+      if (!budgetVersionProjectId) {
+        const { data: version, error: versionError } = await admin
+          .from('budget_versions')
+          .select('project_id')
+          .eq('id', line.version_id)
+          .maybeSingle();
+        if (versionError) throw versionError;
+        budgetVersionProjectId = version?.project_id ?? undefined;
       }
     }
 
@@ -116,6 +126,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Devise par défaut = devise_defaut de l'organisation du projet résolu ;
+    // repli XOF si aucun projet n'a pu être résolu (décaissement orphelin).
+    let devise = body.devise;
+    if (!devise && budgetVersionProjectId) {
+      const { data: orgDevise } = await admin.rpc('project_devise_defaut', { p_project_id: budgetVersionProjectId });
+      devise = orgDevise ?? undefined;
+    }
+    devise = devise ?? 'XOF';
+
     const { data: disbursement, error: insertError } = await admin
       .from('disbursements')
       .insert({
@@ -126,6 +145,7 @@ Deno.serve(async (req: Request) => {
         funding_source_id: body.fundingSourceId ?? null,
         statut: body.statut ?? 'PLANIFIE',
         montant: body.montant,
+        devise,
         date_prevue: body.datePrevue ?? null,
         date_reelle: body.dateReelle ?? null,
         reference: body.reference ?? null,
@@ -141,6 +161,16 @@ Deno.serve(async (req: Request) => {
         return json({ error: 'Conflit de données sur le décaissement' }, 409);
       }
       throw insertError;
+    }
+
+    // Recalcul immédiat de la ligne budgétaire liée (montant_paye) — pas
+    // d'attente d'un batch : la ligne doit refléter les vraies transactions
+    // dès leur enregistrement (cf. audit : risque de désynchronisation).
+    if (disbursement.budget_ligne_id) {
+      const { error: recalcError } = await admin.rpc('recalc_budget_ligne_montants', {
+        p_budget_ligne_id: disbursement.budget_ligne_id,
+      });
+      if (recalcError) console.error('[disbursements-create] recalc_budget_ligne_montants', recalcError);
     }
 
     await admin.from('historique').insert({

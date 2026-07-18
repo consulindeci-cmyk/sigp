@@ -45,7 +45,10 @@ export interface BudgetLigne {
   budget_version_id: string;
   version: number;
   
-  wbs_id: string;
+  // Identifiant/libellé PROPRES à la ligne budgétaire (code_ligne/libelle de la
+  // table budget_lignes) — ne référence PAS un nœud de wbs_nodes malgré le nom
+  // historique "wbs_*" ; aucune vraie relation WBS n'existe sur cette table.
+  code_ligne: string;
   bailleur_id: string;
   source_financement_id: string;
   categorie_id: string;
@@ -66,7 +69,7 @@ export interface BudgetLigne {
   reste_a_payer: number;
   
   // For UI presentation only (Optional relations)
-  wbs_nom?: string;
+  libelle?: string;
   bailleur_nom?: string;
 }
 

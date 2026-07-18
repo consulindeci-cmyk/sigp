@@ -79,6 +79,15 @@ Deno.serve(async (req: Request) => {
       throw updateError;
     }
 
+    // budget_ligne_id est fixé à la création (non modifiable ici) — un
+    // recalcul suffit, pas besoin de gérer un changement de ligne liée.
+    if (existing.budget_ligne_id) {
+      const { error: recalcError } = await admin.rpc('recalc_budget_ligne_montants', {
+        p_budget_ligne_id: existing.budget_ligne_id,
+      });
+      if (recalcError) console.error('[disbursements-update] recalc_budget_ligne_montants', recalcError);
+    }
+
     await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,

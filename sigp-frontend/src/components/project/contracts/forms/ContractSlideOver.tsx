@@ -8,6 +8,8 @@ import {
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import type { Contract, ContractStatus } from '@/types/contract';
+import { usePPM } from '@/hooks/usePPM';
+import { useBudget, useBudgetVersion } from '@/hooks/useBudget';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -22,6 +24,7 @@ type ContractFormState = {
   wbs_id: string;
   budget_ligne_id: string;
   ppm_ligne_id: string;
+  marche_id: string;
   devise_code: string;
   taux_change_contractuel: string;
   montant_initial_devise: string;
@@ -41,7 +44,7 @@ type ContractFormState = {
 const EMPTY_FORM: ContractFormState = {
   reference: '', intitule: '', statut: 'BROUILLON',
   bailleur_id: '', fournisseur_id: '',
-  wbs_id: '', budget_ligne_id: '', ppm_ligne_id: '',
+  wbs_id: '', budget_ligne_id: '', ppm_ligne_id: '', marche_id: '',
   devise_code: 'XOF', taux_change_contractuel: '1', montant_initial_devise: '',
   date_signature: '', date_ordre_service: '', debut_prevu: '',
   fin_prevue: '', fin_reelle: '',
@@ -60,6 +63,7 @@ function formFromContract(c: Contract): ContractFormState {
     wbs_id: c.wbs_id,
     budget_ligne_id: c.budget_ligne_id,
     ppm_ligne_id: c.ppm_ligne_id,
+    marche_id: c.marche_id,
     devise_code: c.devise_code,
     taux_change_contractuel: String(c.taux_change_contractuel),
     montant_initial_devise: String(c.montant_initial_devise),
@@ -98,16 +102,27 @@ interface ContractSlideOverProps {
   onSave: (data: Omit<Contract, 'id' | 'version_hash' | 'projet_id'>) => void;
   onDelete?: (id: string) => void;
   onSwitchToEdit?: () => void;
+  projectId: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDelete, onSwitchToEdit }: ContractSlideOverProps) {
+export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDelete, onSwitchToEdit, projectId }: ContractSlideOverProps) {
   const [form, setForm] = useState<ContractFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof ContractFormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Marchés du plan de passation (PPM) du projet — pour rattacher ce contrat
+  // à un ou plusieurs lots (ppm_marches.id → contracts.marche_id).
+  const { lignes: ppmMarches } = usePPM(projectId);
+
+  // Lignes budgétaires de la version active du projet — pour l'imputation
+  // réelle du contrat (contracts.budget_ligne_id).
+  const { data: budget } = useBudget(projectId);
+  const { data: budgetVersion } = useBudgetVersion(projectId, budget?.version_active_id);
+  const budgetLignes = budgetVersion?.lignes ?? [];
 
   const isReadOnly = mode === 'view';
 
@@ -144,6 +159,7 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
       wbs_id: form.wbs_id,
       budget_ligne_id: form.budget_ligne_id,
       ppm_ligne_id: form.ppm_ligne_id,
+      marche_id: form.marche_id,
       bailleur_id: form.bailleur_id,
       fournisseur_id: form.fournisseur_id,
       reference: form.reference.trim(),
@@ -259,6 +275,15 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
           {/* ── Imputation ────────────────────────────────────────── */}
           <div className={SECTION}>
             <p className={SECTION_TITLE}>Imputation budgétaire</p>
+            <div className="mb-3">
+              <label className={LABEL}>Marché PPM (plan de passation)</label>
+              <Select value={form.marche_id} onChange={e => set('marche_id', e.target.value)} disabled={isReadOnly}>
+                <option value="">Aucun</option>
+                {ppmMarches.map(m => (
+                  <option key={m.id} value={m.id}>{m.reference_marche} — {m.description}</option>
+                ))}
+              </Select>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={LABEL}>WBS</label>
@@ -266,7 +291,12 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
               </div>
               <div>
                 <label className={LABEL}>Ligne Budget</label>
-                <Input value={form.budget_ligne_id} onChange={e => set('budget_ligne_id', e.target.value)} placeholder="bl-001" disabled={isReadOnly} />
+                <Select value={form.budget_ligne_id} onChange={e => set('budget_ligne_id', e.target.value)} disabled={isReadOnly}>
+                  <option value="">Aucune</option>
+                  {budgetLignes.map(l => (
+                    <option key={l.id} value={l.id}>{l.code_ligne} — {l.libelle}</option>
+                  ))}
+                </Select>
               </div>
               <div>
                 <label className={LABEL}>Ligne PPM</label>

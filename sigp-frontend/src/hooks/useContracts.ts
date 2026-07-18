@@ -20,6 +20,8 @@ interface ContractRow {
   titulaire: string;
   montant: number;
   devise: string;
+  marche_id: string | null;
+  budget_ligne_id: string | null;
   date_signature: string | null;
   date_debut: string | null;
   date_fin: string | null;
@@ -27,7 +29,7 @@ interface ContractRow {
   updated_at: string;
 }
 
-const CONTRACT_SELECT = 'id, project_id, numero, intitule, statut, titulaire, montant, devise, date_signature, date_debut, date_fin, notes, updated_at';
+const CONTRACT_SELECT = 'id, project_id, numero, intitule, statut, titulaire, montant, devise, marche_id, budget_ligne_id, date_signature, date_debut, date_fin, notes, updated_at';
 
 // ── Meta encoding (notes field) ───────────────────────────────────────────────
 // Frontend-only fields stored in backend.notes as JSON — inchangé, indépendant
@@ -38,7 +40,6 @@ const CONTRACT_META_PREFIX = '__CONTRACT_META__:';
 interface ContractMeta {
   feStatut: ContractStatus;
   wbs_id?: string;
-  budget_ligne_id?: string;
   ppm_ligne_id?: string;
   bailleur_id?: string;
   taux_change_contractuel?: number;
@@ -111,8 +112,9 @@ function adaptContract(row: ContractRow): Contract {
     id:                        row.id,
     projet_id:                 row.project_id,
     wbs_id:                    meta?.wbs_id           ?? '',
-    budget_ligne_id:           meta?.budget_ligne_id   ?? '',
+    budget_ligne_id:           row.budget_ligne_id     ?? '',
     ppm_ligne_id:              meta?.ppm_ligne_id      ?? '',
+    marche_id:                 row.marche_id           ?? '',
     bailleur_id:               meta?.bailleur_id       ?? '',
     fournisseur_id:            row.titulaire,
     reference:                 row.numero,
@@ -146,7 +148,6 @@ function buildCreatePayload(projectId: string, data: ContractFormData) {
   const meta: ContractMeta = {
     feStatut:                 data.statut,
     wbs_id:                   data.wbs_id        || undefined,
-    budget_ligne_id:          data.budget_ligne_id || undefined,
     ppm_ligne_id:             data.ppm_ligne_id   || undefined,
     bailleur_id:              data.bailleur_id    || undefined,
     taux_change_contractuel:  data.taux_change_contractuel,
@@ -169,6 +170,8 @@ function buildCreatePayload(projectId: string, data: ContractFormData) {
     titulaire: data.fournisseur_id || '',
     montant:  data.montant_initial_devise,
     devise:   data.devise_code || 'XOF',
+    marcheId: data.marche_id || undefined,
+    budgetLigneId: data.budget_ligne_id || undefined,
     statut:   feToBeStatus(data.statut),
     dateSignature: data.date_signature || undefined,
     dateDebut:     data.debut_prevu   || undefined,
@@ -181,7 +184,6 @@ function buildUpdatePayload(data: Partial<Contract>) {
   const meta: Partial<ContractMeta> = {};
   if (data.statut                     !== undefined) meta.feStatut                 = data.statut;
   if (data.wbs_id                     !== undefined) meta.wbs_id                   = data.wbs_id        || undefined;
-  if (data.budget_ligne_id            !== undefined) meta.budget_ligne_id           = data.budget_ligne_id || undefined;
   if (data.ppm_ligne_id               !== undefined) meta.ppm_ligne_id              = data.ppm_ligne_id   || undefined;
   if (data.bailleur_id                !== undefined) meta.bailleur_id               = data.bailleur_id    || undefined;
   if (data.taux_change_contractuel    !== undefined) meta.taux_change_contractuel   = data.taux_change_contractuel;
@@ -202,6 +204,10 @@ function buildUpdatePayload(data: Partial<Contract>) {
     titulaire: data.fournisseur_id       ?? undefined,
     montant:   data.montant_initial_devise ?? undefined,
     devise:    data.devise_code          ?? undefined,
+    // '' signifie "délier explicitement" (→ null, colonne nullable) ; absent
+    // du Partial signifie "ne pas toucher" (→ undefined, ignoré côté serveur).
+    marcheId:  data.marche_id !== undefined ? (data.marche_id || null) : undefined,
+    budgetLigneId: data.budget_ligne_id !== undefined ? (data.budget_ligne_id || null) : undefined,
     statut:    data.statut ? feToBeStatus(data.statut) : undefined,
     dateSignature: data.date_signature   ?? undefined,
     dateDebut:     data.debut_prevu      ?? undefined,

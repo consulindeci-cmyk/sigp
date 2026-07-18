@@ -159,6 +159,7 @@ export function useUpdateTask(projectId: string) {
       const { data } = await invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', {
         id,
         libelle: dto.description,
+        wbsId: dto.wbs_id ?? undefined,
         responsableId: dto.responsable ?? undefined,
         dateDebutPrevue: dto.date_debut ?? undefined,
         dateFinPrevue: dto.date_fin ?? undefined,

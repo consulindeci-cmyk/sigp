@@ -23,8 +23,8 @@ export const BudgetMatrixRow = memo(({
       {/* First column — WBS */}
       <td className="px-4 py-2.5 bg-card border-r border-border font-semibold text-foreground whitespace-nowrap">
         <div className="flex flex-col gap-0.5">
-          <span>{ligne.wbs_nom || ligne.wbs_id}</span>
-          <span className="text-[10px] text-muted-foreground/80">Réf: {ligne.wbs_id}</span>
+          <span>{ligne.libelle || ligne.code_ligne}</span>
+          <span className="text-[10px] text-muted-foreground/80">Réf: {ligne.code_ligne}</span>
         </div>
       </td>
 

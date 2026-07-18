@@ -3,8 +3,9 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText, Calendar, ListTree, CheckCircle2, AlertCircle,
-  LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet,
+  LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet, ListChecks,
 } from 'lucide-react';
+import ProjectActivitiesTab from '@/components/project/ProjectActivitiesTab';
 import { usePTBA, useWorkflowPTBA } from '@/hooks/usePTBA';
 import { useTasks } from '@/hooks/useTasks';
 import { useUIStore } from '@/stores/uiStore';
@@ -446,6 +447,10 @@ export default function PTBAPage() {
                 <ListTree className="h-3.5 w-3.5" />
                 Gantt &amp; Chronologie
               </TabsTrigger>
+              <TabsTrigger value="activities" className="flex items-center gap-1.5 text-xs sm:text-sm">
+                <ListChecks className="h-3.5 w-3.5" />
+                Activités
+              </TabsTrigger>
             </TabsList>
 
             {/* Matrix */}
@@ -466,6 +471,15 @@ export default function PTBAPage() {
             {/* Gantt */}
             <TabsContent value="gantt" className="flex-1 min-h-0 overflow-hidden mt-0">
               <PTBAGanttView annee={annee} activities={activities} />
+            </TabsContent>
+
+            {/* Activités */}
+            <TabsContent value="activities" className="flex-1 min-h-0 overflow-y-auto mt-0">
+              <div className="px-4 sm:px-6 lg:px-8 py-6">
+                <div className="mx-auto w-full max-w-layout">
+                  <ProjectActivitiesTab />
+                </div>
+              </div>
             </TabsContent>
 
           </Tabs>

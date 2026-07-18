@@ -288,7 +288,6 @@ export default function DashboardPage() {
             value={portfolioKPIs.totalProjets}
             icon={<LayoutGrid className="h-5 w-5 text-primary" aria-hidden="true" />}
             iconVariant="primary"
-            trend={{ value: 3, label: 'vs trimestre précédent', isPositive: true }}
           />
           <StatCard
             title="Projets Actifs"
@@ -309,7 +308,6 @@ export default function DashboardPage() {
             value={portfolioKPIs.projetsEnRetard}
             icon={<AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />}
             iconVariant="destructive"
-            trend={{ value: 1, label: 'nécessite une attention', isPositive: false }}
           />
         </div>
       </section>
@@ -977,7 +975,7 @@ export default function DashboardPage() {
           <CardHeader className="pb-3">
             <SectionHeader
               title="Ligne de Temps du Portefeuille"
-              subtitle="Jalons et échéances — Juil. à Nov. 2026"
+              subtitle="Jalons et échéances à venir"
               action={
                 <Button
                   variant="link"

@@ -1419,12 +1419,12 @@ export default function ProjectGovernanceTab() {
   const contactColumns = buildContactColumns(openContactView, openContactEdit, openContactDelete);
 
   return (
-    <section aria-label="Gouvernance & Acteurs" className="flex flex-col gap-6">
+    <section aria-label="Membres & Acteurs" className="flex flex-col gap-6">
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border">
         <div>
-          <h1 className="text-base font-bold text-foreground">Gouvernance &amp; Acteurs</h1>
+          <h1 className="text-base font-bold text-foreground">Membres &amp; Acteurs</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Équipe projet, comités, bailleurs et parties prenantes</p>
         </div>
         <Button

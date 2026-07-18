@@ -43,8 +43,8 @@ export const CATEGORIES_REF = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LigneFormValues {
-  wbs_nom:               string;
-  wbs_id:                string;
+  libelle:               string;
+  code_ligne:                string;
   bailleur_id:           string;
   source_financement_id: string;
   categorie_id:          string;
@@ -60,8 +60,8 @@ interface LigneFormValues {
 type LigneFormErrors = Partial<Record<keyof LigneFormValues, string>>;
 
 const EMPTY_FORM: LigneFormValues = {
-  wbs_nom:               '',
-  wbs_id:                '',
+  libelle:               '',
+  code_ligne:                '',
   bailleur_id:           '',
   source_financement_id: 'PRET',
   categorie_id:          '',
@@ -76,8 +76,8 @@ const EMPTY_FORM: LigneFormValues = {
 
 function ligneToForm(l: BudgetLigne): LigneFormValues {
   return {
-    wbs_nom:               l.wbs_nom               ?? '',
-    wbs_id:                l.wbs_id,
+    libelle:               l.libelle               ?? '',
+    code_ligne:                l.code_ligne,
     bailleur_id:           l.bailleur_id,
     source_financement_id: l.source_financement_id,
     categorie_id:          l.categorie_id,
@@ -162,7 +162,7 @@ export function BudgetLigneSlideOver({
 
   function validate(): boolean {
     const errs: LigneFormErrors = {};
-    if (!values.wbs_nom.trim()) errs.wbs_nom     = 'Requis';
+    if (!values.libelle.trim()) errs.libelle     = 'Requis';
     if (!values.bailleur_id)    errs.bailleur_id  = 'Requis';
     if (!values.categorie_id)   errs.categorie_id = 'Requis';
 
@@ -205,8 +205,8 @@ export function BudgetLigneSlideOver({
     const bailleur = BAILLEURS_REF.find(b => b.id === values.bailleur_id);
 
     onSave({
-      wbs_nom:               values.wbs_nom.trim(),
-      wbs_id:                values.wbs_id.trim() || `wbs-${Date.now()}`,
+      libelle:               values.libelle.trim(),
+      code_ligne:                values.code_ligne.trim() || `wbs-${Date.now()}`,
       bailleur_id:           values.bailleur_id,
       bailleur_nom:          bailleur?.nom ?? values.bailleur_id,
       source_financement_id: values.source_financement_id,
@@ -246,19 +246,19 @@ export function BudgetLigneSlideOver({
                 Identification
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FRow id="wbs-nom" label="Composante / WBS *" error={errors.wbs_nom} full>
+                <FRow id="wbs-nom" label="Composante / WBS *" error={errors.libelle} full>
                   <Input
                     id="wbs-nom"
-                    value={values.wbs_nom}
-                    onChange={e => set('wbs_nom', e.target.value)}
+                    value={values.libelle}
+                    onChange={e => set('libelle', e.target.value)}
                     placeholder="Ex : Construction Ligne HT"
                   />
                 </FRow>
                 <FRow id="wbs-id" label="Code WBS">
                   <Input
                     id="wbs-id"
-                    value={values.wbs_id}
-                    onChange={e => set('wbs_id', e.target.value)}
+                    value={values.code_ligne}
+                    onChange={e => set('code_ligne', e.target.value)}
                     placeholder="Ex : wbs-1-1"
                     className="font-mono"
                   />

@@ -62,7 +62,7 @@ function adaptLine(row: BudgetLineRow): BudgetLigne {
     id:                    row.id,
     budget_version_id:     row.version_id,
     version:               1,
-    wbs_id:                row.code_ligne,
+    code_ligne:            row.code_ligne,
     bailleur_id:           '',
     source_financement_id: row.categorie ?? '',
     categorie_id:          row.categorie ?? '',
@@ -75,7 +75,7 @@ function adaptLine(row: BudgetLineRow): BudgetLigne {
     montant_decaisse:      paye,
     solde_disponible:      Math.max(0, prevu - engage),
     reste_a_payer:         Math.max(0, engage - paye),
-    wbs_nom:               row.libelle,
+    libelle:               row.libelle,
     bailleur_nom:          undefined,
   };
 }

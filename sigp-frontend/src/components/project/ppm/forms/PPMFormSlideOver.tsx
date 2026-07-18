@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
 import { PPMLigne } from '@/types';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/forms/Button';
+import { useTasks } from '@/hooks/useTasks';
+import { usePpmMarcheActivites, useSetPpmMarcheActivites } from '@/hooks/usePPM';
 
 interface PPMFormSlideOverProps {
   isOpen: boolean;
@@ -10,12 +12,29 @@ interface PPMFormSlideOverProps {
   ligne?: PPMLigne | null;
   onSave: (data: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
+  projectId: string;
 }
 
-export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: PPMFormSlideOverProps) {
+export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, projectId }: PPMFormSlideOverProps) {
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [error,           setError]           = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Activités PTBA liées à ce marché (many-to-many) — uniquement pertinent
+  // une fois le marché créé (besoin de son id réel).
+  const { data: tasksData } = useTasks(projectId, { limit: 200 });
+  const projectActivites = useMemo(() => tasksData?.data ?? [], [tasksData]);
+  const { data: linkedActivites } = usePpmMarcheActivites(ligne?.id ?? '');
+  const setActivitesMutation = useSetPpmMarcheActivites();
+  const [selectedActiviteIds, setSelectedActiviteIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelectedActiviteIds((linkedActivites ?? []).map(a => a.id));
+  }, [linkedActivites]);
+
+  function toggleActivite(id: string) {
+    setSelectedActiviteIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
 
   // Local form state
   const [reference,     setReference]     = useState('');
@@ -132,6 +151,9 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
         est_lot_unique:       true,
         dates_cles:           dates,
       });
+      if (ligne) {
+        await setActivitesMutation.mutateAsync({ marcheId: ligne.id, activiteIds: selectedActiviteIds });
+      }
       onClose();
     } catch (err: unknown) {
       setError((err as Error).message || 'Erreur lors de la sauvegarde');
@@ -253,6 +275,31 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete }: P
                     <option value="bl-2">Budget Ligne 2 (Services)</option>
                     <option value="bl-3">Budget Ligne 3 (Épuisée)</option>
                   </select>
+                </div>
+                <div className="col-span-2">
+                  <label className={LABEL_CLASS}>Activités PTBA couvertes</label>
+                  {!ligne ? (
+                    <p className="text-xs text-muted-foreground italic">
+                      Disponible après l'enregistrement de la ligne de marché.
+                    </p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto border border-border rounded-md divide-y divide-border">
+                      {projectActivites.length === 0 && (
+                        <p className="text-xs text-muted-foreground p-3">Aucune activité PTBA sur ce projet.</p>
+                      )}
+                      {projectActivites.map(a => (
+                        <label key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            checked={selectedActiviteIds.includes(a.id)}
+                            onChange={() => toggleActivite(a.id)}
+                          />
+                          <span className="font-mono text-xs text-muted-foreground">{a.code_tache}</span>
+                          <span className="text-foreground truncate">{a.description}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

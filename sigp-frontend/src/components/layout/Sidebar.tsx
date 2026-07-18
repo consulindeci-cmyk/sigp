@@ -28,16 +28,14 @@ export const PROJECT_NAV_GROUPS = [
     title: "Aperçu & Cadrage",
     items: [
       { id: "overview",   label: "Informations Générales", status: "success" },
-      { id: "governance", label: "Gouvernance",             status: "success" },
+      { id: "governance", label: "Membres",                status: "success" },
       { id: "logframe",   label: "Cadre Logique",           status: "success" },
-      { id: "wbs",        label: "Structure (WBS)",         status: "success" },
     ],
   },
   {
     title: "Planification & Opérations",
     items: [
       { id: "ptba",       label: "PTBA",                   status: "success" },
-      { id: "activities", label: "Activités",              status: "success" },
       { id: "journal",    label: "Journal des Opérations", status: "success" },
     ],
   },

@@ -474,8 +474,8 @@ export default function BudgetPage() {
       id,
       budget_version_id:     budgetVersion?.id ?? 'local',
       version:               1,
-      wbs_id:                data.wbs_id                || uid('wbs'),
-      wbs_nom:               data.wbs_nom,
+      code_ligne:                data.code_ligne                || uid('wbs'),
+      libelle:               data.libelle,
       bailleur_id:           data.bailleur_id           || '',
       bailleur_nom:          data.bailleur_nom,
       source_financement_id: data.source_financement_id || 'PRET',
@@ -530,7 +530,7 @@ export default function BudgetPage() {
       action:  'SUPPRESSION',
       date:    new Date().toISOString(),
       user:    'Utilisateur',
-      comment: deleted ? `Ligne "${deleted.wbs_nom || deleted.wbs_id}" supprimée` : undefined,
+      comment: deleted ? `Ligne "${deleted.libelle || deleted.code_ligne}" supprimée` : undefined,
       before:  deleted,
     }]);
   }
@@ -542,8 +542,8 @@ export default function BudgetPage() {
     const duplicate: BudgetLigne = {
       ...source,
       id:      newId,
-      wbs_nom: source.wbs_nom ? `${source.wbs_nom} (copie)` : undefined,
-      wbs_id:  `${source.wbs_id}-copy`,
+      libelle: source.libelle ? `${source.libelle} (copie)` : undefined,
+      code_ligne:  `${source.code_ligne}-copy`,
     };
     setLocalLignes(prev => {
       const idx  = prev.findIndex(l => l.id === id);
@@ -557,7 +557,7 @@ export default function BudgetPage() {
       action:  'DUPLICATION',
       date:    new Date().toISOString(),
       user:    'Utilisateur',
-      comment: `Dupliqué depuis "${source.wbs_nom || source.wbs_id}"`,
+      comment: `Dupliqué depuis "${source.libelle || source.code_ligne}"`,
       after:   duplicate,
     }]);
   }
@@ -569,8 +569,8 @@ export default function BudgetPage() {
         id,
         budget_version_id:     budgetVersion?.id ?? 'local',
         version:               1,
-        wbs_id:                data.wbs_id                || uid('wbs'),
-        wbs_nom:               data.wbs_nom,
+        code_ligne:                data.code_ligne                || uid('wbs'),
+        libelle:               data.libelle,
         bailleur_id:           data.bailleur_id           || '',
         bailleur_nom:          data.bailleur_nom,
         source_financement_id: data.source_financement_id || 'PRET',
