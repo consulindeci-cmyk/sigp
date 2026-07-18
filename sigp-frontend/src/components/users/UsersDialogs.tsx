@@ -9,14 +9,14 @@ import {
   ModalClose,
 } from '@/components/ui/overlays/Modal';
 import { Button } from '@/components/ui/forms/Button';
-import { UserSlideOver, type UserSlideOverMode } from '@/components/users/UserSlideOver';
+import { UserFormModal, type UserFormModalMode } from '@/components/users/UserFormModal';
 import { type UserRow, type CreateUserPayload, type UpdateUserPayload } from '@/lib/userAdapter';
 
 export interface UsersDialogsProps {
   slideOverOpen: boolean;
   onSlideOverOpenChange: (open: boolean) => void;
   selectedUser: UserRow | null;
-  slideOverMode: UserSlideOverMode;
+  slideOverMode: UserFormModalMode;
   onSaveCreate: (data: CreateUserPayload) => void;
   onSaveUpdate: (data: UpdateUserPayload) => void;
   isSaving: boolean;
@@ -45,7 +45,7 @@ export function UsersDialogs({
 }: UsersDialogsProps) {
   return (
     <>
-      <UserSlideOver
+      <UserFormModal
         open={slideOverOpen}
         onOpenChange={onSlideOverOpenChange}
         user={selectedUser}

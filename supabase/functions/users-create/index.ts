@@ -42,11 +42,40 @@ Deno.serve(async (req: Request) => {
     const email = body.email.trim().toLowerCase();
 
     // org_admin (ADMIN scopé) ne peut créer que dans sa propre organisation —
-    // tout organisationId qu'il fournirait est ignoré. Seul SUPER_ADMIN peut
-    // cibler une organisation arbitraire (ou aucune, historiquement possible).
-    const organisationId = profile.role === 'SUPER_ADMIN'
-      ? (body.organisationId ?? null)
-      : profile.organisation_id;
+    // tout organisationId qu'il fournirait est ignoré, et son choix de rôle
+    // reste libre parmi les 6 rôles non-plateforme (y compris ADMIN, pour
+    // ajouter un co-administrateur à sa propre organisation).
+    //
+    // SUPER_ADMIN, en revanche, ne gère pas les utilisateurs métier des
+    // organisations — sa seule action possible ici est de provisionner un
+    // administrateur d'organisation (ADMIN) rattaché à une organisation
+    // active explicite. Toute autre valeur de rôle, ou une organisation
+    // absente/inexistante/suspendue, est rejetée.
+    let organisationId: string | null;
+    if (profile.role === 'SUPER_ADMIN') {
+      if (body.role && body.role !== 'ADMIN') {
+        return json({ error: "Un SUPER_ADMIN ne peut créer que des administrateurs d'organisation (ADMIN)" }, 403);
+      }
+      if (!body.organisationId) {
+        return json({ error: "L'organisation de rattachement est obligatoire" }, 400);
+      }
+      const { data: targetOrg, error: targetOrgError } = await admin
+        .from('organisations')
+        .select('id, statut')
+        .eq('id', body.organisationId)
+        .maybeSingle();
+      if (targetOrgError) throw targetOrgError;
+      if (!targetOrg) return json({ error: 'Organisation introuvable' }, 404);
+      if (targetOrg.statut === 'SUSPENDUE') {
+        return json({ error: 'Impossible de rattacher un administrateur à une organisation suspendue' }, 400);
+      }
+      organisationId = body.organisationId;
+    } else {
+      organisationId = profile.organisation_id;
+    }
+    // Forcé côté serveur (jamais déduit de body.role) : un SUPER_ADMIN crée
+    // toujours un ADMIN, même si le champ était omis côté client.
+    const finalRole = profile.role === 'SUPER_ADMIN' ? 'ADMIN' : (body.role ?? 'VIEWER');
 
     // Pré-check : email déjà utilisé par un compte actif (réplique findByEmail).
     const { data: existing, error: existingError } = await admin
@@ -67,7 +96,7 @@ Deno.serve(async (req: Request) => {
         prenom: body.prenom.trim(),
         email,
         mot_de_passe: 'SUPABASE_AUTH_MANAGED', // legacy NOT NULL, jamais utilisé pour l'auth réelle
-        role: body.role ?? 'VIEWER',
+        role: finalRole,
         actif: true, // pas de vrai défaut DB sur cette colonne — sans ceci, actif reste NULL
         telephone: body.telephone?.trim() ?? null,
         organisation_id: organisationId,

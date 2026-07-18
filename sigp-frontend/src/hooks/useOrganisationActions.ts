@@ -8,11 +8,11 @@ import {
   type CreateOrganisationAdminPayload,
   type UpdateOrganisationAdminPayload,
 } from '@/lib/organisationAdapter';
-import { type OrganisationSlideOverMode } from '@/components/organisations/OrganisationSlideOver';
+import { type OrganisationFormModalMode } from '@/components/organisations/OrganisationFormModal';
 
 export interface UseOrganisationActionsReturn {
   slideOverOpen: boolean;
-  slideOverMode: OrganisationSlideOverMode;
+  slideOverMode: OrganisationFormModalMode;
   selectedOrganisation: OrganisationRow | null;
   suspendModalOpen: boolean;
   organisationToToggle: OrganisationRow | null;
@@ -31,7 +31,7 @@ export interface UseOrganisationActionsReturn {
 
 export function useOrganisationActions(): UseOrganisationActionsReturn {
   const [slideOverOpen, setSlideOverOpen] = useState(false);
-  const [slideOverMode, setSlideOverMode] = useState<OrganisationSlideOverMode>('view');
+  const [slideOverMode, setSlideOverMode] = useState<OrganisationFormModalMode>('view');
   const [selectedOrganisation, setSelectedOrganisation] = useState<OrganisationRow | null>(null);
 
   const [suspendModalOpen, setSuspendModalOpen] = useState(false);

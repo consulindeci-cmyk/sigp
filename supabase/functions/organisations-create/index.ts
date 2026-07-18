@@ -14,6 +14,8 @@ interface CreateOrganisationBody {
   telephone?: string;
   email?: string;
   siteWeb?: string;
+  deviseDefaut?: string;
+  identifiantFiscal?: string;
   // Premier utilisateur ADMIN (org_admin) de la nouvelle organisation.
   adminNom: string;
   adminPrenom: string;
@@ -21,6 +23,8 @@ interface CreateOrganisationBody {
   adminPassword: string;
   adminTelephone?: string;
 }
+
+const ALLOWED_DEVISES = new Set(['XOF', 'EUR', 'USD']);
 
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -48,6 +52,10 @@ Deno.serve(async (req: Request) => {
         400,
       );
     }
+    const deviseDefaut = body.deviseDefaut?.trim().toUpperCase() || 'XOF';
+    if (!ALLOWED_DEVISES.has(deviseDefaut)) {
+      return json({ error: 'Devise par défaut invalide (XOF, EUR ou USD attendu)' }, 400);
+    }
 
     const { data: existingUser, error: existingUserError } = await admin
       .from('users')
@@ -72,6 +80,8 @@ Deno.serve(async (req: Request) => {
         telephone: body.telephone?.trim() ?? null,
         email: body.email?.trim() ?? null,
         site_web: body.siteWeb?.trim() ?? null,
+        devise_defaut: deviseDefaut,
+        identifiant_fiscal: body.identifiantFiscal?.trim() || null,
         updated_at: now,
       })
       .select('*')

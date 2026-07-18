@@ -3,30 +3,31 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  X, Mail, Phone, MapPin, CalendarDays, Shield,
-  FolderKanban, Users as UsersIcon, AlertCircle,
+  Mail, Phone, MapPin, CalendarDays, Shield,
+  FolderKanban, Users as UsersIcon, AlertCircle, Landmark, Coins,
 } from 'lucide-react';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
+import { Select } from '@/components/ui/forms/Select';
 import { Badge } from '@/components/ui/data-display/Badge';
 import {
-  SlideOver,
-  SlideOverContent,
-  SlideOverHeader,
-  SlideOverTitle,
-  SlideOverDescription,
-  SlideOverBody,
-  SlideOverFooter,
-  SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalTitle,
+  ModalDescription,
+  ModalFooter,
+  ModalClose,
+} from '@/components/ui/overlays/Modal';
 import {
+  DEVISE_OPTIONS,
   type OrganisationRow,
   type UpdateOrganisationAdminPayload,
   type CreateOrganisationAdminPayload,
 } from '@/lib/organisationAdapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Schémas — miroir de UserSlideOver.tsx (createUserSchema/updateUserSchema)
+// Schémas — miroir de UserFormModal.tsx (createUserSchema/updateUserSchema)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
@@ -39,6 +40,8 @@ const profileFieldsSchema = {
   telephone: z.string().trim().max(30, 'Maximum 30 caractères').optional().or(z.literal('')),
   email: z.string().trim().max(255, 'Maximum 255 caractères').email('Adresse email invalide').optional().or(z.literal('')),
   siteWeb: z.string().trim().max(255, 'Maximum 255 caractères').optional().or(z.literal('')),
+  deviseDefaut: z.enum(['XOF', 'EUR', 'USD']),
+  identifiantFiscal: z.string().trim().max(100, 'Maximum 100 caractères').optional().or(z.literal('')),
 };
 
 export const editOrganisationSchema = z.object(profileFieldsSchema);
@@ -68,6 +71,7 @@ export type OrganisationFormValues = z.infer<typeof createOrganisationSchema>;
 
 const EMPTY_FORM: OrganisationFormValues = {
   nom: '', adresse: '', ville: '', pays: '', telephone: '', email: '', siteWeb: '',
+  deviseDefaut: 'XOF', identifiantFiscal: '',
   adminNom: '', adminPrenom: '', adminEmail: '', adminTelephone: '', adminPassword: '',
 };
 
@@ -75,13 +79,13 @@ const EMPTY_FORM: OrganisationFormValues = {
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type OrganisationSlideOverMode = 'view' | 'edit' | 'new';
+export type OrganisationFormModalMode = 'view' | 'edit' | 'new';
 
-export interface OrganisationSlideOverProps {
+export interface OrganisationFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   organisation: OrganisationRow | null;
-  mode: OrganisationSlideOverMode;
+  mode: OrganisationFormModalMode;
   onSaveCreate?: (data: CreateOrganisationAdminPayload) => void;
   onSaveUpdate?: (data: Omit<UpdateOrganisationAdminPayload, 'organisationId'>) => void;
   isSaving?: boolean;
@@ -130,36 +134,38 @@ const OrganisationViewContent = React.memo(function OrganisationViewContent({ or
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-border pt-4">
+      <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
         <InfoRow icon={<CalendarDays className="h-3.5 w-3.5" />} label="Date de création" value={organisation.createdAtDisplay} />
         <InfoRow icon={<FolderKanban className="h-3.5 w-3.5" />} label="Projets actifs" value={String(organisation.projetsActifsCount)} />
         <InfoRow icon={<UsersIcon className="h-3.5 w-3.5" />} label="Utilisateurs" value={String(organisation.utilisateursCount)} />
+        <InfoRow icon={<Coins className="h-3.5 w-3.5" />} label="Devise par défaut" value={organisation.deviseDefaut} />
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-border pt-4">
+      <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
         <InfoRow icon={<Shield className="h-3.5 w-3.5" />} label="Administrateur responsable" value={organisation.orgAdminNom} />
         <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="Email de l'administrateur" value={organisation.orgAdminEmail} />
-        {organisation.orgAdminCount > 1 && (
-          <p className="text-[11px] text-muted-foreground">
-            + {organisation.orgAdminCount - 1} autre(s) administrateur(s) sur cette organisation.
-          </p>
-        )}
       </div>
+      {organisation.orgAdminCount > 1 && (
+        <p className="text-[11px] text-muted-foreground -mt-3">
+          + {organisation.orgAdminCount - 1} autre(s) administrateur(s) sur cette organisation.
+        </p>
+      )}
 
-      <div className="flex flex-col gap-3 border-t border-border pt-4">
+      <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
         <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="Email de contact" value={organisation.email} />
         <InfoRow icon={<Phone className="h-3.5 w-3.5" />} label="Téléphone" value={organisation.telephone} />
         <InfoRow icon={<MapPin className="h-3.5 w-3.5" />} label="Adresse" value={[organisation.adresse, organisation.ville, organisation.pays].filter(Boolean).join(', ')} />
+        <InfoRow icon={<Landmark className="h-3.5 w-3.5" />} label="Identifiant fiscal" value={organisation.identifiantFiscal} />
       </div>
     </div>
   );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main SlideOver
+// Main Modal
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function OrganisationSlideOver({
+export function OrganisationFormModal({
   open,
   onOpenChange,
   organisation,
@@ -167,7 +173,7 @@ export function OrganisationSlideOver({
   onSaveCreate,
   onSaveUpdate,
   isSaving,
-}: OrganisationSlideOverProps) {
+}: OrganisationFormModalProps) {
   const readOnly = mode === 'view';
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -197,6 +203,8 @@ export function OrganisationSlideOver({
           telephone: organisation.telephone || '',
           email: organisation.email || '',
           siteWeb: organisation.siteWeb || '',
+          deviseDefaut: organisation.deviseDefaut || 'XOF',
+          identifiantFiscal: organisation.identifiantFiscal || '',
         });
       }
     }
@@ -212,6 +220,8 @@ export function OrganisationSlideOver({
         telephone: data.telephone || undefined,
         email: data.email || undefined,
         siteWeb: data.siteWeb || undefined,
+        deviseDefaut: data.deviseDefaut,
+        identifiantFiscal: data.identifiantFiscal || undefined,
         adminNom: data.adminNom,
         adminPrenom: data.adminPrenom,
         adminEmail: data.adminEmail,
@@ -227,40 +237,37 @@ export function OrganisationSlideOver({
         telephone: data.telephone || undefined,
         email: data.email || undefined,
         siteWeb: data.siteWeb || undefined,
+        deviseDefaut: data.deviseDefaut,
+        identifiantFiscal: data.identifiantFiscal || undefined,
       });
     }
   };
 
-  const titles: Record<OrganisationSlideOverMode, string> = {
+  const titles: Record<OrganisationFormModalMode, string> = {
     view: 'Détail organisation',
     edit: "Modifier l'organisation",
     new: 'Nouvelle organisation',
   };
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent className="sm:max-w-md">
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverDescription>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+          <ModalDescription>
             {readOnly
               ? `Détail de ${organisation?.nom ?? "l'organisation"}`
               : mode === 'new'
                 ? "Onboarding d'un nouveau tenant : organisation + premier administrateur."
                 : `Modification des informations de ${organisation?.nom ?? "l'organisation"}`}
-          </SlideOverDescription>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+          </ModalDescription>
+        </ModalHeader>
 
-        <SlideOverBody>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && organisation ? (
             <OrganisationViewContent organisation={organisation} />
           ) : (
-            <form id="organisation-slideover-form" onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form id="organisation-form-modal" onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5 sm:col-span-2">
                 <label className="text-sm font-medium text-foreground" htmlFor="o-nom">
                   Nom de l'organisation *
@@ -320,6 +327,30 @@ export function OrganisationSlideOver({
                   Site web
                 </label>
                 <Input id="o-site-web" {...register('siteWeb')} placeholder="https://..." />
+              </div>
+
+              <div className="sm:col-span-2 border-t border-border pt-4 mt-1">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Paramètres financiers
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-foreground" htmlFor="o-devise">
+                  Devise par défaut *
+                </label>
+                <Select id="o-devise" {...register('deviseDefaut')} aria-invalid={errors.deviseDefaut ? 'true' : 'false'}>
+                  {DEVISE_OPTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-foreground" htmlFor="o-identifiant-fiscal">
+                  Identifiant fiscal / d'enregistrement
+                </label>
+                <Input id="o-identifiant-fiscal" {...register('identifiantFiscal')} placeholder="Optionnel" />
               </div>
 
               {mode === 'new' && (
@@ -396,14 +427,14 @@ export function OrganisationSlideOver({
               )}
             </form>
           )}
-        </SlideOverBody>
+        </div>
 
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
-            <Button type="submit" form="organisation-slideover-form" variant="default" disabled={isSaving}>
+            <Button type="submit" form="organisation-form-modal" variant="default" disabled={isSaving}>
               {isSaving
                 ? 'Enregistrement...'
                 : mode === 'edit'
@@ -411,8 +442,8 @@ export function OrganisationSlideOver({
                   : "Créer l'organisation"}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

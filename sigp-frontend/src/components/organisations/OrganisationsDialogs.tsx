@@ -10,9 +10,9 @@ import {
 } from '@/components/ui/overlays/Modal';
 import { Button } from '@/components/ui/forms/Button';
 import {
-  OrganisationSlideOver,
-  type OrganisationSlideOverMode,
-} from '@/components/organisations/OrganisationSlideOver';
+  OrganisationFormModal,
+  type OrganisationFormModalMode,
+} from '@/components/organisations/OrganisationFormModal';
 import {
   type OrganisationRow,
   type CreateOrganisationAdminPayload,
@@ -23,7 +23,7 @@ export interface OrganisationsDialogsProps {
   slideOverOpen: boolean;
   onSlideOverOpenChange: (open: boolean) => void;
   selectedOrganisation: OrganisationRow | null;
-  slideOverMode: OrganisationSlideOverMode;
+  slideOverMode: OrganisationFormModalMode;
   onSaveCreate: (data: CreateOrganisationAdminPayload) => void;
   onSaveUpdate: (data: Omit<UpdateOrganisationAdminPayload, 'organisationId'>) => void;
   isSaving: boolean;
@@ -54,7 +54,7 @@ export function OrganisationsDialogs({
 
   return (
     <>
-      <OrganisationSlideOver
+      <OrganisationFormModal
         open={slideOverOpen}
         onOpenChange={onSlideOverOpenChange}
         organisation={selectedOrganisation}

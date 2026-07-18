@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
 import { type UserRow, type CreateUserPayload, type UpdateUserPayload } from '@/lib/userAdapter';
-import { type UserSlideOverMode } from '@/components/users/UserSlideOver';
+import { type UserFormModalMode } from '@/components/users/UserFormModal';
 
 export interface UseUserActionsReturn {
   slideOverOpen: boolean;
-  slideOverMode: UserSlideOverMode;
+  slideOverMode: UserFormModalMode;
   selectedUser: UserRow | null;
   deleteModalOpen: boolean;
   userToDelete: UserRow | null;
@@ -25,7 +25,7 @@ export interface UseUserActionsReturn {
 
 export function useUserActions(): UseUserActionsReturn {
   const [slideOverOpen, setSlideOverOpen] = useState(false);
-  const [slideOverMode, setSlideOverMode] = useState<UserSlideOverMode>('view');
+  const [slideOverMode, setSlideOverMode] = useState<UserFormModalMode>('view');
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);

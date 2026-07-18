@@ -2,21 +2,22 @@ import React, { useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Mail, Phone, CalendarDays, Clock, Shield, AlertCircle } from 'lucide-react';
+import { Mail, Phone, CalendarDays, Clock, Shield, AlertCircle, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
 import { Badge } from '@/components/ui/data-display/Badge';
 import {
-  SlideOver,
-  SlideOverContent,
-  SlideOverHeader,
-  SlideOverTitle,
-  SlideOverDescription,
-  SlideOverBody,
-  SlideOverFooter,
-  SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalTitle,
+  ModalDescription,
+  ModalFooter,
+  ModalClose,
+} from '@/components/ui/overlays/Modal';
+import { useAuthStore } from '@/stores/authStore';
+import { useOrganisationsList } from '@/hooks/useOrganisationsAdmin';
 import {
   USER_ROLE_OPTIONS,
   USER_ROLE_LABELS,
@@ -31,13 +32,13 @@ import { userAvatarStyle } from '@/components/users/userAvatarStyle';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type UserSlideOverMode = 'view' | 'edit' | 'new';
+export type UserFormModalMode = 'view' | 'edit' | 'new';
 
-export interface UserSlideOverProps {
+export interface UserFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: UserRow | null;
-  mode: UserSlideOverMode;
+  mode: UserFormModalMode;
   onSaveCreate?: (data: CreateUserPayload) => void;
   onSaveUpdate?: (data: UpdateUserPayload) => void;
   isSaving?: boolean;
@@ -49,6 +50,8 @@ export interface UserSlideOverProps {
 
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
+// Création par un ADMIN (org_admin) — rôle libre parmi les 6 rôles métier,
+// implicitement rattaché à sa propre organisation (pas de champ organisation).
 export const createUserSchema = z.object({
   nom: z.string().trim().min(1, 'Le nom est obligatoire').max(100, 'Maximum 100 caractères'),
   prenom: z.string().trim().min(1, 'Le prénom est obligatoire').max(100, 'Maximum 100 caractères'),
@@ -60,6 +63,33 @@ export const createUserSchema = z.object({
     .max(255, 'Maximum 255 caractères'),
   telephone: z.string().trim().max(30, 'Maximum 30 caractères').optional().or(z.literal('')),
   role: z.enum(['ADMIN', 'COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'AUDITEUR', 'VIEWER']),
+  actif: z.boolean().default(true),
+  password: z
+    .string()
+    .min(8, 'Le mot de passe doit contenir au moins 8 caractères')
+    .max(128, 'Maximum 128 caractères')
+    .regex(
+      PASSWORD_REGEX,
+      'Doit contenir au moins 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial'
+    ),
+});
+
+// Création par un SUPER_ADMIN — le seul rôle qu'il peut provisionner est
+// ADMIN (administrateur d'organisation), obligatoirement rattaché à une
+// organisation existante. Ne gère jamais les utilisateurs métier des
+// organisations (COORDINATEUR/FINANCIER/etc.), délégué aux org_admin.
+export const createUserSuperAdminSchema = z.object({
+  nom: z.string().trim().min(1, 'Le nom est obligatoire').max(100, 'Maximum 100 caractères'),
+  prenom: z.string().trim().min(1, 'Le prénom est obligatoire').max(100, 'Maximum 100 caractères'),
+  email: z
+    .string()
+    .trim()
+    .min(1, "L'adresse email est obligatoire")
+    .email('Adresse email invalide')
+    .max(255, 'Maximum 255 caractères'),
+  telephone: z.string().trim().max(30, 'Maximum 30 caractères').optional().or(z.literal('')),
+  role: z.literal('ADMIN'),
+  organisationId: z.string().trim().min(1, "L'organisation de rattachement est obligatoire"),
   actif: z.boolean().default(true),
   password: z
     .string()
@@ -84,7 +114,10 @@ export const updateUserSchema = z.object({
   password: z.string().optional().or(z.literal('')),
 });
 
-export type UserFormValues = Omit<z.infer<typeof createUserSchema>, 'role'> & { role: UserRole };
+export type UserFormValues = Omit<z.infer<typeof createUserSchema>, 'role'> & {
+  role: UserRole;
+  organisationId?: string;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -141,7 +174,7 @@ const UserViewContent = React.memo(function UserViewContent({ user }: { user: Us
       </div>
 
       {/* Coordonnées */}
-      <div className="flex flex-col gap-3 border-t border-border pt-4">
+      <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
         <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={user.email} />
         <InfoRow
           icon={<Phone className="h-3.5 w-3.5" />}
@@ -156,7 +189,7 @@ const UserViewContent = React.memo(function UserViewContent({ user }: { user: Us
       </div>
 
       {/* Dates */}
-      <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
+      <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
         <InfoRow
           icon={<CalendarDays className="h-3.5 w-3.5" />}
           label="Date création"
@@ -173,10 +206,10 @@ const UserViewContent = React.memo(function UserViewContent({ user }: { user: Us
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main SlideOver Component
+// Main Modal Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function UserSlideOver({
+export function UserFormModal({
   open,
   onOpenChange,
   user,
@@ -184,11 +217,23 @@ export function UserSlideOver({
   onSaveCreate,
   onSaveUpdate,
   isSaving,
-}: UserSlideOverProps) {
+}: UserFormModalProps) {
   const readOnly = mode === 'view';
 
+  // SUPER_ADMIN ne provisionne que des administrateurs d'organisation (ADMIN),
+  // jamais les utilisateurs métier — délégué aux org_admin de chaque organisation.
+  const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
+  const restrictToOrgAdmin = mode === 'new' && isSuperAdmin;
+
+  const { data: organisations } = useOrganisationsList(restrictToOrgAdmin);
+  const activeOrganisations = (organisations ?? []).filter(o => o.statut === 'ACTIVE');
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const resolver = (mode === 'new' ? zodResolver(createUserSchema) : zodResolver(updateUserSchema)) as any;
+  const resolver = (
+    mode === 'new'
+      ? zodResolver(restrictToOrgAdmin ? createUserSuperAdminSchema : createUserSchema)
+      : zodResolver(updateUserSchema)
+  ) as any;
 
   const {
     register,
@@ -205,6 +250,7 @@ export function UserSlideOver({
       email: '',
       telephone: '',
       role: 'VIEWER',
+      organisationId: '',
       actif: true,
       password: '',
     },
@@ -220,7 +266,8 @@ export function UserSlideOver({
           prenom: '',
           email: '',
           telephone: '',
-          role: 'VIEWER',
+          role: restrictToOrgAdmin ? 'ADMIN' : 'VIEWER',
+          organisationId: '',
           actif: true,
           password: '',
         });
@@ -236,7 +283,7 @@ export function UserSlideOver({
         });
       }
     }
-  }, [open, mode, user, reset]);
+  }, [open, mode, user, reset, restrictToOrgAdmin]);
 
   const onSubmit: SubmitHandler<UserFormValues> = (data) => {
     if (mode === 'new') {
@@ -245,8 +292,9 @@ export function UserSlideOver({
         prenom: data.prenom,
         email: data.email,
         password: data.password || '',
-        role: data.role as UserRole,
+        role: restrictToOrgAdmin ? 'ADMIN' : (data.role as UserRole),
         telephone: data.telephone || undefined,
+        organisationId: restrictToOrgAdmin ? data.organisationId : undefined,
       });
     } else if (mode === 'edit' && user) {
       onSaveUpdate?.({
@@ -259,36 +307,33 @@ export function UserSlideOver({
     }
   };
 
-  const titles: Record<UserSlideOverMode, string> = {
+  const titles: Record<UserFormModalMode, string> = {
     view: 'Profil utilisateur',
     edit: "Modifier l'utilisateur",
-    new: 'Nouvel utilisateur',
+    new: restrictToOrgAdmin ? "Nouvel administrateur d'organisation" : 'Nouvel utilisateur',
   };
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent className="sm:max-w-md">
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverDescription>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+          <ModalDescription>
             {readOnly
               ? `Détail et profil de ${user?.fullName ?? "l'utilisateur"}`
               : mode === 'new'
-                ? "Création d'un nouveau compte utilisateur dans le système."
+                ? restrictToOrgAdmin
+                  ? "Provisionne le premier (ou un nouvel) administrateur d'une organisation existante."
+                  : "Création d'un nouveau compte utilisateur dans le système."
                 : `Modification des informations de ${user?.fullName ?? "l'utilisateur"}`}
-          </SlideOverDescription>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+          </ModalDescription>
+        </ModalHeader>
 
-        <SlideOverBody>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && user ? (
             <UserViewContent user={user} />
           ) : (
-            <form id="user-slideover-form" onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form id="user-form-modal" onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Prénom */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-foreground" htmlFor="u-prenom">
@@ -435,6 +480,16 @@ export function UserSlideOver({
                       Le rôle Super Administrateur ne peut pas être modifié depuis ce formulaire.
                     </span>
                   </>
+                ) : restrictToOrgAdmin ? (
+                  <>
+                    <Select id="u-role" {...register('role')} disabled aria-describedby="u-role-hint">
+                      <option value="ADMIN">{USER_ROLE_LABELS.ADMIN}</option>
+                    </Select>
+                    <span id="u-role-hint" className="text-[11px] text-muted-foreground">
+                      En tant que Super Administrateur, vous ne provisionnez que des administrateurs
+                      d'organisation — la gestion des autres utilisateurs est déléguée à chaque organisation.
+                    </span>
+                  </>
                 ) : (
                   <>
                     <Select
@@ -458,18 +513,46 @@ export function UserSlideOver({
                   </>
                 )}
               </div>
+
+              {/* Organisation de rattachement (SUPER_ADMIN uniquement, création) */}
+              {restrictToOrgAdmin && (
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="u-organisation">
+                    <Building2 className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5" aria-hidden="true" />
+                    Organisation de rattachement *
+                  </label>
+                  <Select
+                    id="u-organisation"
+                    {...register('organisationId')}
+                    aria-invalid={errors.organisationId ? 'true' : 'false'}
+                    aria-describedby={errors.organisationId ? 'error-organisation' : undefined}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Sélectionner une organisation active…</option>
+                    {activeOrganisations.map((org) => (
+                      <option key={org.id} value={org.id}>{org.nom}</option>
+                    ))}
+                  </Select>
+                  {errors.organisationId && (
+                    <span id="error-organisation" role="alert" className="text-xs text-destructive flex items-center gap-1 mt-0.5">
+                      <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      {errors.organisationId.message}
+                    </span>
+                  )}
+                </div>
+              )}
             </form>
           )}
-        </SlideOverBody>
+        </div>
 
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button
               type="submit"
-              form="user-slideover-form"
+              form="user-form-modal"
               variant="default"
               disabled={isSaving}
             >
@@ -480,8 +563,8 @@ export function UserSlideOver({
                   : "Créer l'utilisateur"}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

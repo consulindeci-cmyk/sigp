@@ -15,10 +15,14 @@ interface UpdateOrganisationBody {
   telephone?: string;
   email?: string;
   siteWeb?: string;
+  deviseDefaut?: string;
+  identifiantFiscal?: string;
   // ACTIVE | SUSPENDUE — une organisation suspendue bloque tous ses
   // utilisateurs dès le prochain appel, vérifié centralement dans authorize().
   statut?: string;
 }
+
+const ALLOWED_DEVISES = new Set(['XOF', 'EUR', 'USD']);
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -54,6 +58,16 @@ Deno.serve(async (req: Request) => {
     if (body.telephone !== undefined) updatePayload.telephone = body.telephone.trim();
     if (body.email !== undefined)     updatePayload.email = body.email.trim();
     if (body.siteWeb !== undefined)   updatePayload.site_web = body.siteWeb.trim();
+    if (body.deviseDefaut !== undefined) {
+      const deviseDefaut = body.deviseDefaut.trim().toUpperCase();
+      if (!ALLOWED_DEVISES.has(deviseDefaut)) {
+        return json({ error: 'Devise par défaut invalide (XOF, EUR ou USD attendu)' }, 400);
+      }
+      updatePayload.devise_defaut = deviseDefaut;
+    }
+    if (body.identifiantFiscal !== undefined) {
+      updatePayload.identifiant_fiscal = body.identifiantFiscal.trim() || null;
+    }
     if (body.statut !== undefined) {
       // Seul un SUPER_ADMIN peut suspendre/réactiver une organisation — un
       // org_admin ne devrait jamais pouvoir se réactiver lui-même après coup.

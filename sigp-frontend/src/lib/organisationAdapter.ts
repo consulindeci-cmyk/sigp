@@ -5,6 +5,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type OrganisationStatut = 'ACTIVE' | 'SUSPENDUE';
+export type DeviseOrganisation = 'XOF' | 'EUR' | 'USD';
+export const DEVISE_OPTIONS: { value: DeviseOrganisation; label: string }[] = [
+  { value: 'XOF', label: 'XOF — Franc CFA (BCEAO)' },
+  { value: 'EUR', label: 'EUR — Euro' },
+  { value: 'USD', label: 'USD — Dollar américain' },
+];
 
 // Ligne brute renvoyée par organisation_overview() (snake_case Postgres).
 export interface OrganisationOverviewRow {
@@ -16,6 +22,8 @@ export interface OrganisationOverviewRow {
   telephone: string | null;
   email: string | null;
   site_web: string | null;
+  devise_defaut: string | null;
+  identifiant_fiscal: string | null;
   statut: string;
   created_at: string;
   org_admin_id: string | null;
@@ -37,6 +45,8 @@ export interface OrganisationRow {
   telephone: string;
   email: string;
   siteWeb: string;
+  deviseDefaut: DeviseOrganisation;
+  identifiantFiscal: string;
   statut: OrganisationStatut;
   statutLabel: 'Actif' | 'Suspendu';
   createdAt: string;
@@ -79,6 +89,8 @@ export function adaptOrganisationRow(row: OrganisationOverviewRow): Organisation
     telephone: row.telephone ?? '',
     email: row.email ?? '',
     siteWeb: row.site_web ?? '',
+    deviseDefaut: (row.devise_defaut as DeviseOrganisation) || 'XOF',
+    identifiantFiscal: row.identifiant_fiscal ?? '',
     statut,
     statutLabel: statut === 'SUSPENDUE' ? 'Suspendu' : 'Actif',
     createdAt: row.created_at,
@@ -124,6 +136,8 @@ export interface UpdateOrganisationAdminPayload {
   telephone?: string;
   email?: string;
   siteWeb?: string;
+  deviseDefaut?: DeviseOrganisation;
+  identifiantFiscal?: string;
   statut?: OrganisationStatut;
 }
 
@@ -135,6 +149,8 @@ export interface CreateOrganisationAdminPayload {
   telephone?: string;
   email?: string;
   siteWeb?: string;
+  deviseDefaut?: DeviseOrganisation;
+  identifiantFiscal?: string;
   adminNom: string;
   adminPrenom: string;
   adminEmail: string;
