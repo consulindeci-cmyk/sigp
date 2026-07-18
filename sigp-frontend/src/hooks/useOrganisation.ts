@@ -3,14 +3,15 @@ import { supabase } from '@/lib/supabaseClient';
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 
 export interface Organisation {
-  id:        string;
-  nom:       string;
-  adresse:   string;
-  ville:     string;
-  pays:      string;
-  telephone: string;
-  email:     string;
-  siteWeb:   string;
+  id:           string;
+  nom:          string;
+  adresse:      string;
+  ville:        string;
+  pays:         string;
+  telephone:    string;
+  email:        string;
+  siteWeb:      string;
+  deviseDefaut: string;
 }
 
 interface OrganisationRow {
@@ -22,18 +23,20 @@ interface OrganisationRow {
   telephone: string | null;
   email: string | null;
   site_web: string | null;
+  devise_defaut: string | null;
 }
 
 function adapt(row: OrganisationRow): Organisation {
   return {
-    id:        row.id,
-    nom:       row.nom ?? '',
-    adresse:   row.adresse ?? '',
-    ville:     row.ville ?? '',
-    pays:      row.pays ?? '',
-    telephone: row.telephone ?? '',
-    email:     row.email ?? '',
-    siteWeb:   row.site_web ?? '',
+    id:           row.id,
+    nom:          row.nom ?? '',
+    adresse:      row.adresse ?? '',
+    ville:        row.ville ?? '',
+    pays:         row.pays ?? '',
+    telephone:    row.telephone ?? '',
+    email:        row.email ?? '',
+    siteWeb:      row.site_web ?? '',
+    deviseDefaut: row.devise_defaut ?? 'XOF',
   };
 }
 
@@ -49,7 +52,7 @@ export function useOrganisation() {
     queryFn: async (): Promise<Organisation | null> => {
       const { data, error } = await supabase
         .from('organisations')
-        .select('id, nom, adresse, ville, pays, telephone, email, site_web')
+        .select('id, nom, adresse, ville, pays, telephone, email, site_web, devise_defaut')
         .limit(1)
         .maybeSingle();
       if (error) throw error;

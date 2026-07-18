@@ -12,7 +12,16 @@ interface UpdateUserBody {
   bio?: string;
   role?: 'ADMIN' | 'COORDINATEUR' | 'CHARGE_PROGRAMME' | 'FINANCIER' | 'AUDITEUR' | 'VIEWER';
   actif?: boolean;
+  // SUPER_ADMIN uniquement — rattache un profil orphelin (organisation_id
+  // NULL) à une organisation. Jamais de réaffectation d'un utilisateur déjà
+  // rattaché (cf. validation plus bas) : pas de mouvement cross-organisation.
+  organisationId?: string;
 }
+
+// SUPER_ADMIN volontairement exclu : jamais assignable via cet endpoint,
+// même en injectant directement le corps de la requête (cf. audit — aucune
+// validation d'enum n'existait ici auparavant, role était passé tel quel).
+const ALLOWED_ROLES = new Set(['ADMIN', 'COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'AUDITEUR', 'VIEWER']);
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -23,6 +32,9 @@ Deno.serve(async (req: Request) => {
 
     const body: UpdateUserBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
+    if (body.role !== undefined && !ALLOWED_ROLES.has(body.role)) {
+      return json({ error: 'Rôle invalide' }, 400);
+    }
 
     // Un utilisateur peut toujours modifier son propre profil (page "Mon compte") ;
     // modifier un AUTRE utilisateur reste réservé à ADMIN (page Utilisateurs).
@@ -49,6 +61,38 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Utilisateur introuvable' }, 404);
 
+    // Cloisonnement multi-tenant : un ADMIN (org_admin) ne peut modifier que
+    // les utilisateurs de sa propre organisation — absent jusqu'ici, cette
+    // route ne vérifiait que le rôle de l'appelant, jamais l'appartenance à
+    // l'organisation de la cible. SUPER_ADMIN et l'auto-édition restent exemptés.
+    if (!isSelf && profile.role !== 'SUPER_ADMIN' && existing.organisation_id !== profile.organisation_id) {
+      return json({ error: "Cet utilisateur n'appartient pas à votre organisation" }, 403);
+    }
+
+    // Rattachement d'un profil orphelin (cf. OrganisationFormModal — promotion
+    // d'un "administrateur non assigné"). Volontairement strict : seul un
+    // SUPER_ADMIN peut le faire, et seulement si l'utilisateur n'a AUCUNE
+    // organisation actuelle — jamais de réaffectation d'une organisation à
+    // une autre, qui casserait le cloisonnement multi-tenant.
+    if (body.organisationId !== undefined) {
+      if (profile.role !== 'SUPER_ADMIN') {
+        return json({ error: "Seul un Super Administrateur peut rattacher un utilisateur à une organisation" }, 403);
+      }
+      if (existing.organisation_id !== null) {
+        return json({ error: 'Cet utilisateur appartient déjà à une organisation — réaffectation impossible' }, 409);
+      }
+      const { data: targetOrg, error: targetOrgError } = await admin
+        .from('organisations')
+        .select('id, statut')
+        .eq('id', body.organisationId)
+        .maybeSingle();
+      if (targetOrgError) throw targetOrgError;
+      if (!targetOrg) return json({ error: 'Organisation introuvable' }, 404);
+      if (targetOrg.statut === 'SUSPENDUE') {
+        return json({ error: 'Impossible de rattacher un utilisateur à une organisation suspendue' }, 400);
+      }
+    }
+
     const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.nom !== undefined) updatePayload.nom = body.nom.trim();
     if (body.prenom !== undefined) updatePayload.prenom = body.prenom.trim();
@@ -57,6 +101,7 @@ Deno.serve(async (req: Request) => {
     if (body.bio !== undefined) updatePayload.bio = body.bio?.trim() ?? null;
     if (body.role !== undefined) updatePayload.role = body.role;
     if (body.actif !== undefined) updatePayload.actif = body.actif;
+    if (body.organisationId !== undefined) updatePayload.organisation_id = body.organisationId;
 
     const { data: updated, error: updateError } = await admin
       .from('users')

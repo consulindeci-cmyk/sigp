@@ -825,7 +825,7 @@ function ApparenceSection() {
 // ─── Section: Organisation ────────────────────────────────────────────────────
 
 const EMPTY_ORG: Organisation = {
-  id: '', nom: '', adresse: '', ville: '', pays: '', telephone: '', email: '', siteWeb: '',
+  id: '', nom: '', adresse: '', ville: '', pays: '', telephone: '', email: '', siteWeb: '', deviseDefaut: 'XOF',
 };
 
 function OrgSection({ role }: { role: string }) {

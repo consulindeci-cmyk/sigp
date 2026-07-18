@@ -21,6 +21,7 @@ import { ProjectKPIs } from '@/components/projects/ProjectKPIs';
 import { ProjectsGrid } from '@/components/projects/ProjectsGrid';
 import { ProjectsDialogs } from '@/components/projects/ProjectsDialogs';
 import { ProjectSlideOver, type ProjectSlideOverMode } from '@/components/projects/ProjectSlideOver';
+import { ProjectCreateModal } from '@/components/projects/ProjectCreateModal';
 import { type ActionItem } from '@/components/projects/ActionsMenu';
 import { getProjectColumns } from '@/components/projects/projectColumns';
 import { exportAllProjectsToCSV } from '@/components/projects/projectExport';
@@ -134,6 +135,7 @@ export default function ProjectsPage() {
   const deleteProjectMutation = useDeleteProject();
 
   // ── UI Modals State ────────────────────────────────────────────────────────
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [slideOverMode, setSlideOverMode] = useState<ProjectSlideOverMode>('view');
   const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null);
@@ -181,9 +183,7 @@ export default function ProjectsPage() {
     // Supervision Super Admin : pas de création de projet, même via le
     // raccourci ?new=1 (cf. effect ci-dessous).
     if (isSuperAdmin) return;
-    setSelectedProject(null);
-    setSlideOverMode('new');
-    setSlideOverOpen(true);
+    setCreateModalOpen(true);
   }
 
   // Ouverture directe depuis le raccourci "Nouveau projet" du Dashboard (?new=1)
@@ -211,25 +211,7 @@ export default function ProjectsPage() {
   async function handleSave(data: Partial<Project>) {
     setSaveError(null);
     try {
-      if (slideOverMode === 'new') {
-        await createProjectMutation.mutateAsync({
-          code: data.code,
-          nom: data.name,
-          description: data.description,
-          bailleurPrincipal: data.donor,
-          secteur: data.sector,
-          pays: data.country,
-          managerId: data.managerId || undefined,
-          dateDebut: data.startDate || undefined,
-          dateFinPrevue: data.endDate || undefined,
-          dateFinEffective: data.dateFinEffective || undefined,
-          dateClotureEffective: data.dateClotureEffective || undefined,
-          budgetTotal: data.budgetTotal,
-          devise: data.devise,
-          statut: data.statut,
-          programmeId: defaultProgrammeId,
-        });
-      } else if (slideOverMode === 'edit' && selectedProject) {
+      if (selectedProject) {
         // Le champ `code` est intentionnellement absent du payload PATCH (immuable côté backend)
         const payload: UpdateProjectPayload = {
           nom: data.name,
@@ -443,7 +425,13 @@ export default function ProjectsPage() {
         mode={slideOverMode}
         onSave={handleSave}
         saveError={saveError}
-        isSaving={createProjectMutation.isPending || updateProjectMutation.isPending}
+        isSaving={updateProjectMutation.isPending}
+      />
+
+      <ProjectCreateModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        defaultProgrammeId={defaultProgrammeId}
       />
 
       <ProjectsDialogs

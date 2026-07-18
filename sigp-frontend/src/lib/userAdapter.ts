@@ -102,6 +102,10 @@ export interface UpdateUserPayload {
   telephone?: string;
   role?: UserRole;
   actif?: boolean;
+  // SUPER_ADMIN uniquement — rattache un profil "orphelin" (organisation_id
+  // actuellement NULL) à une organisation. Refusé côté serveur si l'utilisateur
+  // appartient déjà à une organisation (pas de réaffectation cross-org).
+  organisationId?: string;
 }
 
 export interface UsersKPIs {

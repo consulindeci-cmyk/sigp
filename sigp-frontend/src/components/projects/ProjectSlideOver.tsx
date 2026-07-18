@@ -19,7 +19,7 @@ import { useProjectsReferenceOptions } from '@/hooks/useProjects';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ProjectSlideOverMode = 'view' | 'edit' | 'new';
+export type ProjectSlideOverMode = 'view' | 'edit';
 
 export interface ProjectSlideOverProps {
   open: boolean;
@@ -261,12 +261,10 @@ function ProjectFormContent({
   values,
   errors,
   onChange,
-  isEditMode,
 }: {
   values: FormValues;
   errors: FormErrors;
   onChange: (k: keyof FormValues, v: string) => void;
-  isEditMode: boolean;
 }) {
   const { data: refOptions, isLoading: isRefLoading } = useProjectsReferenceOptions();
   const { data: usersList, isLoading: isUsersLoading } = useQuery({
@@ -288,18 +286,14 @@ function ProjectFormContent({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-      <FieldRow id="proj-code" label="Code projet" error={errors.code} required={!isEditMode}>
+      <FieldRow id="proj-code" label="Code projet">
         <Input
           id="proj-code"
           value={values.code}
-          onChange={e => onChange('code', e.target.value)}
-          placeholder="PROJ-XXX"
-          disabled={isEditMode}
-          className={isEditMode ? 'opacity-60 cursor-not-allowed' : ''}
+          disabled
+          className="opacity-60 cursor-not-allowed"
         />
-        {isEditMode && (
-          <p className="text-[11px] text-muted-foreground">Le code est immuable après création.</p>
-        )}
+        <p className="text-[11px] text-muted-foreground">Le code est immuable après création.</p>
       </FieldRow>
 
       <FieldRow id="proj-statut" label="Statut">
@@ -489,15 +483,11 @@ export function ProjectSlideOver({
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
 
-  const isEditMode = mode === 'edit';
-
-  // Sync form when the panel opens or the mode/project changes
+  // Sync form when the panel opens or the project changes
   useEffect(() => {
     if (!open) return;
     setErrors({});
-    if (mode === 'new') {
-      setValues(EMPTY_FORM);
-    } else if (mode === 'edit' && project) {
+    if (mode === 'edit' && project) {
       setValues(projectToForm(project));
     }
   }, [open, mode, project?.id]);
@@ -509,7 +499,6 @@ export function ProjectSlideOver({
 
   function validate(): boolean {
     const errs: FormErrors = {};
-    if (!isEditMode && !values.code.trim()) errs.code = 'Code requis';
     if (!values.name.trim()) errs.name = 'Nom requis';
 
     // Les champs suivants sont obligatoires uniquement hors phase de préparation
@@ -562,7 +551,6 @@ export function ProjectSlideOver({
   const titles: Record<ProjectSlideOverMode, string> = {
     view: 'Détails du projet',
     edit: 'Modifier le projet',
-    new:  'Nouveau projet',
   };
   const readOnly = mode === 'view';
 
@@ -580,7 +568,7 @@ export function ProjectSlideOver({
         </SlideOverHeader>
         {/* SlideOverDescription sr-only : requis par Radix UI DialogContent pour l'accessibilité */}
         <SlideOverDescription>
-          {mode === 'view' ? 'Consultation des détails du projet' : mode === 'edit' ? 'Formulaire de modification du projet' : 'Formulaire de création d’un nouveau projet'}
+          {readOnly ? 'Consultation des détails du projet' : 'Formulaire de modification du projet'}
         </SlideOverDescription>
 
         <SlideOverBody>
@@ -591,7 +579,6 @@ export function ProjectSlideOver({
               values={values}
               errors={errors}
               onChange={handleChange}
-              isEditMode={isEditMode}
             />
           )}
         </SlideOverBody>
@@ -610,7 +597,7 @@ export function ProjectSlideOver({
                 </p>
               )}
               <Button variant="default" onClick={handleSave} disabled={isSaving}>
-                {isSaving ? 'Enregistrement…' : mode === 'edit' ? 'Enregistrer les modifications' : 'Créer le projet'}
+                {isSaving ? 'Enregistrement…' : 'Enregistrer les modifications'}
               </Button>
             </div>
           )}

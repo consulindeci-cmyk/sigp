@@ -1,11 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Mail, Phone, MapPin, CalendarDays, Shield,
-  FolderKanban, Users as UsersIcon, AlertCircle, Landmark, Coins,
+  FolderKanban, Users as UsersIcon, AlertCircle, Landmark, Coins, ArrowDownCircle,
 } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
@@ -25,6 +27,9 @@ import {
   type UpdateOrganisationAdminPayload,
   type CreateOrganisationAdminPayload,
 } from '@/lib/organisationAdapter';
+import { organisationsAdminKeys } from '@/hooks/useOrganisationsAdmin';
+import { useUpdateUser } from '@/hooks/useUsers';
+import { USER_ROLE_LABELS, type UserRole } from '@/lib/userAdapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Schémas — miroir de UserFormModal.tsx (createUserSchema/updateUserSchema)
@@ -175,6 +180,75 @@ export function OrganisationFormModal({
   isSaving,
 }: OrganisationFormModalProps) {
   const readOnly = mode === 'view';
+  const qc = useQueryClient();
+
+  // ── Membres de l'organisation — promotion/rétrogradation d'administrateur ──
+  // Réutilise users-update (déjà capable de changer le rôle, et désormais
+  // organisation_id pour les profils orphelins), pas de nouvelle Edge Function.
+  // La requête remonte deux populations distinctes en un seul aller-retour :
+  // les membres actuels de l'organisation (n'importe quel rôle) ET les
+  // administrateurs "orphelins" (organisation_id NULL, role ADMIN) — des
+  // profils créés sans organisation de rattachement, éligibles à être
+  // rattachés ici. Jamais de réaffectation cross-organisation : seuls les
+  // profils SANS organisation actuelle peuvent être rattachés (cf. users-update).
+  const orgId = organisation?.id;
+  const { data: members, isLoading: isMembersLoading } = useQuery({
+    queryKey: ['organisation-members', orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, nom, prenom, email, role, organisation_id')
+        .or(`organisation_id.eq.${orgId},and(organisation_id.is.null,role.eq.ADMIN)`)
+        .is('deleted_at', null)
+        .order('prenom', { ascending: true });
+      if (error) throw error;
+      return data as Array<{ id: string; nom: string; prenom: string; email: string; role: UserRole; organisation_id: string | null }>;
+    },
+    enabled: !!orgId && mode === 'edit',
+  });
+  const orgMembers = (members ?? []).filter((u) => u.organisation_id === orgId);
+  const admins = orgMembers.filter((u) => u.role === 'ADMIN');
+  const nonAdmins = orgMembers.filter((u) => u.role !== 'ADMIN');
+  const orphanAdmins = (members ?? []).filter((u) => u.organisation_id === null && u.role === 'ADMIN');
+
+  const [promoteUserId, setPromoteUserId] = useState('');
+  const [demoteConfirmId, setDemoteConfirmId] = useState<string | null>(null);
+  const [adminActionError, setAdminActionError] = useState<string | null>(null);
+  const updateUserMutation = useUpdateUser();
+
+  function refreshAfterAdminChange() {
+    qc.invalidateQueries({ queryKey: ['organisation-members', orgId] });
+    qc.invalidateQueries({ queryKey: organisationsAdminKeys.list() });
+  }
+
+  async function handlePromote() {
+    if (!promoteUserId || !orgId) return;
+    setAdminActionError(null);
+    try {
+      const target = (members ?? []).find((u) => u.id === promoteUserId);
+      const isOrphan = target?.organisation_id === null;
+      await updateUserMutation.mutateAsync({
+        id: promoteUserId,
+        data: { role: 'ADMIN', ...(isOrphan ? { organisationId: orgId } : {}) },
+      });
+      setPromoteUserId('');
+      refreshAfterAdminChange();
+    } catch (err) {
+      setAdminActionError(err instanceof Error ? err.message : 'Erreur lors de la promotion.');
+    }
+  }
+
+  async function handleDemote(userId: string) {
+    setAdminActionError(null);
+    try {
+      await updateUserMutation.mutateAsync({ id: userId, data: { role: 'VIEWER' } });
+      setDemoteConfirmId(null);
+      refreshAfterAdminChange();
+    } catch (err) {
+      setAdminActionError(err instanceof Error ? err.message : 'Erreur lors de la rétrogradation.');
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resolver = (mode === 'new' ? zodResolver(createOrganisationSchema) : zodResolver(editOrganisationSchema)) as any;
@@ -352,6 +426,113 @@ export function OrganisationFormModal({
                 </label>
                 <Input id="o-identifiant-fiscal" {...register('identifiantFiscal')} placeholder="Optionnel" />
               </div>
+
+              {mode === 'edit' && (
+                <div className="sm:col-span-2 border-t border-border pt-4 mt-1 flex flex-col gap-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Administrateur(s) de l'organisation
+                  </p>
+
+                  {isMembersLoading ? (
+                    <p className="text-xs text-muted-foreground">Chargement des membres…</p>
+                  ) : (
+                    <>
+                      {admins.length === 0 ? (
+                        <p className="text-xs text-muted-foreground italic">
+                          Aucun administrateur actif sur cette organisation.
+                        </p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {admins.map((u) => (
+                            <div key={u.id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-sm font-medium text-foreground truncate">{u.prenom} {u.nom}</span>
+                                <span className="text-xs text-muted-foreground truncate">{u.email}</span>
+                              </div>
+                              {demoteConfirmId === u.id ? (
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs text-destructive font-medium">Confirmer ?</span>
+                                  <Button type="button" variant="ghost" size="sm" onClick={() => setDemoteConfirmId(null)} disabled={updateUserMutation.isPending}>
+                                    Non
+                                  </Button>
+                                  <Button type="button" variant="destructive" size="sm" onClick={() => handleDemote(u.id)} disabled={updateUserMutation.isPending}>
+                                    Oui, rétrograder
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  type="button" variant="outline" size="sm" className="shrink-0"
+                                  onClick={() => setDemoteConfirmId(u.id)}
+                                  disabled={updateUserMutation.isPending}
+                                  leftIcon={<ArrowDownCircle className="h-3.5 w-3.5" />}
+                                >
+                                  Rétrograder
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <label className="text-sm font-medium text-foreground" htmlFor="o-promote-user">
+                            Promouvoir / rattacher un administrateur
+                          </label>
+                          <Select
+                            id="o-promote-user"
+                            value={promoteUserId}
+                            onChange={(e) => setPromoteUserId(e.target.value)}
+                            disabled={nonAdmins.length === 0 && orphanAdmins.length === 0}
+                          >
+                            <option value="">
+                              {nonAdmins.length === 0 && orphanAdmins.length === 0
+                                ? 'Aucun profil éligible'
+                                : 'Sélectionner un utilisateur…'}
+                            </option>
+                            {nonAdmins.length > 0 && (
+                              <optgroup label="Membres de la structure">
+                                {nonAdmins.map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.prenom} {u.nom} ({USER_ROLE_LABELS[u.role]}) — {u.email}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {orphanAdmins.length > 0 && (
+                              <optgroup label="Administrateurs non assignés">
+                                {orphanAdmins.map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.prenom} {u.nom} — {u.email}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </Select>
+                        </div>
+                        <Button
+                          type="button" variant="default"
+                          onClick={handlePromote}
+                          disabled={!promoteUserId || updateUserMutation.isPending}
+                        >
+                          Promouvoir
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Un membre de la structure est promu administrateur ; un administrateur non assigné est
+                        automatiquement rattaché à cette organisation. Aucune réaffectation depuis une autre
+                        organisation n'est possible.
+                      </p>
+                      {adminActionError && (
+                        <span role="alert" className="text-xs text-destructive flex items-center gap-1 mt-0.5">
+                          <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          {adminActionError}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               {mode === 'new' && (
                 <>

@@ -384,6 +384,122 @@ export function useCreateProject() {
   })
 }
 
+// ── Assistant de création (ProjectCreateModal) — orchestration séquentielle ───
+// Option A validée : pas de nouvelle Edge Function atomique, on enchaîne les
+// briques existantes (projects-create, logframe-objectives-create,
+// funding-sources-create, budget-versions-create, budget-lines-create). Si une
+// étape après la création du projet échoue, on ne supprime PAS le projet déjà
+// créé (pas de projets-delete ici) — l'erreur porte le projectId et le nom de
+// l'étape en échec pour que l'UI oriente l'utilisateur vers l'onglet concerné.
+
+export type ProjectWizardStep = 'objectif' | 'financement' | 'budget';
+
+export class ProjectWizardStepError extends Error {
+  step: ProjectWizardStep;
+  projectId: string;
+  constructor(step: ProjectWizardStep, projectId: string, cause: unknown) {
+    super(cause instanceof Error ? cause.message : 'Erreur lors de la création du projet');
+    this.step = step;
+    this.projectId = projectId;
+  }
+}
+
+export interface CreateProjectWizardPayload {
+  programmeId: string;
+  code: string;
+  nom: string;
+  description?: string;
+  dateDebut?: string;
+  dateFinPrevue?: string;
+  managerId?: string;
+  objectifGlobalLibelle?: string;
+  devise: string;
+  fundingSources: { nom: string; montant: number }[];
+  budgetLignes: { codeLigne: string; libelle: string; montantPrevu: number }[];
+}
+
+export function useCreateProjectWizard() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: CreateProjectWizardPayload) => {
+      // 1. Le projet lui-même — si ça échoue, rien d'autre n'a été tenté.
+      const { data: project } = await invokeEdgeFunction<{ data: { id: string } }>('projects-create', {
+        code: payload.code,
+        nom: payload.nom,
+        description: payload.description || undefined,
+        programmeId: payload.programmeId,
+        dateDebut: payload.dateDebut || undefined,
+        dateFinPrevue: payload.dateFinPrevue || undefined,
+        managerId: payload.managerId || undefined,
+        devise: payload.devise,
+      })
+      const projectId = project.id
+
+      // 2. Objectif global du Cadre Logique (texte libre → niveau OBJECTIF_GLOBAL racine)
+      if (payload.objectifGlobalLibelle?.trim()) {
+        try {
+          await invokeEdgeFunction('logframe-objectives-create', {
+            projectId,
+            niveau: 'OBJECTIF_GLOBAL',
+            code: 'OG-1',
+            libelle: payload.objectifGlobalLibelle.trim(),
+          })
+        } catch (err) {
+          throw new ProjectWizardStepError('objectif', projectId, err)
+        }
+      }
+
+      // 3. Sources de financement (séquentiel — l'ordre n'a pas d'importance,
+      // mais garde une gestion d'erreur simple sans Promise.all)
+      for (const source of payload.fundingSources) {
+        try {
+          await invokeEdgeFunction('funding-sources-create', {
+            projectId,
+            nom: source.nom,
+            type: 'BAILLEUR',
+            montant: source.montant,
+            devise: payload.devise,
+          })
+        } catch (err) {
+          throw new ProjectWizardStepError('financement', projectId, err)
+        }
+      }
+
+      // 4. Budget initial — une version "Budget initial" + ses lignes
+      if (payload.budgetLignes.length > 0) {
+        try {
+          const montantTotal = payload.budgetLignes.reduce((s, l) => s + l.montantPrevu, 0)
+          const { data: version } = await invokeEdgeFunction<{ data: { id: string } }>('budget-versions-create', {
+            projectId,
+            nom: 'Budget initial',
+            version: 1,
+            statut: 'BROUILLON',
+            montantTotal,
+          })
+          for (const [i, ligne] of payload.budgetLignes.entries()) {
+            await invokeEdgeFunction('budget-lines-create', {
+              versionId: version.id,
+              codeLigne: ligne.codeLigne,
+              libelle: ligne.libelle,
+              montantPrevu: ligne.montantPrevu,
+              ordre: i + 1,
+            })
+          }
+        } catch (err) {
+          throw new ProjectWizardStepError('budget', projectId, err)
+        }
+      }
+
+      return { projectId }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.list() })
+      qc.invalidateQueries({ queryKey: projectKeys.kpis() })
+      qc.invalidateQueries({ queryKey: projectKeys.referenceOptions() })
+    },
+  })
+}
+
 // Mettre à jour un projet
 export function useUpdateProject(hookId?: string) {
   const qc = useQueryClient()
