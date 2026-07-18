@@ -29,6 +29,23 @@ const ALLOWED_DEVISES = new Set(['XOF', 'EUR', 'USD']);
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// organisations.code est NOT NULL sans défaut côté base et n'est exposé nulle
+// part côté UI (pas de champ "code" dans le formulaire de création) — généré
+// ici à partir du nom, avec un suffixe pour éviter toute collision.
+const DIACRITICS_REGEX = new RegExp('[\\u0300-\\u036f]', 'g');
+
+function generateOrganisationCode(nom: string): string {
+  const base = nom
+    .normalize('NFD')
+    .replace(DIACRITICS_REGEX, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 20) || 'ORG';
+  const suffix = Date.now().toString(36).toUpperCase().slice(-5);
+  return `${base}-${suffix}`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée' }, 405);
@@ -73,6 +90,7 @@ Deno.serve(async (req: Request) => {
       .from('organisations')
       .insert({
         id: crypto.randomUUID(),
+        code: generateOrganisationCode(body.nom.trim()),
         nom: body.nom.trim(),
         adresse: body.adresse?.trim() ?? null,
         ville: body.ville?.trim() ?? null,
@@ -86,7 +104,12 @@ Deno.serve(async (req: Request) => {
       })
       .select('*')
       .single();
-    if (orgError) throw orgError;
+    if (orgError) {
+      if (orgError.code === '23505') {
+        return json({ error: 'Une organisation avec un code similaire existe déjà — réessayez.' }, 409);
+      }
+      throw orgError;
+    }
 
     // 2. Hiérarchie minimale auto-provisionnée (invisible pour l'org_admin —
     // lui permet juste de créer des projets immédiatement).
