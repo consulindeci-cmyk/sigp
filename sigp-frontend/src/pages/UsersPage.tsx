@@ -8,11 +8,18 @@ import { UsersDialogs } from '@/components/users/UsersDialogs';
 import { useUsersTable } from '@/hooks/useUsersTable';
 import { useUserActions } from '@/hooks/useUserActions';
 import { useUsersKPIs } from '@/hooks/useUsers';
+import { useOrganisationsList } from '@/hooks/useOrganisationsAdmin';
+import { useAuthStore } from '@/stores/authStore';
 import { getUserColumns, userFilters } from '@/utils/userColumns';
 import { type UserRow } from '@/lib/userAdapter';
+import { type DataTableFilter } from '@/components/ui/data-table/types';
 import { type ActionItem } from '@/components/projects/ActionsMenu';
 
 export default function UsersPage() {
+  // SUPER_ADMIN : vue plateforme, filtre + colonne Organisation.
+  const isSuperAdmin = useAuthStore(s => s.user?.role === 'SUPER_ADMIN');
+  const { data: organisationsForFilter } = useOrganisationsList(isSuperAdmin);
+
   // Hook d'état du tableau (pagination, tri, filtres et requête API)
   const {
     users,
@@ -27,7 +34,7 @@ export default function UsersPage() {
     setSortingState,
     columnFiltersState,
     setColumnFiltersState,
-  } = useUsersTable();
+  } = useUsersTable({ includeOrganisation: isSuperAdmin });
 
   // Hook des KPIs en temps réel
   const { data: kpisData } = useUsersKPIs();
@@ -85,7 +92,23 @@ export default function UsersPage() {
   );
 
   // Colonnes mémorisées et indépendantes des données
-  const columns = useMemo(() => getUserColumns(openView, getActions), [openView, getActions]);
+  const columns = useMemo(
+    () => getUserColumns(openView, getActions, { showOrganisation: isSuperAdmin }),
+    [openView, getActions, isSuperAdmin]
+  );
+
+  // Filtre Organisation dynamique — visible uniquement pour le SUPER_ADMIN.
+  const filters = useMemo<DataTableFilter[]>(() => {
+    if (!isSuperAdmin) return userFilters;
+    return [
+      ...userFilters,
+      {
+        id: 'organisation',
+        title: 'Organisation',
+        options: (organisationsForFilter ?? []).map((o) => ({ label: o.nom, value: o.id })),
+      },
+    ];
+  }, [isSuperAdmin, organisationsForFilter]);
 
   return (
     <ContentLayout>
@@ -101,7 +124,7 @@ export default function UsersPage() {
         errorMessage={(error as { message?: string })?.message ?? 'Erreur de chargement'}
         searchKey="search"
         searchPlaceholder="Rechercher par nom, email..."
-        filters={userFilters}
+        filters={filters}
         manualPagination
         pageCount={pageCount}
         rowCount={rowCount}

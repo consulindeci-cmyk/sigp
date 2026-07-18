@@ -88,12 +88,14 @@ export default function ProjectsPage() {
     const donorFilter = columnFiltersState.find((f) => f.id === 'donor');
     const sectorFilter = columnFiltersState.find((f) => f.id === 'sector');
     const countryFilter = columnFiltersState.find((f) => f.id === 'country');
+    const organisationFilter = columnFiltersState.find((f) => f.id === 'organisation');
 
     const filters: Record<string, string | number | undefined> = {};
     if (statusFilter?.value) filters.status = String(statusFilter.value);
     if (donorFilter?.value) filters.donor = String(donorFilter.value);
     if (sectorFilter?.value) filters.sector = String(sectorFilter.value);
     if (countryFilter?.value) filters.country = String(countryFilter.value);
+    if (organisationFilter?.value) filters.organisation = String(organisationFilter.value);
 
     const firstSort = sortingState[0];
 
@@ -365,6 +367,15 @@ export default function ProjectsPage() {
         onExport={handleExport}
         isExporting={isExporting}
         canCreate={!isSuperAdmin}
+        showOrganisationFilter={isSuperAdmin}
+        organisationOptions={(organisationsForFilter ?? []).map((o) => ({ label: o.nom, value: o.id }))}
+        organisationValue={String(columnFiltersState.find((f) => f.id === 'organisation')?.value ?? '')}
+        onOrganisationChange={(value) => {
+          handleColumnFiltersChange((prev) => {
+            const withoutOrg = prev.filter((f) => f.id !== 'organisation');
+            return value ? [...withoutOrg, { id: 'organisation', value }] : withoutOrg;
+          });
+        }}
       />
 
       {/* Affichage de l'erreur d'export CSV (P-11) */}

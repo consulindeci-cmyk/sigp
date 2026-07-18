@@ -902,6 +902,32 @@ function OrgSection() {
   );
 }
 
+// SUPER_ADMIN n'a pas d'organisation propre à administrer ici : ses écrans
+// dédiés (console Super Admin) gèrent les organisations. Ce composant évite
+// toute corruption de données (écriture sur une organisation arbitraire via
+// useOrganisation()'s .limit(1) non filtré) en cas d'accès direct à cette
+// section (URL, état restauré) malgré son retrait de la navigation.
+function OrganisationVerrouilleeSection() {
+  return (
+    <div className="flex flex-col gap-5">
+      <SectionHeader title="Organisation" />
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-4">
+            <Lock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-foreground">Section non disponible</p>
+              <p className="text-sm text-muted-foreground">
+                Les paramètres d'organisation globale se gèrent depuis la console Super Admin.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Section: Sauvegarde ──────────────────────────────────────────────────────
 
 // Une vraie sauvegarde/restauration de base de données Postgres n'est pas
@@ -1907,11 +1933,12 @@ function ZoneDangereuse({ profile, onResetAll, onTerminateAllSessions }: ZoneDan
 
 interface SidebarProps {
   profile: UserProfile;
+  navGroups: typeof NAV_GROUPS;
   current: SectionId;
   onSelect: (id: SectionId) => void;
 }
 
-function SettingsSidebar({ profile, current, onSelect }: SidebarProps) {
+function SettingsSidebar({ profile, navGroups, current, onSelect }: SidebarProps) {
   const avatarStyle = userAvatarStyle(profile.initiales);
   return (
     <aside className="w-56 shrink-0 border-r border-border bg-card flex-col hidden lg:flex" aria-label="Navigation des paramètres">
@@ -1925,7 +1952,7 @@ function SettingsSidebar({ profile, current, onSelect }: SidebarProps) {
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto py-2" aria-label="Sections des paramètres">
-        {NAV_GROUPS.map(group => (
+        {navGroups.map(group => (
           <div key={group.group} className="mb-1">
             <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">{group.group}</p>
             {group.items.map(item => {
@@ -1966,6 +1993,18 @@ export default function SettingsPage() {
   }, [backendProfile.id]);
 
   const { setTheme, setPrefs, setNotifs } = usePrefsStore();
+
+  // Un SUPER_ADMIN n'a pas d'organisation "à lui" à modifier ici — la section
+  // est retirée de la navigation (et bloquée en cas d'accès direct) pour
+  // éviter d'écrire sur une organisation arbitraire (cf. useOrganisation()).
+  const isSuperAdmin = profile.role === 'SUPER_ADMIN';
+  const visibleNavGroups = isSuperAdmin
+    ? NAV_GROUPS.map(group =>
+        group.group === 'Plateforme'
+          ? { ...group, items: group.items.filter(item => item.id !== 'organisation') }
+          : group,
+      )
+    : NAV_GROUPS;
 
   async function handleTerminateOthers() {
     await supabase.auth.signOut({ scope: 'others' });
@@ -2027,7 +2066,7 @@ export default function SettingsPage() {
       case 'apparence':
         return <ApparenceSection />;
       case 'organisation':
-        return <OrgSection />;
+        return isSuperAdmin ? <OrganisationVerrouilleeSection /> : <OrgSection />;
       case 'sauvegarde':
         return <SauvegardeSection role={profile.role} />;
       case 'archivage':
@@ -2051,17 +2090,17 @@ export default function SettingsPage() {
     }
   }
 
-  const allItems = NAV_GROUPS.flatMap(g => g.items);
+  const allItems = visibleNavGroups.flatMap(g => g.items);
 
   return (
     <div className="flex min-h-full bg-background">
-      <SettingsSidebar profile={profile} current={current} onSelect={setCurrent} />
+      <SettingsSidebar profile={profile} navGroups={visibleNavGroups} current={current} onSelect={setCurrent} />
 
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Sélecteur mobile */}
         <div className="lg:hidden border-b border-border px-4 py-2">
           <Select value={current} onChange={e => setCurrent(e.target.value as SectionId)} aria-label="Section des paramètres">
-            {NAV_GROUPS.map(group => (
+            {visibleNavGroups.map(group => (
               <optgroup key={group.group} label={group.group}>
                 {group.items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
               </optgroup>

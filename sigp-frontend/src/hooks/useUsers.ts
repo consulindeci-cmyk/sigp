@@ -32,6 +32,10 @@ export interface UseUsersParams {
   filters?: Record<string, string | number | boolean | undefined>;
   role?: UserRole;
   status?: 'active' | 'inactive';
+  // SUPER_ADMIN uniquement — filtre par organisation et enrichit chaque ligne
+  // avec organisationNom (vue plateforme multi-organisations).
+  organisation?: string;
+  includeOrganisation?: boolean;
 }
 
 // ── Ligne Supabase (colonnes snake_case de la table `users`) ─────────────────
@@ -51,9 +55,12 @@ interface UserRowDb {
   derniere_connexion: string | null;
   created_at: string;
   updated_at: string;
+  organisation_id?: string | null;
+  organisations?: { nom: string } | null;
 }
 
 const USER_SELECT = 'id, nom, prenom, email, role, actif, telephone, langue_preference, avatar_url, derniere_connexion, created_at, updated_at';
+const USER_SELECT_WITH_ORG = `${USER_SELECT}, organisation_id, organisations(nom)`;
 
 function rowToDto(row: UserRowDb): UserApiDto {
   return {
@@ -69,6 +76,8 @@ function rowToDto(row: UserRowDb): UserApiDto {
     derniereConnexion: row.derniere_connexion,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    organisationId: row.organisation_id ?? null,
+    organisationNom: row.organisations?.nom ?? null,
   };
 }
 
@@ -90,6 +99,8 @@ function edgeRowToDto(row: Partial<UserRowDb> & { id: string; nom: string; preno
     derniereConnexion: row.derniere_connexion ?? null,
     createdAt: row.created_at ?? new Date().toISOString(),
     updatedAt: row.updated_at ?? new Date().toISOString(),
+    organisationId: row.organisation_id ?? null,
+    organisationNom: row.organisations?.nom ?? null,
   };
 }
 
@@ -109,7 +120,10 @@ export function useUsers(params?: UseUsersParams) {
       const from = (page - 1) * limit;
       const to = from + limit - 1;
 
-      let query = supabase.from('users').select(USER_SELECT, { count: 'exact' }).is('deleted_at', null);
+      let query = supabase
+        .from('users')
+        .select(params?.includeOrganisation ? USER_SELECT_WITH_ORG : USER_SELECT, { count: 'exact' })
+        .is('deleted_at', null);
 
       if (params?.search) {
         query = query.or(`nom.ilike.%${params.search}%,prenom.ilike.%${params.search}%,email.ilike.%${params.search}%`);
@@ -117,15 +131,18 @@ export function useUsers(params?: UseUsersParams) {
 
       let roleFilter = params?.role;
       let statusFilter = params?.status;
+      let organisationFilter = params?.organisation;
       if (params?.filters) {
         for (const [key, value] of Object.entries(params.filters)) {
           if (value === undefined || value === null || value === '') continue;
           if (key === 'role') roleFilter = value as UserRole;
           else if (key === 'status') statusFilter = value as 'active' | 'inactive';
+          else if (key === 'organisation') organisationFilter = String(value);
         }
       }
       if (roleFilter) query = query.eq('role', roleFilter);
       if (statusFilter) query = query.eq('actif', statusFilter === 'active');
+      if (organisationFilter) query = query.eq('organisation_id', organisationFilter);
 
       const sortCol = params?.sortBy && SORT_COLUMN_MAP[params.sortBy] ? SORT_COLUMN_MAP[params.sortBy] : 'created_at';
       query = query.order(sortCol, { ascending: params?.sortOrder === 'asc' }).range(from, to);

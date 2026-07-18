@@ -49,6 +49,9 @@ export interface UserApiDto {
   derniereConnexion: string | null;
   createdAt: string;
   updatedAt: string;
+  // SUPER_ADMIN uniquement — organisation de rattachement (vue plateforme).
+  organisationId?: string | null;
+  organisationNom?: string | null;
 }
 
 export interface User {
@@ -70,6 +73,8 @@ export interface User {
   createdAt: string;
   createdAtDisplay: string;
   updatedAt: string;
+  organisationId: string | null;
+  organisationNom: string | null;
 }
 
 export type UserRow = User;
@@ -81,6 +86,9 @@ export interface CreateUserPayload {
   password: string;
   role?: UserRole;
   telephone?: string;
+  // SUPER_ADMIN uniquement — organisation de rattachement obligatoire pour
+  // le nouvel administrateur d'organisation créé (cf. users-create).
+  organisationId?: string;
 }
 
 export interface UpdateUserPayload {
@@ -160,5 +168,7 @@ export function adaptUserDto(dto: UserApiDto): UserRow {
     createdAt: dto.createdAt,
     createdAtDisplay,
     updatedAt: dto.updatedAt,
+    organisationId: dto.organisationId ?? null,
+    organisationNom: dto.organisationNom ?? null,
   };
 }

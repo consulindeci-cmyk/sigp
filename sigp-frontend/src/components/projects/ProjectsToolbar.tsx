@@ -1,6 +1,7 @@
-import { Download, Plus, LayoutGrid, List } from 'lucide-react';
+import { Download, Plus, LayoutGrid, List, Building2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/forms/Button';
+import { Select } from '@/components/ui/forms/Select';
 import { cn } from '@/lib/utils';
 
 export interface ProjectsToolbarProps {
@@ -11,6 +12,13 @@ export interface ProjectsToolbarProps {
   isExporting?: boolean;
   // SUPER_ADMIN : page de supervision, création réservée aux org_admin.
   canCreate?: boolean;
+  // SUPER_ADMIN : filtre Organisation visible ici pour rester accessible
+  // peu importe le mode d'affichage (table ET grille), pas seulement dans
+  // la barre d'outils du DataTable (absente en vue Grille).
+  showOrganisationFilter?: boolean;
+  organisationOptions?: { label: string; value: string }[];
+  organisationValue?: string;
+  onOrganisationChange?: (value: string) => void;
 }
 
 export function ProjectsToolbar({
@@ -20,6 +28,10 @@ export function ProjectsToolbar({
   onExport,
   isExporting = false,
   canCreate = true,
+  showOrganisationFilter = false,
+  organisationOptions = [],
+  organisationValue = '',
+  onOrganisationChange,
 }: ProjectsToolbarProps) {
   return (
     <PageHeader
@@ -27,6 +39,25 @@ export function ProjectsToolbar({
       subtitle="Gérez, suivez et contrôlez l'avancement de l'ensemble de vos projets de développement"
       actions={
         <div className="flex items-center gap-2">
+          {/* Filtre Organisation — SUPER_ADMIN, visible en Table ET en Grille */}
+          {showOrganisationFilter && (
+            <div className="flex items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+              <Select
+                value={organisationValue}
+                onChange={(e) => onOrganisationChange?.(e.target.value)}
+                aria-label="Filtrer par organisation"
+                className="h-8 text-xs min-w-[160px]"
+                wrapperClassName="w-auto shrink-0"
+              >
+                <option value="">Toutes les organisations</option>
+                {organisationOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           {/* View toggle */}
           <div
             className="flex items-center rounded-md border border-border bg-muted/30 p-0.5"

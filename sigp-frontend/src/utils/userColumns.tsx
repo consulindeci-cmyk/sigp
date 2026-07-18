@@ -35,11 +35,18 @@ export const userFilters: DataTableFilter[] = [
   { id: 'status', title: 'Statut', options: STATUS_FILTER_OPTIONS },
 ];
 
+export interface GetUserColumnsOptions {
+  // SUPER_ADMIN uniquement — affiche l'organisation de rattachement de
+  // chaque utilisateur (vue plateforme multi-organisations).
+  showOrganisation?: boolean;
+}
+
 export function getUserColumns(
   onView: (user: UserRow) => void,
-  getActions: (row: UserRow) => ActionItem[]
+  getActions: (row: UserRow) => ActionItem[],
+  options?: GetUserColumnsOptions
 ): ColumnDef<UserRow, unknown>[] {
-  return [
+  const columns: ColumnDef<UserRow, unknown>[] = [
     {
       accessorKey: 'nom',
       id: 'nom',
@@ -71,6 +78,21 @@ export function getUserColumns(
         );
       },
     },
+    ...(options?.showOrganisation
+      ? [
+          {
+            accessorKey: 'organisationNom',
+            id: 'organisationNom',
+            header: 'ORGANISATION',
+            enableSorting: false,
+            cell: ({ getValue }: { getValue: () => unknown }) => (
+              <Badge variant="secondary" className="text-[11px] w-max">
+                {(getValue() as string) || 'Sans organisation'}
+              </Badge>
+            ),
+          } satisfies ColumnDef<UserRow, unknown>,
+        ]
+      : []),
     {
       accessorKey: 'role',
       id: 'role',
@@ -120,4 +142,5 @@ export function getUserColumns(
       cell: ({ row }) => <ActionsMenu actions={getActions(row.original)} />,
     },
   ];
+  return columns;
 }

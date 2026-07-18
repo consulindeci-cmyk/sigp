@@ -22,7 +22,12 @@ export interface UseUsersTableReturn {
   setColumnFiltersState: React.Dispatch<React.SetStateAction<ColumnFiltersState>>;
 }
 
-export function useUsersTable(): UseUsersTableReturn {
+export interface UseUsersTableOptions {
+  // SUPER_ADMIN uniquement — enrichit chaque ligne avec organisationNom.
+  includeOrganisation?: boolean;
+}
+
+export function useUsersTable(options?: UseUsersTableOptions): UseUsersTableReturn {
   const [paginationState, setPaginationState] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: 10,
@@ -53,6 +58,12 @@ export function useUsersTable(): UseUsersTableReturn {
         ? (statusFilter.value as 'active' | 'inactive')
         : undefined;
 
+    const organisationFilter = columnFiltersState.find((f) => f.id === 'organisation');
+    const organisation =
+      typeof organisationFilter?.value === 'string' && organisationFilter.value !== ''
+        ? organisationFilter.value
+        : undefined;
+
     const sortField = sortingState[0]?.id;
     const sortOrder: 'desc' | 'asc' | undefined = sortingState[0]?.desc
       ? 'desc'
@@ -60,7 +71,7 @@ export function useUsersTable(): UseUsersTableReturn {
         ? 'asc'
         : undefined;
 
-    return { search, role, status, sortField, sortOrder };
+    return { search, role, status, organisation, sortField, sortOrder };
   }, [columnFiltersState, sortingState]);
 
   const {
@@ -76,6 +87,8 @@ export function useUsersTable(): UseUsersTableReturn {
     sortOrder: queryParams.sortOrder,
     role: queryParams.role,
     status: queryParams.status,
+    organisation: queryParams.organisation,
+    includeOrganisation: options?.includeOrganisation,
   });
 
   const users = useMemo(() => usersData?.data ?? [], [usersData?.data]);
