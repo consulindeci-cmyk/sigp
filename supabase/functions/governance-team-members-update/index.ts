@@ -3,11 +3,11 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 
 interface UpdateTeamMemberBody {
   id: string;
-  nom?: string;
-  prenom?: string;
+  // Re-sélection de la personne (pas de saisie libre) — si fourni, l'identité
+  // (nom/prenom/email) est re-résolue et ré-instantanée depuis `users`.
+  userId?: string;
   role?: string;
   structure?: string;
-  email?: string;
   telephone?: string;
   statut?: string;
   dateDebut?: string;
@@ -33,25 +33,37 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Membre introuvable' }, 404);
 
-    if (profile.role !== 'SUPER_ADMIN') {
-      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
-        p_project_id: existing.project_id,
-      });
-      if (orgError) throw orgError;
-      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
-        return json({ error: "Accès refusé : ce membre n'appartient pas à votre organisation" }, 403);
-      }
+    const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+      p_project_id: existing.project_id,
+    });
+    if (orgError) throw orgError;
+    if (profile.role !== 'SUPER_ADMIN' && (!projectOrgId || projectOrgId !== profile.organisation_id)) {
+      return json({ error: "Accès refusé : ce membre n'appartient pas à votre organisation" }, 403);
     }
 
     const updatePayload: Record<string, unknown> = {
       updated_by: profile.id,
       updated_at: new Date().toISOString(),
     };
-    if (body.nom !== undefined) updatePayload.nom = body.nom.trim();
-    if (body.prenom !== undefined) updatePayload.prenom = body.prenom.trim();
+    if (body.userId !== undefined) {
+      const { data: pickedUser, error: userError } = await admin
+        .from('users')
+        .select('id, nom, prenom, email, organisation_id')
+        .eq('id', body.userId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (userError) throw userError;
+      if (!pickedUser) return json({ error: 'Utilisateur introuvable' }, 404);
+      if (pickedUser.organisation_id !== projectOrgId) {
+        return json({ error: "Cet utilisateur n'appartient pas à l'organisation de ce projet" }, 403);
+      }
+      updatePayload.user_id = pickedUser.id;
+      updatePayload.nom = pickedUser.nom;
+      updatePayload.prenom = pickedUser.prenom;
+      updatePayload.email = pickedUser.email;
+    }
     if (body.role !== undefined) updatePayload.role = body.role;
     if (body.structure !== undefined) updatePayload.structure = body.structure;
-    if (body.email !== undefined) updatePayload.email = body.email.trim();
     if (body.telephone !== undefined) updatePayload.telephone = body.telephone;
     if (body.statut !== undefined) updatePayload.statut = body.statut;
     if (body.dateDebut !== undefined) updatePayload.date_debut = body.dateDebut;

@@ -3,11 +3,13 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 
 interface CreateTeamMemberBody {
   projectId: string;
-  nom: string;
-  prenom: string;
+  // Identité toujours résolue côté serveur depuis le profil sélectionné —
+  // plus de saisie libre nom/prenom/email (cf. plan Phase 1 : le vivier de
+  // membres éligibles est restreint aux utilisateurs de l'organisation du
+  // projet, actifs ou PENDING).
+  userId: string;
   role: string;
   structure?: string;
-  email: string;
   telephone?: string;
   statut?: string;
   dateDebut?: string;
@@ -23,18 +25,28 @@ Deno.serve(async (req: Request) => {
 
     const body: CreateTeamMemberBody = await req.json();
     if (!body.projectId) return json({ error: 'projectId est obligatoire' }, 400);
-    if (!body.nom?.trim() || !body.prenom?.trim()) return json({ error: 'nom et prenom sont obligatoires' }, 400);
+    if (!body.userId) return json({ error: 'userId est obligatoire' }, 400);
     if (!body.role) return json({ error: 'role est obligatoire' }, 400);
-    if (!body.email?.trim()) return json({ error: 'email est obligatoire' }, 400);
 
-    if (profile.role !== 'SUPER_ADMIN') {
-      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
-        p_project_id: body.projectId,
-      });
-      if (orgError) throw orgError;
-      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
-        return json({ error: "Ce projet n'appartient pas à votre organisation" }, 403);
-      }
+    const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+      p_project_id: body.projectId,
+    });
+    if (orgError) throw orgError;
+    if (!projectOrgId) return json({ error: 'Projet introuvable ou non rattaché à une organisation' }, 404);
+    if (profile.role !== 'SUPER_ADMIN' && projectOrgId !== profile.organisation_id) {
+      return json({ error: "Ce projet n'appartient pas à votre organisation" }, 403);
+    }
+
+    const { data: pickedUser, error: userError } = await admin
+      .from('users')
+      .select('id, nom, prenom, email, telephone, organisation_id')
+      .eq('id', body.userId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!pickedUser) return json({ error: 'Utilisateur introuvable' }, 404);
+    if (pickedUser.organisation_id !== projectOrgId) {
+      return json({ error: "Cet utilisateur n'appartient pas à l'organisation de ce projet" }, 403);
     }
 
     const { data: member, error: insertError } = await admin
@@ -42,12 +54,13 @@ Deno.serve(async (req: Request) => {
       .insert({
         id: crypto.randomUUID(),
         project_id: body.projectId,
-        nom: body.nom.trim(),
-        prenom: body.prenom.trim(),
+        user_id: pickedUser.id,
+        nom: pickedUser.nom,
+        prenom: pickedUser.prenom,
         role: body.role,
         structure: body.structure ?? '',
-        email: body.email.trim(),
-        telephone: body.telephone ?? '',
+        email: pickedUser.email,
+        telephone: body.telephone ?? pickedUser.telephone ?? '',
         statut: body.statut ?? 'Actif',
         date_debut: body.dateDebut ?? null,
         created_by: profile.id,

@@ -36,6 +36,8 @@ export interface User {
   role: Role;
   actif: boolean;
   createdAt: string;
+  // Absent pour SUPER_ADMIN (rôle plateforme, aucune organisation propre).
+  organisationId?: string | null;
 }
 
 export interface AuthTokens {

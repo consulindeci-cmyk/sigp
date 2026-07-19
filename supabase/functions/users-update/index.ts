@@ -61,22 +61,26 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Utilisateur introuvable' }, 404);
 
+    // Rattachement d'un profil orphelin (organisation_id NULL) : à la fois
+    // depuis OrganisationFormModal (promotion "administrateur non assigné",
+    // SUPER_ADMIN) et depuis le flux email-first de la page Utilisateurs
+    // (ADMIN qui invite un email déjà connu mais orphelin — cf.
+    // users-lookup-by-email). Un ADMIN ne peut rattacher que vers SA PROPRE
+    // organisation, jamais une autre : pas de mouvement cross-organisation.
+    const isOrphanAttach = body.organisationId !== undefined && existing.organisation_id === null;
+
     // Cloisonnement multi-tenant : un ADMIN (org_admin) ne peut modifier que
-    // les utilisateurs de sa propre organisation — absent jusqu'ici, cette
-    // route ne vérifiait que le rôle de l'appelant, jamais l'appartenance à
-    // l'organisation de la cible. SUPER_ADMIN et l'auto-édition restent exemptés.
-    if (!isSelf && profile.role !== 'SUPER_ADMIN' && existing.organisation_id !== profile.organisation_id) {
+    // les utilisateurs de sa propre organisation — sauf le cas légitime
+    // ci-dessus où la cible n'appartient encore à aucune organisation.
+    if (!isSelf && !isOrphanAttach && profile.role !== 'SUPER_ADMIN' && existing.organisation_id !== profile.organisation_id) {
       return json({ error: "Cet utilisateur n'appartient pas à votre organisation" }, 403);
     }
 
-    // Rattachement d'un profil orphelin (cf. OrganisationFormModal — promotion
-    // d'un "administrateur non assigné"). Volontairement strict : seul un
-    // SUPER_ADMIN peut le faire, et seulement si l'utilisateur n'a AUCUNE
-    // organisation actuelle — jamais de réaffectation d'une organisation à
-    // une autre, qui casserait le cloisonnement multi-tenant.
     if (body.organisationId !== undefined) {
-      if (profile.role !== 'SUPER_ADMIN') {
-        return json({ error: "Seul un Super Administrateur peut rattacher un utilisateur à une organisation" }, 403);
+      const isSuperAdmin = profile.role === 'SUPER_ADMIN';
+      const isOwnOrgAttach = profile.role === 'ADMIN' && body.organisationId === profile.organisation_id;
+      if (!isSuperAdmin && !isOwnOrgAttach) {
+        return json({ error: "Seul un administrateur (vers sa propre organisation) ou un Super Administrateur peut rattacher un utilisateur à une organisation" }, 403);
       }
       if (existing.organisation_id !== null) {
         return json({ error: 'Cet utilisateur appartient déjà à une organisation — réaffectation impossible' }, 409);

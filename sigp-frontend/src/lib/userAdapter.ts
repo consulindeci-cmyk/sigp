@@ -38,8 +38,11 @@ export const USER_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 // Mirrors UserResponseDto exactly from sigp-backend-v1
 export interface UserApiDto {
   id: string;
-  nom: string;
-  prenom: string;
+  // Nullable : un profil "email d'abord" (statut PENDING, cf. isPending
+  // dérivé de derniereConnexion) n'a pas encore d'identité — l'utilisateur
+  // la renseigne lui-même à sa première connexion.
+  nom: string | null;
+  prenom: string | null;
   email: string;
   role: UserRole;
   actif: boolean;
@@ -56,15 +59,18 @@ export interface UserApiDto {
 
 export interface User {
   id: string;
-  nom: string;
-  prenom: string;
+  nom: string | null;
+  prenom: string | null;
   fullName: string;
   initiales: string;
   email: string;
   role: UserRole;
   roleLabel: string;
   actif: boolean;
-  statutLabel: 'Actif' | 'Désactivé';
+  // Un profil invité (email d'abord) n'a jamais complété sa première
+  // connexion — dérivé de derniereConnexion, aucune colonne dédiée.
+  isPending: boolean;
+  statutLabel: 'Actif' | 'Désactivé' | 'Invité';
   telephone: string | null;
   languePreference: string;
   avatarUrl: string | null;
@@ -80,8 +86,11 @@ export interface User {
 export type UserRow = User;
 
 export interface CreateUserPayload {
-  nom: string;
-  prenom: string;
+  // Optionnels : flux "email d'abord" — un profil PENDING peut être créé
+  // avec seulement un email, l'identité est renseignée par l'utilisateur
+  // lui-même à sa première connexion.
+  nom?: string;
+  prenom?: string;
   email: string;
   // Aucun mot de passe côté client : le compte est toujours créé par
   // invitation (inviteUserByEmail), le destinataire définit le sien via le
@@ -91,6 +100,11 @@ export interface CreateUserPayload {
   // SUPER_ADMIN uniquement — organisation de rattachement obligatoire pour
   // le nouvel administrateur d'organisation créé (cf. users-create).
   organisationId?: string;
+  // Flux "email d'abord" — présent uniquement quand la vérification email a
+  // trouvé un profil orphelin (organisation_id NULL) à rattacher : dans ce
+  // cas la soumission n'appelle pas users-create mais users-update
+  // (organisationId + role), cf. useUserActions.handleSaveCreate.
+  existingUserId?: string;
 }
 
 export interface UpdateUserPayload {
@@ -122,10 +136,13 @@ export interface UsersKPIs {
  * avec initiales, libellés français et dates formatées.
  */
 export function adaptUserDto(dto: UserApiDto): UserRow {
-  const initiales = `${dto.prenom?.[0] ?? '?'}${dto.nom?.[0] ?? '?'}`.toUpperCase();
-  const fullName = `${dto.prenom} ${dto.nom}`;
+  // Jamais connecté depuis l'invitation = profil "email d'abord" toujours en
+  // attente que la personne définisse son identité et son mot de passe.
+  const isPending = dto.derniereConnexion === null;
+  const initiales = isPending ? '…' : `${dto.prenom?.[0] ?? '?'}${dto.nom?.[0] ?? '?'}`.toUpperCase();
+  const fullName = dto.nom || dto.prenom ? `${dto.prenom ?? ''} ${dto.nom ?? ''}`.trim() : dto.email;
   const roleLabel = USER_ROLE_LABELS[dto.role] ?? dto.role;
-  const statutLabel = dto.actif ? 'Actif' : 'Désactivé';
+  const statutLabel = !dto.actif ? 'Désactivé' : isPending ? 'Invité' : 'Actif';
 
   let derniereConnexionDisplay = '—';
   if (dto.derniereConnexion) {
@@ -165,6 +182,7 @@ export function adaptUserDto(dto: UserApiDto): UserRow {
     role: dto.role,
     roleLabel,
     actif: dto.actif,
+    isPending,
     statutLabel,
     telephone: dto.telephone,
     languePreference: dto.languePreference ?? 'fr',

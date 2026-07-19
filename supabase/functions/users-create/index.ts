@@ -3,8 +3,12 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 import { INVITE_REDIRECT_TO } from '../_shared/frontendUrl.ts';
 
 interface CreateUserBody {
-  nom: string;
-  prenom: string;
+  // Optionnels : flux "email d'abord" (page Utilisateurs) — un profil peut
+  // être créé avec seulement un email (statut "PENDING", cf.
+  // derniere_connexion IS NULL côté frontend) ; l'utilisateur renseigne
+  // lui-même nom/prénom à sa première connexion.
+  nom?: string;
+  prenom?: string;
   email: string;
   role?: 'ADMIN' | 'COORDINATEUR' | 'CHARGE_PROGRAMME' | 'FINANCIER' | 'AUDITEUR' | 'VIEWER';
   telephone?: string;
@@ -22,8 +26,6 @@ Deno.serve(async (req: Request) => {
     requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: CreateUserBody = await req.json();
-    if (!body.nom?.trim()) return json({ error: 'Le nom est obligatoire' }, 400);
-    if (!body.prenom?.trim()) return json({ error: 'Le prénom est obligatoire' }, 400);
     if (!body.email?.trim() || !EMAIL_REGEX.test(body.email.trim())) {
       return json({ error: "L'adresse email est invalide" }, 400);
     }
@@ -80,8 +82,8 @@ Deno.serve(async (req: Request) => {
       .from('users')
       .insert({
         id: crypto.randomUUID(),
-        nom: body.nom.trim(),
-        prenom: body.prenom.trim(),
+        nom: body.nom?.trim() || null,
+        prenom: body.prenom?.trim() || null,
         email,
         mot_de_passe: 'SUPABASE_AUTH_MANAGED', // legacy NOT NULL, jamais utilisé pour l'auth réelle
         role: finalRole,
@@ -108,7 +110,7 @@ Deno.serve(async (req: Request) => {
     // mot de passe fourni : le destinataire choisit le sien via le lien reçu.
     const { data: authUser, error: authError } = await admin.auth.admin.inviteUserByEmail(email, {
       redirectTo: INVITE_REDIRECT_TO,
-      data: { profile_id: newUser.id, nom: body.nom.trim(), prenom: body.prenom.trim() },
+      data: { profile_id: newUser.id, nom: body.nom?.trim() ?? '', prenom: body.prenom?.trim() ?? '' },
     });
 
     if (authError || !authUser?.user) {

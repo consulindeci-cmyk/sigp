@@ -31,7 +31,7 @@ export interface UseUsersParams {
   sortOrder?: 'asc' | 'desc';
   filters?: Record<string, string | number | boolean | undefined>;
   role?: UserRole;
-  status?: 'active' | 'inactive';
+  status?: 'active' | 'inactive' | 'pending';
   // SUPER_ADMIN uniquement — filtre par organisation et enrichit chaque ligne
   // avec organisationNom (vue plateforme multi-organisations).
   organisation?: string;
@@ -44,8 +44,8 @@ export interface UseUsersParams {
 
 interface UserRowDb {
   id: string;
-  nom: string;
-  prenom: string;
+  nom: string | null;
+  prenom: string | null;
   email: string;
   role: UserRole;
   actif: boolean;
@@ -85,7 +85,7 @@ function rowToDto(row: UserRowDb): UserApiDto {
 // colonnes utile à la gestion RBAC (pas langue_preference/avatar_url/
 // derniere_connexion) — complété ici avec des valeurs par défaut sûres avant
 // adaptUserDto (qui attend un UserApiDto complet).
-function edgeRowToDto(row: Partial<UserRowDb> & { id: string; nom: string; prenom: string; email: string; role: UserRole; actif: boolean }): UserApiDto {
+function edgeRowToDto(row: Partial<UserRowDb> & { id: string; nom: string | null; prenom: string | null; email: string; role: UserRole; actif: boolean }): UserApiDto {
   return {
     id: row.id,
     nom: row.nom,
@@ -136,12 +136,16 @@ export function useUsers(params?: UseUsersParams) {
         for (const [key, value] of Object.entries(params.filters)) {
           if (value === undefined || value === null || value === '') continue;
           if (key === 'role') roleFilter = value as UserRole;
-          else if (key === 'status') statusFilter = value as 'active' | 'inactive';
+          else if (key === 'status') statusFilter = value as 'active' | 'inactive' | 'pending';
           else if (key === 'organisation') organisationFilter = String(value);
         }
       }
       if (roleFilter) query = query.eq('role', roleFilter);
-      if (statusFilter) query = query.eq('actif', statusFilter === 'active');
+      // "pending" (invité, jamais connecté) est dérivé de derniere_connexion,
+      // pas d'une colonne statut dédiée — cf. isPending côté adaptUserDto.
+      if (statusFilter === 'active') query = query.eq('actif', true).not('derniere_connexion', 'is', null);
+      else if (statusFilter === 'inactive') query = query.eq('actif', false);
+      else if (statusFilter === 'pending') query = query.eq('actif', true).is('derniere_connexion', null);
       if (organisationFilter) query = query.eq('organisation_id', organisationFilter);
 
       const sortCol = params?.sortBy && SORT_COLUMN_MAP[params.sortBy] ? SORT_COLUMN_MAP[params.sortBy] : 'created_at';
@@ -225,13 +229,34 @@ export function useUsersKPIs() {
   });
 }
 
+// ── Lookup "email d'abord" (page Utilisateurs, création) ───────────────────────
+// Edge Function dédiée (service_role) : RLS scope `users` par organisation,
+// un ADMIN ne peut pas voir un profil d'une autre organisation via une
+// requête client directe — nécessaire pour distinguer 'other_org' de 'new'.
+
+export interface LookupUserResult {
+  status: 'new' | 'same_org' | 'orphan' | 'other_org';
+  id?: string;
+  nom?: string | null;
+  prenom?: string | null;
+}
+
+export function useLookupUserByEmail() {
+  return useMutation({
+    mutationFn: async (params: { email: string; organisationId?: string }) => {
+      const { data } = await invokeEdgeFunction<{ data: LookupUserResult }>('users-lookup-by-email', params);
+      return data;
+    },
+  });
+}
+
 // ── Mutations : Création / Modification / Suppression ─────────────────────────
 
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: CreateUserPayload) => {
-      const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string; prenom: string; email: string; role: UserRole; actif: boolean } }>('users-create', { ...payload });
+      const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string | null; prenom: string | null; email: string; role: UserRole; actif: boolean } }>('users-create', { ...payload });
       return adaptUserDto(edgeRowToDto(data));
     },
     onSuccess: () => {
@@ -245,7 +270,7 @@ export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data: payload }: { id: string; data: UpdateUserPayload }) => {
-      const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string; prenom: string; email: string; role: UserRole; actif: boolean } }>('users-update', { id, ...payload });
+      const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string | null; prenom: string | null; email: string; role: UserRole; actif: boolean } }>('users-update', { id, ...payload });
       return adaptUserDto(edgeRowToDto(data));
     },
     onSuccess: (_, variables) => {

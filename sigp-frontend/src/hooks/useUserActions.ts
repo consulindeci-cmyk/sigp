@@ -98,15 +98,22 @@ export function useUserActions(): UseUserActionsReturn {
   const handleSaveCreate = useCallback(
     (payload: CreateUserPayload) => {
       setSaveError(null);
-      createMutation.mutate(payload, {
-        onSuccess: () => {
-          setSlideOverOpen(false);
-          setSelectedUser(null);
-        },
-        onError: (err) => setSaveError(extractErrorMessage(err)),
-      });
+      const onSettled = {
+        onSuccess: () => { setSlideOverOpen(false); setSelectedUser(null); },
+        onError: (err: unknown) => setSaveError(extractErrorMessage(err)),
+      };
+      // Flux "email d'abord" : la vérification a trouvé un profil orphelin —
+      // on le rattache (users-update) au lieu d'en créer un nouveau.
+      if (payload.existingUserId) {
+        updateMutation.mutate(
+          { id: payload.existingUserId, data: { organisationId: payload.organisationId, role: payload.role, telephone: payload.telephone } },
+          onSettled,
+        );
+        return;
+      }
+      createMutation.mutate(payload, onSettled);
     },
-    [createMutation]
+    [createMutation, updateMutation]
   );
 
   const handleSaveUpdate = useCallback(

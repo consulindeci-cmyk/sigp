@@ -7,6 +7,8 @@ interface CreateCommitteeMemberBody {
   prenom: string;
   fonction?: string;
   organisation?: string;
+  email?: string;
+  telephone?: string;
   type: string;
   presidentRole?: boolean;
   statut?: string;
@@ -44,6 +46,8 @@ Deno.serve(async (req: Request) => {
         prenom: body.prenom.trim(),
         fonction: body.fonction ?? '',
         organisation: body.organisation ?? '',
+        email: body.email?.trim() ?? '',
+        telephone: body.telephone ?? '',
         type: body.type,
         president_role: body.presidentRole ?? false,
         statut: body.statut ?? 'Actif',

@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import {
   useTeamMembers, useCreateTeamMember, useUpdateTeamMember, useDeleteTeamMember,
   useCommitteeMembers, useCreateCommitteeMember, useUpdateCommitteeMember, useDeleteCommitteeMember,
   useStakeholders, useCreateStakeholder, useUpdateStakeholder, useDeleteStakeholder,
   useContacts, useCreateContact, useUpdateContact, useDeleteContact,
+  useOrganisationMembersForPicker,
 } from '@/hooks/useGovernance';
-import { Plus, Edit, Trash2, User, Mail, Phone, X, Crown, Star, Eye, Building2 } from 'lucide-react';
+import { Plus, Edit, Trash2, User, Mail, Phone, X, Crown, Star, Eye, Building2, AlertCircle } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
@@ -75,6 +77,14 @@ function categorieVariant(cat: string): 'destructive' | 'info' | 'default' | 'wa
   return 'warning';
 }
 
+// nom/prenom sont un instantané résolu côté serveur depuis le profil
+// sélectionné — un membre PENDING (jamais connecté) n'a pas encore renseigné
+// son identité, d'où ce libellé de repli plutôt qu'un nom vide.
+function identityLabel(nom: string, prenom: string, isPending: boolean): string {
+  if (isPending) return 'Invité — profil en attente';
+  return `${prenom} ${nom}`.trim();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared Avatar
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +118,7 @@ function KeyActorCard({ member, label, icon: Icon }: { member: TeamMember | unde
               <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
               <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
             </div>
-            <p className="text-[14px] font-semibold text-foreground truncate">{member.prenom} {member.nom}</p>
+            <p className="text-[14px] font-semibold text-foreground truncate">{identityLabel(member.nom, member.prenom, member.isPending)}</p>
             <p className="text-[11px] text-muted-foreground truncate">{member.structure}</p>
             <div className="flex flex-col gap-0.5 mt-2">
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -133,11 +143,9 @@ function KeyActorCard({ member, label, icon: Icon }: { member: TeamMember | unde
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface TeamFormValues {
-  prenom:    string;
-  nom:       string;
+  userId:    string;
   role:      string;
   structure: string;
-  email:     string;
   telephone: string;
   dateDebut: string;
   status:    string;
@@ -146,17 +154,15 @@ interface TeamFormValues {
 type TeamFormErrors = Partial<Record<keyof TeamFormValues, string>>;
 
 const EMPTY_TEAM: TeamFormValues = {
-  prenom: '', nom: '', role: '', structure: '',
-  email: '', telephone: '', dateDebut: '', status: 'Actif',
+  userId: '', role: '', structure: '',
+  telephone: '', dateDebut: '', status: 'Actif',
 };
 
 function memberToForm(m: TeamMember): TeamFormValues {
   return {
-    prenom:    m.prenom,
-    nom:       m.nom,
+    userId:    m.userId,
     role:      m.role,
     structure: m.structure,
-    email:     m.email,
     telephone: m.telephone,
     dateDebut: m.dateDebut,
     status:    m.status,
@@ -187,16 +193,19 @@ function TeamMemberSlideOver({
   member,
   mode,
   onSave,
+  projectId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member: TeamMember | null;
   mode: SlideOverMode;
   onSave?: (data: Partial<TeamMember>) => void;
+  projectId: string;
 }) {
   const [values, setValues] = useState<TeamFormValues>(EMPTY_TEAM);
   const [errors, setErrors] = useState<TeamFormErrors>({});
   const readOnly = mode === 'view';
+  const { data: orgMembers = [], isLoading: isLoadingMembers } = useOrganisationMembersForPicker(projectId);
 
   useEffect(() => {
     if (!open) return;
@@ -212,31 +221,29 @@ function TeamMemberSlideOver({
 
   function validate(): boolean {
     const errs: TeamFormErrors = {};
-    if (!values.prenom.trim())    errs.prenom    = 'Requis';
-    if (!values.nom.trim())       errs.nom       = 'Requis';
-    if (!values.role.trim())      errs.role      = 'Requis';
-    if (!values.email.trim())     errs.email     = 'Requis';
+    // Obligatoire uniquement à la création — interdiction stricte de saisie
+    // libre pour un nouveau membre. En édition, un membre déjà existant sans
+    // compte lié (créé avant cette refonte) reste modifiable sur ses autres
+    // champs sans être forcé de le rattacher immédiatement.
+    if (mode === 'new' && !values.userId.trim()) errs.userId = 'Requis';
+    if (!values.role.trim()) errs.role = 'Requis';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
 
   function handleSave() {
     if (!validate()) return;
-    const prenom    = values.prenom.trim();
-    const nom       = values.nom.trim();
-    const initiales = `${prenom[0] ?? ''}${nom[0] ?? ''}`.toUpperCase();
     onSave?.({
-      prenom,
-      nom,
-      initiales,
+      ...(values.userId ? { userId: values.userId } : {}),
       role:      values.role as TeamMember['role'],
       structure: values.structure.trim(),
-      email:     values.email.trim(),
       telephone: values.telephone.trim(),
       dateDebut: values.dateDebut,
       status:    values.status as ActorStatus,
     });
   }
+
+  const selectedOrgMember = orgMembers.find(u => u.id === values.userId);
 
   const titles: Record<SlideOverMode, string> = {
     view: 'Détails du membre',
@@ -264,7 +271,7 @@ function TeamMemberSlideOver({
                   {member.initiales}
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-foreground">{member.prenom} {member.nom}</p>
+                  <p className="text-lg font-semibold text-foreground">{identityLabel(member.nom, member.prenom, member.isPending)}</p>
                   <p className="text-sm text-muted-foreground">{member.structure}</p>
                   <Badge variant={statusVariant(member.status)} className="mt-1 text-[11px]">{member.status}</Badge>
                 </div>
@@ -290,22 +297,31 @@ function TeamMemberSlideOver({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FRow id="gov-prenom" label="Prénom" error={errors.prenom}>
-                <Input
-                  id="gov-prenom"
-                  value={values.prenom}
-                  onChange={e => set('prenom', e.target.value)}
-                  placeholder="Prénom"
-                />
-              </FRow>
-
-              <FRow id="gov-nom" label="Nom" error={errors.nom}>
-                <Input
-                  id="gov-nom"
-                  value={values.nom}
-                  onChange={e => set('nom', e.target.value)}
-                  placeholder="Nom"
-                />
+              <FRow id="gov-membre" label="Membre de l'organisation" error={errors.userId} full>
+                <Select
+                  id="gov-membre"
+                  value={values.userId}
+                  onChange={e => set('userId', e.target.value)}
+                  disabled={isLoadingMembers}
+                >
+                  <option value="">
+                    {isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}
+                  </option>
+                  {orgMembers.map(u => (
+                    <option key={u.id} value={u.id}>{u.displayName}</option>
+                  ))}
+                </Select>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Seules les personnes déjà rattachées à l'organisation peuvent être ajoutées ici.
+                </p>
+                {selectedOrgMember && (
+                  <p className="text-[12px] text-foreground mt-1">{selectedOrgMember.email}</p>
+                )}
+                {mode === 'edit' && !values.userId && (
+                  <p className="text-[11px] text-warning mt-1">
+                    Ce membre n'est pas encore rattaché à un compte — sélectionnez une personne pour le lier.
+                  </p>
+                )}
               </FRow>
 
               <FRow id="gov-role" label="Rôle" error={errors.role} full>
@@ -329,16 +345,6 @@ function TeamMemberSlideOver({
                   value={values.structure}
                   onChange={e => set('structure', e.target.value)}
                   placeholder="Organisation / Structure"
-                />
-              </FRow>
-
-              <FRow id="gov-email" label="Email" error={errors.email}>
-                <Input
-                  id="gov-email"
-                  type="email"
-                  value={values.email}
-                  onChange={e => set('email', e.target.value)}
-                  placeholder="email@exemple.com"
                 />
               </FRow>
 
@@ -392,6 +398,7 @@ function TeamMemberSlideOver({
 
 interface CommitteeFormValues {
   nom: string; prenom: string; fonction: string; organisation: string;
+  email: string; telephone: string;
   type: string; presidentRole: boolean; status: string;
 }
 
@@ -399,12 +406,14 @@ type CommitteeFormErrors = Partial<Record<keyof CommitteeFormValues, string>>;
 
 const EMPTY_COMMITTEE: CommitteeFormValues = {
   nom: '', prenom: '', fonction: '', organisation: '',
+  email: '', telephone: '',
   type: '', presidentRole: false, status: 'Actif',
 };
 
 function committeeToForm(m: CommitteeMember): CommitteeFormValues {
   return {
     nom: m.nom, prenom: m.prenom, fonction: m.fonction, organisation: m.organisation,
+    email: m.email, telephone: m.telephone,
     type: m.type, presidentRole: m.presidentRole, status: m.status,
   };
 }
@@ -450,6 +459,8 @@ function CommitteeMemberSlideOver({
       prenom: values.prenom.trim(),
       fonction: values.fonction.trim(),
       organisation: values.organisation.trim(),
+      email: values.email.trim(),
+      telephone: values.telephone.trim(),
       type: values.type as CommitteeMember['type'],
       presidentRole: values.presidentRole,
       status: values.status as ActorStatus,
@@ -497,6 +508,14 @@ function CommitteeMemberSlideOver({
                     {member.presidentRole ? 'Président' : 'Membre'}
                   </Badge>
                 </div>
+                <div className="sm:col-span-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Email</p>
+                  <p className="text-[13px] text-foreground">{member.email || '—'}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Téléphone</p>
+                  <p className="text-[13px] text-foreground">{member.telephone || '—'}</p>
+                </div>
               </div>
             </div>
           ) : (
@@ -512,6 +531,12 @@ function CommitteeMemberSlideOver({
               </FRow>
               <FRow id="com-organisation" label="Organisation" full>
                 <Input id="com-organisation" value={values.organisation} onChange={e => set('organisation', e.target.value)} placeholder="Organisation" />
+              </FRow>
+              <FRow id="com-email" label="Email">
+                <Input id="com-email" type="email" value={values.email} onChange={e => set('email', e.target.value)} placeholder="email@exemple.com" />
+              </FRow>
+              <FRow id="com-tel" label="Téléphone">
+                <Input id="com-tel" value={values.telephone} onChange={e => set('telephone', e.target.value)} placeholder="+227 XX XX XX XX" />
               </FRow>
               <FRow id="com-type" label="Comité" error={errors.type} full>
                 <Select id="com-type" value={values.type} onChange={e => set('type', e.target.value)}>
@@ -873,6 +898,8 @@ function buildTeamColumns(
   onView: (m: TeamMember) => void,
   onEdit: (m: TeamMember) => void,
   onDelete: (id: string) => void,
+  canEdit: boolean,
+  canDelete: boolean,
 ): ColumnDef<TeamMember, any>[] {
   return [
     {
@@ -881,12 +908,12 @@ function buildTeamColumns(
       header: 'Membre',
       meta: { isSticky: true } as any,
       cell: ({ row }) => {
-        const { initiales, prenom, nom, structure } = row.original;
+        const { initiales, nom, prenom, isPending, structure } = row.original;
         return (
           <div className="flex items-center gap-2.5 min-w-[180px]">
             <Avatar initiales={initiales} />
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[13px] font-semibold text-foreground truncate">{prenom} {nom}</span>
+              <span className="text-[13px] font-semibold text-foreground truncate">{identityLabel(nom, prenom, isPending)}</span>
               <span className="text-[11px] text-muted-foreground truncate">{structure}</span>
             </div>
           </div>
@@ -941,16 +968,20 @@ function buildTeamColumns(
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(row.original.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canEdit && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(row.original.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -961,6 +992,8 @@ function buildCommitteeColumns(
   onView: (m: CommitteeMember) => void,
   onEdit: (m: CommitteeMember) => void,
   onDelete: (id: string) => void,
+  canEdit: boolean,
+  canDelete: boolean,
 ): ColumnDef<CommitteeMember, any>[] {
   return [
     {
@@ -1024,16 +1057,20 @@ function buildCommitteeColumns(
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(row.original.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canEdit && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(row.original.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -1044,6 +1081,8 @@ function buildStakeholderColumns(
   onView: (s: Stakeholder) => void,
   onEdit: (s: Stakeholder) => void,
   onDelete: (id: string) => void,
+  canEdit: boolean,
+  canDelete: boolean,
 ): ColumnDef<Stakeholder, any>[] {
   return [
     {
@@ -1105,16 +1144,20 @@ function buildStakeholderColumns(
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(row.original.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canEdit && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(row.original.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -1125,6 +1168,8 @@ function buildContactColumns(
   onView: (c: Contact) => void,
   onEdit: (c: Contact) => void,
   onDelete: (id: string) => void,
+  canEdit: boolean,
+  canDelete: boolean,
 ): ColumnDef<Contact, any>[] {
   return [
     {
@@ -1190,16 +1235,20 @@ function buildContactColumns(
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(row.original.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canEdit && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(row.original.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -1210,6 +1259,8 @@ function buildBailleurColumns(
   onView: (s: Stakeholder) => void,
   onEdit: (s: Stakeholder) => void,
   onDelete: (id: string) => void,
+  canEdit: boolean,
+  canDelete: boolean,
 ): ColumnDef<Stakeholder, any>[] {
   return [
     {
@@ -1273,16 +1324,20 @@ function buildBailleurColumns(
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(row.original.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canEdit && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(row.original.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -1297,6 +1352,13 @@ export default function ProjectGovernanceTab() {
   const { id: urlProjectId } = useParams<{ id: string }>();
   const activeProjectId = useUIStore(s => s.activeProjectId);
   const projectId = urlProjectId || activeProjectId || '';
+
+  // Miroir des rôles serveur (requireRole) sur les Edge Functions
+  // governance-*-create/update/delete — create/update réservés à
+  // COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN, delete à ADMIN/SUPER_ADMIN.
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   const { data: teamData = [] }        = useTeamMembers(projectId);
   const { data: committeeData = [] }   = useCommitteeMembers(projectId);
@@ -1340,6 +1402,15 @@ export default function ProjectGovernanceTab() {
   type DeleteTarget = { kind: 'team' | 'committee' | 'stakeholder' | 'contact'; id: string };
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
+  // Bannière d'erreur unique pour les 4 entités (création/modification/
+  // suppression) — sans ça, un échec serveur (permission refusée, validation...)
+  // passait inaperçu : le panneau se fermait quand même comme si tout s'était
+  // bien passé.
+  const [actionError, setActionError] = useState<string | null>(null);
+  function handleMutationError(err: unknown) {
+    setActionError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
+  }
+
   const bailleurs = stakeholderData.filter(s => s.type === 'Bailleur');
   const responsableProjet = teamData.find(m => m.role === 'Responsable Projet');
   const sponsor = teamData.find(m => m.role === 'Sponsor');
@@ -1367,56 +1438,60 @@ export default function ProjectGovernanceTab() {
   function openContactNew() { setSelectedContact(null); setContactSlideOverMode('new'); setContactSlideOverOpen(true); }
 
   function handleDeleteConfirm() {
-    if (deleteTarget) {
-      if (deleteTarget.kind === 'team') deleteMutation.mutate(deleteTarget.id);
-      else if (deleteTarget.kind === 'committee') deleteCommitteeMutation.mutate(deleteTarget.id);
-      else if (deleteTarget.kind === 'stakeholder') deleteStakeholderMutation.mutate(deleteTarget.id);
-      else if (deleteTarget.kind === 'contact') deleteContactMutation.mutate(deleteTarget.id);
-    }
-    setDeleteTarget(null);
+    if (!deleteTarget) return;
+    setActionError(null);
+    const onSettled = { onSuccess: () => setDeleteTarget(null), onError: handleMutationError };
+    if (deleteTarget.kind === 'team') deleteMutation.mutate(deleteTarget.id, onSettled);
+    else if (deleteTarget.kind === 'committee') deleteCommitteeMutation.mutate(deleteTarget.id, onSettled);
+    else if (deleteTarget.kind === 'stakeholder') deleteStakeholderMutation.mutate(deleteTarget.id, onSettled);
+    else if (deleteTarget.kind === 'contact') deleteContactMutation.mutate(deleteTarget.id, onSettled);
   }
 
   function handleSave(data: Partial<TeamMember>) {
+    setActionError(null);
+    const onSettled = { onSuccess: () => setSlideOverOpen(false), onError: handleMutationError };
     if (slideOverMode === 'new') {
-      createMutation.mutate(data);
+      createMutation.mutate(data, onSettled);
     } else if (selectedMember) {
-      updateMutation.mutate({ id: selectedMember.id, ...data });
+      updateMutation.mutate({ id: selectedMember.id, ...data }, onSettled);
     }
-    setSlideOverOpen(false);
   }
 
   function handleCommitteeSave(data: Partial<CommitteeMember>) {
+    setActionError(null);
+    const onSettled = { onSuccess: () => setCommitteeSlideOverOpen(false), onError: handleMutationError };
     if (committeeSlideOverMode === 'new') {
-      createCommitteeMutation.mutate(data);
+      createCommitteeMutation.mutate(data, onSettled);
     } else if (selectedCommittee) {
-      updateCommitteeMutation.mutate({ id: selectedCommittee.id, ...data });
+      updateCommitteeMutation.mutate({ id: selectedCommittee.id, ...data }, onSettled);
     }
-    setCommitteeSlideOverOpen(false);
   }
 
   function handleStakeholderSave(data: Partial<Stakeholder>) {
+    setActionError(null);
+    const onSettled = { onSuccess: () => setStakeholderSlideOverOpen(false), onError: handleMutationError };
     if (stakeholderSlideOverMode === 'new') {
-      createStakeholderMutation.mutate(data);
+      createStakeholderMutation.mutate(data, onSettled);
     } else if (selectedStakeholder) {
-      updateStakeholderMutation.mutate({ id: selectedStakeholder.id, ...data });
+      updateStakeholderMutation.mutate({ id: selectedStakeholder.id, ...data }, onSettled);
     }
-    setStakeholderSlideOverOpen(false);
   }
 
   function handleContactSave(data: Partial<Contact>) {
+    setActionError(null);
+    const onSettled = { onSuccess: () => setContactSlideOverOpen(false), onError: handleMutationError };
     if (contactSlideOverMode === 'new') {
-      createContactMutation.mutate(data);
+      createContactMutation.mutate(data, onSettled);
     } else if (selectedContact) {
-      updateContactMutation.mutate({ id: selectedContact.id, ...data });
+      updateContactMutation.mutate({ id: selectedContact.id, ...data }, onSettled);
     }
-    setContactSlideOverOpen(false);
   }
 
-  const teamColumns = buildTeamColumns(openView, openEdit, openDelete);
-  const committeeColumns = buildCommitteeColumns(openCommitteeView, openCommitteeEdit, openCommitteeDelete);
-  const stakeholderColumns = buildStakeholderColumns(openStakeholderView, openStakeholderEdit, openStakeholderDelete);
-  const bailleurColumns = buildBailleurColumns(openStakeholderView, openStakeholderEdit, openStakeholderDelete);
-  const contactColumns = buildContactColumns(openContactView, openContactEdit, openContactDelete);
+  const teamColumns = buildTeamColumns(openView, openEdit, openDelete, canManage, canDelete);
+  const committeeColumns = buildCommitteeColumns(openCommitteeView, openCommitteeEdit, openCommitteeDelete, canManage, canDelete);
+  const stakeholderColumns = buildStakeholderColumns(openStakeholderView, openStakeholderEdit, openStakeholderDelete, canManage, canDelete);
+  const bailleurColumns = buildBailleurColumns(openStakeholderView, openStakeholderEdit, openStakeholderDelete, canManage, canDelete);
+  const contactColumns = buildContactColumns(openContactView, openContactEdit, openContactDelete, canManage, canDelete);
 
   return (
     <section aria-label="Membres & Acteurs" className="flex flex-col gap-6">
@@ -1427,14 +1502,36 @@ export default function ProjectGovernanceTab() {
           <h1 className="text-base font-bold text-foreground">Membres &amp; Acteurs</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Équipe projet, comités, bailleurs et parties prenantes</p>
         </div>
-        <Button
-          variant="default" size="sm" className="h-8 text-xs"
-          onClick={() => { setSelectedMember(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-          Ajouter un membre
-        </Button>
+        {canManage && (
+          <Button
+            variant="default" size="sm" className="h-8 text-xs"
+            onClick={() => { setSelectedMember(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Ajouter un membre
+          </Button>
+        )}
       </div>
+
+      {actionError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive flex items-center justify-between gap-3"
+        >
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {actionError}
+          </span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-xs underline opacity-70 hover:opacity-100 shrink-0"
+            aria-label="Fermer le message d'erreur"
+          >
+            Fermer
+          </button>
+        </div>
+      )}
 
       {/* Acteurs clés */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1482,13 +1579,15 @@ export default function ProjectGovernanceTab() {
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-base">Membres de l'équipe projet</CardTitle>
-              <Button
-                variant="default" size="sm" aria-label="Ajouter un membre"
-                onClick={() => { setSelectedMember(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-              >
-                <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-                Ajouter
-              </Button>
+              {canManage && (
+                <Button
+                  variant="default" size="sm" aria-label="Ajouter un membre"
+                  onClick={() => { setSelectedMember(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
+                >
+                  <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                  Ajouter
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               <DataTable
@@ -1515,10 +1614,12 @@ export default function ProjectGovernanceTab() {
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-base">Membres des comités</CardTitle>
-              <Button variant="outline" size="sm" aria-label="Ajouter un membre au comité" onClick={openCommitteeNew}>
-                <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-                Ajouter
-              </Button>
+              {canManage && (
+                <Button variant="outline" size="sm" aria-label="Ajouter un membre au comité" onClick={openCommitteeNew}>
+                  <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                  Ajouter
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               <DataTable
@@ -1545,10 +1646,12 @@ export default function ProjectGovernanceTab() {
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-base">Bailleurs de fonds</CardTitle>
-              <Button variant="outline" size="sm" aria-label="Ajouter un bailleur" onClick={() => openStakeholderNew('Bailleur')}>
-                <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-                Ajouter
-              </Button>
+              {canManage && (
+                <Button variant="outline" size="sm" aria-label="Ajouter un bailleur" onClick={() => openStakeholderNew('Bailleur')}>
+                  <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                  Ajouter
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               <DataTable
@@ -1575,10 +1678,12 @@ export default function ProjectGovernanceTab() {
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-base">Parties prenantes</CardTitle>
-              <Button variant="outline" size="sm" aria-label="Ajouter une partie prenante" onClick={() => openStakeholderNew()}>
-                <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-                Ajouter
-              </Button>
+              {canManage && (
+                <Button variant="outline" size="sm" aria-label="Ajouter une partie prenante" onClick={() => openStakeholderNew()}>
+                  <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                  Ajouter
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               <DataTable
@@ -1619,10 +1724,12 @@ export default function ProjectGovernanceTab() {
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-base">Annuaire des contacts</CardTitle>
-              <Button variant="outline" size="sm" aria-label="Ajouter un contact" onClick={openContactNew}>
-                <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-                Ajouter
-              </Button>
+              {canManage && (
+                <Button variant="outline" size="sm" aria-label="Ajouter un contact" onClick={openContactNew}>
+                  <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                  Ajouter
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               <DataTable
@@ -1653,6 +1760,7 @@ export default function ProjectGovernanceTab() {
         member={selectedMember}
         mode={slideOverMode}
         onSave={handleSave}
+        projectId={projectId}
       />
 
       <CommitteeMemberSlideOver

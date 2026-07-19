@@ -1,7 +1,8 @@
 import React, { Suspense } from 'react';
 import { Loader2, Info, AlertTriangle, CheckCircle } from 'lucide-react';
 
-import { mockEvents } from '../../mocks/dashboardMocks';
+import type { ProjectEvent } from '@/types/dashboard';
+import type { HistoriqueProjet } from '@/types';
 
 import { formatBudget, type Project } from '@/lib/projectAdapter';
 import {
@@ -12,6 +13,7 @@ import {
   useProjectFundingSources,
   useProjectMilestones,
 } from '@/hooks/useProjects';
+import { useHistory } from '@/hooks/useHistory';
 
 const EVMSummaryCard            = React.lazy(() => import('./EVMSummaryCard'));
 const EvmChart                = React.lazy(() => import('./charts/EvmChart'));
@@ -92,6 +94,24 @@ function fmtDate(d?: string): string {
   return `${String(day).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
 }
 
+// Journal des Validations / Chronologie des Événements affichaient jusqu'ici
+// des événements d'autres projets (mockEvents, données figées non liées au
+// projet consulté) — dérivé ici de l'historique réel (table `historique`,
+// même source que l'onglet Historique).
+function toProjectEvent(h: HistoriqueProjet): ProjectEvent {
+  const type: ProjectEvent['type'] =
+    h.action === 'VALIDATION' ? 'validation'
+    : h.niveau === 'CRITIQUE' || h.action === 'SUPPRESSION' || h.action === 'REJET' ? 'alert'
+    : h.module === 'Décaissements' ? 'payment'
+    : 'milestone';
+  return {
+    id: h.id,
+    date: `${fmtDate(h.date)} ${h.heure.slice(0, 5)}`,
+    type,
+    description: `${h.element} — ${h.description}`,
+  };
+}
+
 function buildKpis(project?: Project, summary?: ProjectSummary): KpiItem[] {
   const devise = project?.devise ?? 'XOF';
   const fmt = (n: number) => formatBudget(n, devise);
@@ -170,6 +190,9 @@ export default function TabOverview({ setActiveTab, project, summary }: TabOverv
   const { data: budgetDistRaw = [], isLoading: budgetDistLoading, isError: budgetDistError } = useProjectBudgetDistribution(projectId);
   const { data: fundingSourcesRaw = [], isLoading: fundingLoading, isError: fundingError } = useProjectFundingSources(projectId);
   const { data: milestonesRaw = [], isLoading: milestonesLoading, isError: milestonesError } = useProjectMilestones(projectId);
+
+  const { data: historyPage, isLoading: historyLoading, isError: historyError } = useHistory(projectId);
+  const historyEvents = (historyPage?.data ?? []).map(toProjectEvent);
 
   const BUDGET_COLORS = ['var(--navy-500)', 'var(--green)', 'var(--amber)', 'hsl(var(--primary))', 'var(--slate)'];
   const FUNDING_COLORS = ['var(--navy-700)', 'var(--slate)', 'var(--amber)', 'var(--green)'];
@@ -346,7 +369,7 @@ export default function TabOverview({ setActiveTab, project, summary }: TabOverv
             className="col-span-full grid gap-5"
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))' }}
           >
-            {/* Backend requis — EVM series */}
+            {/* ✅ Données réelles : useProjectEvmSummary/useProjectEvmHistory */}
             <Suspense fallback={<WidgetSkeleton />}>
               <EVMSummaryCard projectId={project?.id ?? ''} />
             </Suspense>
@@ -434,13 +457,18 @@ export default function TabOverview({ setActiveTab, project, summary }: TabOverv
                 state={disbLoading ? 'loading' : disbError ? 'error' : disbursementPoints.length === 0 ? 'empty' : 'success'}
               />
             </Suspense>
-            {/* Backend requis — historique des validations */}
+            {/* ✅ Données réelles : historique du projet (table `historique`) */}
             <Suspense fallback={<WidgetSkeleton />}>
-              <ValidationHistoryWidget data={mockEvents} />
+              <ValidationHistoryWidget
+                data={historyEvents}
+                state={historyLoading ? 'loading' : historyError ? 'error' : historyEvents.length === 0 ? 'empty' : 'success'}
+              />
             </Suspense>
-            {/* Backend requis — chronologie événements */}
             <Suspense fallback={<WidgetSkeleton />}>
-              <EventChronologyWidget data={mockEvents} />
+              <EventChronologyWidget
+                data={historyEvents}
+                state={historyLoading ? 'loading' : historyError ? 'error' : historyEvents.length === 0 ? 'empty' : 'success'}
+              />
             </Suspense>
           </div>
 

@@ -7,6 +7,8 @@ interface UpdateCommitteeMemberBody {
   prenom?: string;
   fonction?: string;
   organisation?: string;
+  email?: string;
+  telephone?: string;
   type?: string;
   presidentRole?: boolean;
   statut?: string;
@@ -50,6 +52,8 @@ Deno.serve(async (req: Request) => {
     if (body.prenom !== undefined) updatePayload.prenom = body.prenom.trim();
     if (body.fonction !== undefined) updatePayload.fonction = body.fonction;
     if (body.organisation !== undefined) updatePayload.organisation = body.organisation;
+    if (body.email !== undefined) updatePayload.email = body.email.trim();
+    if (body.telephone !== undefined) updatePayload.telephone = body.telephone;
     if (body.type !== undefined) updatePayload.type = body.type;
     if (body.presidentRole !== undefined) updatePayload.president_role = body.presidentRole;
     if (body.statut !== undefined) updatePayload.statut = body.statut;

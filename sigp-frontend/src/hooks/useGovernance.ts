@@ -8,32 +8,89 @@ function initialesOf(prenom: string, nom: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Vivier de l'organisation — sélecteur partagé Équipe Projet / Comité de
+// Pilotage (interdiction stricte de saisie libre à ce niveau, cf. plan
+// Phase 1 : on ne pioche que dans les utilisateurs déjà rattachés à
+// l'organisation du projet, actifs ou PENDING).
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface OrganisationMemberOption {
+  id: string
+  nom: string | null
+  prenom: string | null
+  email: string
+  isPending: boolean
+  displayName: string
+}
+
+export function useOrganisationMembersForPicker(projectId: string) {
+  return useQuery({
+    queryKey: ['organisation-members-picker', projectId],
+    queryFn: async () => {
+      const { data: orgId, error: orgError } = await supabase.rpc('project_organisation_id', {
+        p_project_id: projectId,
+      })
+      if (orgError) throw orgError
+      if (!orgId) return []
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, nom, prenom, email, derniere_connexion')
+        .eq('organisation_id', orgId)
+        .eq('actif', true)
+        .is('deleted_at', null)
+        .order('prenom', { ascending: true })
+      if (error) throw error
+
+      return (data as unknown as Array<{
+        id: string; nom: string | null; prenom: string | null; email: string; derniere_connexion: string | null
+      }>).map((u): OrganisationMemberOption => {
+        const isPending = u.derniere_connexion === null
+        const identity = u.nom || u.prenom ? `${u.prenom ?? ''} ${u.nom ?? ''}`.trim() : u.email
+        return {
+          id: u.id,
+          nom: u.nom,
+          prenom: u.prenom,
+          email: u.email,
+          isPending,
+          displayName: isPending ? `${identity} (invité)` : identity,
+        }
+      })
+    },
+    enabled: !!projectId,
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Équipe Projet
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface TeamMemberRow {
-  id: string; project_id: string; nom: string; prenom: string; role: string
-  structure: string; email: string; telephone: string; statut: string
+  id: string; project_id: string; user_id: string | null; nom: string | null; prenom: string | null
+  role: string; structure: string; email: string; telephone: string; statut: string
   date_debut: string | null; created_at: string; updated_at: string
 }
 
 const TEAM_MEMBER_SELECT = `
-  id, project_id, nom, prenom, role, structure, email, telephone, statut,
+  id, project_id, user_id, nom, prenom, role, structure, email, telephone, statut,
   date_debut, created_at, updated_at
 `
 
 function adaptTeamMember(row: TeamMemberRow): TeamMember {
+  const isPending = row.nom === null || row.prenom === null
   return {
     id: row.id,
-    nom: row.nom,
-    prenom: row.prenom,
+    userId: row.user_id ?? '',
+    nom: row.nom ?? '',
+    prenom: row.prenom ?? '',
+    isPending,
     role: row.role as TeamMember['role'],
     structure: row.structure,
     email: row.email,
     telephone: row.telephone,
     status: row.statut as TeamMember['status'],
     dateDebut: row.date_debut ?? '',
-    initiales: initialesOf(row.prenom, row.nom),
+    initiales: isPending ? '…' : initialesOf(row.prenom ?? '', row.nom ?? ''),
   }
 }
 
@@ -61,11 +118,9 @@ export function useCreateTeamMember(projectId: string) {
     mutationFn: async (dto: Partial<TeamMember>) => {
       const { data } = await invokeEdgeFunction<{ data: TeamMemberRow }>('governance-team-members-create', {
         projectId,
-        nom: dto.nom,
-        prenom: dto.prenom,
+        userId: dto.userId,
         role: dto.role,
         structure: dto.structure,
-        email: dto.email,
         telephone: dto.telephone,
         statut: dto.status,
         dateDebut: dto.dateDebut || undefined,
@@ -82,11 +137,9 @@ export function useUpdateTeamMember(projectId: string) {
     mutationFn: async ({ id, ...dto }: Partial<TeamMember> & { id: string }) => {
       const { data } = await invokeEdgeFunction<{ data: TeamMemberRow }>('governance-team-members-update', {
         id,
-        nom: dto.nom,
-        prenom: dto.prenom,
+        userId: dto.userId,
         role: dto.role,
         structure: dto.structure,
-        email: dto.email,
         telephone: dto.telephone,
         statut: dto.status,
         dateDebut: dto.dateDebut || undefined,
@@ -113,13 +166,13 @@ export function useDeleteTeamMember(projectId: string) {
 
 interface CommitteeMemberRow {
   id: string; project_id: string; nom: string; prenom: string; fonction: string
-  organisation: string; type: string; president_role: boolean; statut: string
-  created_at: string; updated_at: string
+  organisation: string; email: string; telephone: string; type: string
+  president_role: boolean; statut: string; created_at: string; updated_at: string
 }
 
 const COMMITTEE_MEMBER_SELECT = `
-  id, project_id, nom, prenom, fonction, organisation, type, president_role,
-  statut, created_at, updated_at
+  id, project_id, nom, prenom, fonction, organisation, email, telephone, type,
+  president_role, statut, created_at, updated_at
 `
 
 function adaptCommitteeMember(row: CommitteeMemberRow): CommitteeMember {
@@ -129,6 +182,8 @@ function adaptCommitteeMember(row: CommitteeMemberRow): CommitteeMember {
     prenom: row.prenom,
     fonction: row.fonction,
     organisation: row.organisation,
+    email: row.email,
+    telephone: row.telephone,
     type: row.type as CommitteeMember['type'],
     presidentRole: row.president_role,
     status: row.statut as CommitteeMember['status'],
@@ -163,6 +218,8 @@ export function useCreateCommitteeMember(projectId: string) {
         prenom: dto.prenom,
         fonction: dto.fonction,
         organisation: dto.organisation,
+        email: dto.email,
+        telephone: dto.telephone,
         type: dto.type,
         presidentRole: dto.presidentRole,
         statut: dto.status,
@@ -183,6 +240,8 @@ export function useUpdateCommitteeMember(projectId: string) {
         prenom: dto.prenom,
         fonction: dto.fonction,
         organisation: dto.organisation,
+        email: dto.email,
+        telephone: dto.telephone,
         type: dto.type,
         presidentRole: dto.presidentRole,
         statut: dto.status,

@@ -6,8 +6,10 @@ import { USER_ROLE_OPTIONS, type UserRow, type UserRole } from '@/lib/userAdapte
 import { userAvatarStyle } from '@/components/users/userAvatarStyle';
 import { type DataTableFilter } from '@/components/ui/data-table/types';
 
-function statusVariant(actif: boolean): 'success' | 'destructive' {
-  return actif ? 'success' : 'destructive';
+function statusVariant(row: UserRow): 'success' | 'destructive' | 'warning' {
+  if (!row.actif) return 'destructive';
+  if (row.isPending) return 'warning';
+  return 'success';
 }
 
 function roleVariant(role: UserRole): 'default' | 'secondary' | 'info' | 'warning' | 'outline' {
@@ -27,6 +29,7 @@ function roleVariant(role: UserRole): 'default' | 'secondary' | 'info' | 'warnin
 
 export const STATUS_FILTER_OPTIONS = [
   { label: 'Actif', value: 'active' },
+  { label: 'Invité / En attente', value: 'pending' },
   { label: 'Désactivé', value: 'inactive' },
 ];
 
@@ -109,7 +112,7 @@ export function getUserColumns(
       id: 'status',
       header: 'Statut',
       cell: ({ row }) => (
-        <Badge variant={statusVariant(row.original.actif)} className="text-[11px]">
+        <Badge variant={statusVariant(row.original)} className="text-[11px]">
           {row.original.statutLabel}
         </Badge>
       ),
