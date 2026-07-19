@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import type { WBS, StatutWBS } from '@/types';
 import { useLogframe } from '@/hooks/useLogframe';
+import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
@@ -22,6 +23,8 @@ interface WBSNodeFormProps {
   parentId?: string | null;
   projectId: string;
   onSubmit: (data: Partial<WBS>) => void;
+  isSaving?: boolean;
+  error?: string | null;
 }
 
 export function WBSNodeForm({
@@ -31,9 +34,16 @@ export function WBSNodeForm({
   parentId,
   projectId,
   onSubmit,
+  isSaving,
+  error,
 }: WBSNodeFormProps) {
   const { data: logframeData } = useLogframe(projectId);
   const logframeItems = logframeData?.data || [];
+
+  // responsable stocke désormais un UUID réel (users.id) — plus de saisie
+  // libre silencieusement ignorée par buildCreatePayload/buildUpdatePayload
+  // (cf. isUUID guard dans useWBS.ts).
+  const { data: orgMembers = [], isLoading: isLoadingMembers } = useOrganisationMembersForPicker(projectId);
 
   const isParent = !parentId && !initialData?.parent_id;
   const isEditing = !!initialData?.id;
@@ -74,7 +84,6 @@ export function WBSNodeForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({ ...formData, parent_id: parentId ?? undefined });
-    onOpenChange(false);
   };
 
   const field = (label: string, children: React.ReactNode, span?: boolean) => (
@@ -119,12 +128,16 @@ export function WBSNodeForm({
                 )}
                 {field(
                   'Responsable',
-                  <Input
-                    type="text"
+                  <Select
                     value={formData.responsable || ''}
                     onChange={e => setFormData(d => ({ ...d, responsable: e.target.value }))}
-                    placeholder="Nom ou département"
-                  />
+                    disabled={isLoadingMembers}
+                  >
+                    <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
+                    {orgMembers.map(m => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </Select>
                 )}
                 {field(
                   'Statut',
@@ -227,6 +240,13 @@ export function WBSNodeForm({
             )}
 
           </form>
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
         </SlideOverBody>
 
         <SlideOverFooter>
@@ -235,8 +255,8 @@ export function WBSNodeForm({
               Annuler
             </Button>
           </SlideOverClose>
-          <Button variant="default" type="submit" form="wbs-node-form">
-            {isEditing ? 'Enregistrer les modifications' : 'Créer l\'élément'}
+          <Button variant="default" type="submit" form="wbs-node-form" disabled={isSaving}>
+            {isSaving ? 'Enregistrement...' : isEditing ? 'Enregistrer les modifications' : 'Créer l\'élément'}
           </Button>
         </SlideOverFooter>
       </SlideOverContent>

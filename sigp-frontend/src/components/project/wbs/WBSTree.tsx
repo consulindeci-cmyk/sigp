@@ -13,6 +13,8 @@ interface WBSTreeProps {
   onEdit: (node: WBS) => void;
   onDelete: (id: string) => void;
   onAddChild: (parentId: string) => void;
+  canManage: boolean;
+  canDelete: boolean;
 }
 
 function getStatusBadgeVariant(statut: string): 'default' | 'info' | 'success' | 'destructive' | 'secondary' {
@@ -51,7 +53,7 @@ const formatMoney = (amount: number = 0) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
-export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild }: WBSTreeProps) {
+export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canManage, canDelete }: WBSTreeProps) {
   const rootNodes = useMemo(
     () => data.filter(n => !n.parent_id).sort((a, b) => a.ordre - b.ordre),
     [data]
@@ -249,36 +251,42 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild }: WBSTr
                 </button>
               </div>
 
-              <button
-                onClick={e => { e.stopPropagation(); onAddChild(node.id); }}
-                className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="Ajouter un sous-élément"
-                title="Ajouter sous-élément"
-              >
-                <Plus size={16} />
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); onEdit(node); }}
-                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Modifier ${node.titre}`}
-                title="Modifier"
-              >
-                <Edit2 size={16} />
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); onDelete(node.id); }}
-                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Supprimer ${node.titre}`}
-                title="Supprimer"
-              >
-                <Trash2 size={16} />
-              </button>
+              {canManage && (
+                <button
+                  onClick={e => { e.stopPropagation(); onAddChild(node.id); }}
+                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Ajouter un sous-élément"
+                  title="Ajouter sous-élément"
+                >
+                  <Plus size={16} />
+                </button>
+              )}
+              {canManage && (
+                <button
+                  onClick={e => { e.stopPropagation(); onEdit(node); }}
+                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Modifier ${node.titre}`}
+                  title="Modifier"
+                >
+                  <Edit2 size={16} />
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  onClick={e => { e.stopPropagation(); onDelete(node.id); }}
+                  className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Supprimer ${node.titre}`}
+                  title="Supprimer"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           );
         },
       },
     ],
-    [data, expanded, flatItems]
+    [data, expanded, flatItems, canManage, canDelete]
   );
 
   return (

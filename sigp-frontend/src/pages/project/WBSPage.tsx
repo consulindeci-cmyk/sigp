@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useWBS, useUpdateWBSOrder, useCreateWBSNode, useUpdateWBSNode, useDeleteWBSNode } from '@/hooks/useWBS';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { WBSTree } from '@/components/project/wbs/WBSTree';
 import { WBSNodeForm } from '@/components/project/wbs/WBSNodeForm';
 import type { WBS } from '@/types';
@@ -68,6 +69,12 @@ export default function WBSPage() {
   const updateMutation  = useUpdateWBSNode(resolvedProjectId);
   const deleteMutation  = useDeleteWBSNode(resolvedProjectId);
 
+  // Miroir des rôles serveur (requireRole) sur wbs-create/update/reorder
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et wbs-delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const [wbsItems, setWbsItems] = useState<WBS[]>([]);
 
   useEffect(() => {
@@ -78,52 +85,79 @@ export default function WBSPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<WBS | null>(null);
   const [parentIdForNew, setParentIdForNew] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<WBS | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Bannière d'erreur globale (réordonnancement — pas de modal/panel associé)
+  const [reorderError, setReorderError] = useState<string | null>(null);
+
+  const extractErrorMessage = (err: unknown): string =>
+    err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleReorder = (newItems: WBS[]) => {
+    const previousItems = wbsItems;
+    setReorderError(null);
     setWbsItems(newItems);
     reorderMutation.mutate(
-      newItems.map((item, index) => ({ id: item.id, parent_id: item.parent_id, ordre: index + 1 }))
+      newItems.map((item, index) => ({ id: item.id, parent_id: item.parent_id, ordre: index + 1 })),
+      {
+        onError: (err) => {
+          setWbsItems(previousItems);
+          setReorderError(extractErrorMessage(err));
+        },
+      }
     );
   };
 
   const handleEdit = (node: WBS) => {
     setEditingNode(node);
     setParentIdForNew(node.parent_id || null);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
   const handleDeleteRequest = (id: string) => {
     const node = wbsItems.find(i => i.id === id) || null;
+    setDeleteError(null);
     setDeleteTarget(node);
   };
 
   const handleDeleteConfirm = () => {
     if (!deleteTarget) return;
-    setWbsItems(prev =>
-      prev.filter(item => item.id !== deleteTarget.id && item.parent_id !== deleteTarget.id)
-    );
-    deleteMutation.mutate(deleteTarget.id);
-    setDeleteTarget(null);
+    setDeleteError(null);
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        setWbsItems(prev =>
+          prev.filter(item => item.id !== deleteTarget.id && item.parent_id !== deleteTarget.id)
+        );
+        setDeleteTarget(null);
+      },
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
   };
 
   const handleAddChild = (parentId: string) => {
     setEditingNode(null);
     setParentIdForNew(parentId);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
   const handleAddRoot = () => {
     setEditingNode(null);
     setParentIdForNew(null);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
   const handleFormSubmit = (data: Partial<WBS>) => {
+    setFormError(null);
+    const onError = (err: unknown) => setFormError(extractErrorMessage(err));
     const newNode: WBS = {
       id: editingNode?.id || `wbs-new-${Date.now()}`,
       projet_id: resolvedProjectId,
@@ -148,11 +182,27 @@ export default function WBSPage() {
     };
 
     if (editingNode) {
-      setWbsItems(prev => prev.map(item => (item.id === editingNode.id ? newNode : item)));
-      updateMutation.mutate({ id: editingNode.id, data });
+      updateMutation.mutate(
+        { id: editingNode.id, data },
+        {
+          onSuccess: () => {
+            setWbsItems(prev => prev.map(item => (item.id === editingNode.id ? newNode : item)));
+            setIsFormOpen(false);
+          },
+          onError,
+        }
+      );
     } else {
-      setWbsItems(prev => [...prev, newNode]);
-      createMutation.mutate({ data, existingNodes: wbsItems });
+      createMutation.mutate(
+        { data, existingNodes: wbsItems },
+        {
+          onSuccess: () => {
+            setWbsItems(prev => [...prev, newNode]);
+            setIsFormOpen(false);
+          },
+          onError,
+        }
+      );
     }
   };
 
@@ -201,16 +251,25 @@ export default function WBSPage() {
             Structure hiérarchique des travaux et des composantes du projet
           </p>
         </div>
-        <Button
-          variant="default"
-          size="sm"
-          leftIcon={<Plus className="h-3.5 w-3.5" />}
-          onClick={handleAddRoot}
-          className="h-8 text-xs"
-        >
-          Ajouter composante
-        </Button>
+        {canManage && (
+          <Button
+            variant="default"
+            size="sm"
+            leftIcon={<Plus className="h-3.5 w-3.5" />}
+            onClick={handleAddRoot}
+            className="h-8 text-xs"
+          >
+            Ajouter composante
+          </Button>
+        )}
       </div>
+
+      {reorderError && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{reorderError}</span>
+        </div>
+      )}
 
       {/* ── KPI STRIP ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -276,6 +335,8 @@ export default function WBSPage() {
               onEdit={handleEdit}
               onDelete={handleDeleteRequest}
               onAddChild={handleAddChild}
+              canManage={canManage}
+              canDelete={canDelete}
             />
           )}
         </div>
@@ -286,16 +347,18 @@ export default function WBSPage() {
         open={isFormOpen}
         onOpenChange={open => {
           setIsFormOpen(open);
-          if (!open) setEditingNode(null);
+          if (!open) { setEditingNode(null); setFormError(null); }
         }}
         initialData={editingNode || undefined}
         parentId={parentIdForNew}
         projectId={resolvedProjectId}
         onSubmit={handleFormSubmit}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        error={formError}
       />
 
       {/* ── MODAL DE CONFIRMATION DE SUPPRESSION ──────────────────────────── */}
-      <Modal open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+      <Modal open={!!deleteTarget} onOpenChange={open => { if (!open) { setDeleteTarget(null); setDeleteError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <div className="flex items-center gap-3">
@@ -317,12 +380,18 @@ export default function WBSPage() {
             </span>{' '}
             et tous ses sous-éléments ?
           </p>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
           <ModalFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
               Annuler
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Supprimer
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </ModalFooter>
         </ModalContent>
