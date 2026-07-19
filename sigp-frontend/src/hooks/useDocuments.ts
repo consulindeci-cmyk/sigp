@@ -224,3 +224,103 @@ export function useDeleteDocument(projectId: string) {
     },
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pièces jointes d'un livrable (documents_projet.livrable_id)
+// ─────────────────────────────────────────────────────────────────────────────
+// Hooks dédiés, plus légers que useDocuments/useCreateDocument ci-dessus (qui
+// encodent categorie/version/mots_clés/confidentialité dans description) —
+// une preuve matérielle de livrable n'a besoin que d'un titre et d'un
+// fichier. Ces hooks appellent réellement documents-create +
+// documents-upload-version (stockage Supabase Storage, bucket privé
+// sigp-documents) et documents-download-version (URL signée 60s) — cf. audit
+// Livrables : aucun code du repo n'utilisait ces deux dernières Edge
+// Functions jusqu'ici (l'upload de TabDocuments.tsx est simulé, ne touche
+// jamais le Storage réel — hors périmètre de ce chantier).
+
+export interface LivrableAttachment {
+  id: string;
+  titre: string;
+  createdAt: string;
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // reader.result = "data:<mime>;base64,<payload>" — l'Edge Function
+      // attend le payload seul, sans préfixe.
+      resolve(result.slice(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Lecture du fichier échouée.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function livrableAttachmentsKey(projectId: string, livrableId: string) {
+  return ['documents', projectId, 'livrable', livrableId] as const;
+}
+
+export function useLivrableAttachments(projectId: string, livrableId: string) {
+  return useQuery({
+    queryKey: livrableAttachmentsKey(projectId, livrableId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('documents_projet')
+        .select('id, titre, created_at')
+        .eq('project_id', projectId)
+        .eq('livrable_id', livrableId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data as { id: string; titre: string; created_at: string }[])
+        .map((d): LivrableAttachment => ({ id: d.id, titre: d.titre, createdAt: d.created_at }));
+    },
+    enabled: !!projectId && !!livrableId,
+  });
+}
+
+export function useUploadLivrableAttachment(projectId: string, livrableId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const { data: created } = await invokeEdgeFunction<{ data: { id: string } }>('documents-create', {
+        projectId, livrableId, titre: file.name,
+      });
+      const fileBase64 = await fileToBase64(file);
+      await invokeEdgeFunction('documents-upload-version', {
+        documentId: created.id,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileBase64,
+      });
+      return created;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: livrableAttachmentsKey(projectId, livrableId) }),
+  });
+}
+
+export function useDeleteLivrableAttachment(projectId: string, livrableId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (documentId: string) => {
+      await invokeEdgeFunction<{ message: string }>('documents-delete', { id: documentId });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: livrableAttachmentsKey(projectId, livrableId) }),
+  });
+}
+
+// documentId générique (pas propre aux livrables) — réutilisable partout où
+// une pièce jointe doit être téléchargée via URL signée.
+export function useDownloadDocumentVersion() {
+  return useMutation({
+    mutationFn: async (documentId: string) => {
+      const { data } = await invokeEdgeFunction<{ data: { url: string; originalName: string; mimeType: string } }>(
+        'documents-download-version',
+        { documentId },
+      );
+      return data;
+    },
+  });
+}

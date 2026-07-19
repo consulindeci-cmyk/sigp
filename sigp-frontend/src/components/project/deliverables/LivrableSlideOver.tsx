@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, AlertCircle, Upload, Download, Paperclip, Trash2 } from 'lucide-react';
 import type { Livrable, LivrableCategorie, StatutLivrable, PrioriteLivrable } from '@/types';
 import {
   LIVRABLE_CATEGORIES, STATUT_LIVRABLE_OPTIONS, PRIORITE_LIVRABLE_OPTIONS,
@@ -14,6 +14,11 @@ import { Textarea } from '@/components/ui/forms/Textarea';
 import { Select }   from '@/components/ui/forms/Select';
 import { Badge }    from '@/components/ui/data-display/Badge';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
+import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
+import {
+  useLivrableAttachments, useUploadLivrableAttachment, useDeleteLivrableAttachment,
+  useDownloadDocumentVersion,
+} from '@/hooks/useDocuments';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,7 +28,7 @@ interface FormState {
   description:    string;
   categorie:      LivrableCategorie;
   composante:     string;
-  responsable:    string;
+  responsableId:  string;
   date_prevue:    string;
   date_reelle:    string;
   avancement:     number;
@@ -38,6 +43,7 @@ export interface LivrableSavePayload {
   categorie:      LivrableCategorie;
   composante?:    string;
   responsable:    string;
+  responsableId:  string;
   date_prevue:    string;
   date_reelle?:   string;
   avancement:     number;
@@ -49,10 +55,16 @@ export interface LivrableSlideOverProps {
   open:         boolean;
   onOpenChange: (v: boolean) => void;
   mode:         'new' | 'edit' | 'view';
+  projectId:    string;
   livrable?:    Livrable | null;
   nextCode?:    string;
   onSave:       (payload: LivrableSavePayload, id?: string) => void;
   onDelete?:    (id: string) => void;
+  canManage?:   boolean;
+  canDelete?:   boolean;
+  isSaving?:    boolean;
+  isDeleting?:  boolean;
+  error?:       string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,13 +93,18 @@ function avancementColor(pct: number): 'success' | 'primary' | 'warning' | 'dest
   return 'destructive';
 }
 
+function fmtDateTime(iso: string): string {
+  try { return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+  catch { return '—'; }
+}
+
 const INIT: FormState = {
   code_livrable: '',
   nom:           '',
   description:   '',
   categorie:     'Rapport',
   composante:    '',
-  responsable:   '',
+  responsableId: '',
   date_prevue:   new Date().toISOString().slice(0, 10),
   date_reelle:   '',
   avancement:    0,
@@ -95,16 +112,122 @@ const INIT: FormState = {
   priorite:      'MOYENNE',
 };
 
+// ─── Sous-composant : Pièces jointes / Preuves matérielles ────────────────────
+// Uniquement disponible en mode edit/view (un livrable doit exister en base
+// avant qu'un document ne puisse lui être rattaché via livrable_id).
+
+function AttachmentsSection({
+  projectId, livrableId, canManage,
+}: { projectId: string; livrableId: string; canManage: boolean }) {
+  const { data: attachments = [], isLoading } = useLivrableAttachments(projectId, livrableId);
+  const uploadMutation = useUploadLivrableAttachment(projectId, livrableId);
+  const deleteMutation = useDeleteLivrableAttachment(projectId, livrableId);
+  const downloadMutation = useDownloadDocumentVersion();
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+    uploadMutation.mutate(file, {
+      onError: (err) => setUploadError(err instanceof Error ? err.message : 'Échec du téléversement.'),
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function handleDownload(documentId: string) {
+    setDownloadError(null);
+    downloadMutation.mutate(documentId, {
+      onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
+      onError: (err) => setDownloadError(err instanceof Error ? err.message : 'Échec du téléchargement.'),
+    });
+  }
+
+  return (
+    <div className="space-y-3 pt-1 border-t border-border">
+      <div className="flex items-center justify-between pt-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Pièces jointes / Preuves matérielles
+        </p>
+        {canManage && (
+          <>
+            <input ref={fileInputRef} type="file" className="sr-only" aria-hidden="true" tabIndex={-1} onChange={handleFileChange} />
+            <Button
+              variant="outline" size="sm" className="h-7 text-xs"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadMutation.isPending}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              {uploadMutation.isPending ? 'Envoi...' : 'Téléverser'}
+            </Button>
+          </>
+        )}
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Chargement...</p>
+      ) : attachments.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">Aucune pièce jointe pour ce livrable.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {attachments.map(a => (
+            <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/20 px-3 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Paperclip className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+                <span className="text-xs text-foreground truncate" title={a.titre}>{a.titre}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">{fmtDateTime(a.createdAt)}</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="ghost" size="icon" className="h-6 w-6" aria-label="Télécharger"
+                  onClick={() => handleDownload(a.id)}
+                  disabled={downloadMutation.isPending}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+                {canManage && (
+                  <Button
+                    variant="ghost" size="icon" className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
+                    aria-label="Supprimer la pièce jointe"
+                    onClick={() => deleteMutation.mutate(a.id)}
+                    disabled={deleteMutation.isPending}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
+      {downloadError && <p className="text-xs text-destructive">{downloadError}</p>}
+    </div>
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function LivrableSlideOver({
-  open, onOpenChange, mode, livrable, nextCode = 'LIV-001', onSave, onDelete,
+  open, onOpenChange, mode, projectId, livrable, nextCode = 'LIV-001', onSave, onDelete,
+  canManage = true, canDelete = true, isSaving = false, isDeleting = false, error = null,
 }: LivrableSlideOverProps) {
   const [form, setForm] = useState<FormState>(INIT);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const readOnly = mode === 'view';
+
+  const { data: orgMembers = [], isLoading: isLoadingMembers } = useOrganisationMembersForPicker(projectId);
+  const responsableOptions = (() => {
+    if (livrable?.responsableId && !orgMembers.some(m => m.id === livrable.responsableId)) {
+      return [...orgMembers, { id: livrable.responsableId, displayName: livrable.responsable || 'Utilisateur inconnu' }];
+    }
+    return orgMembers;
+  })();
 
   useEffect(() => {
     if (!open) { setConfirmDelete(false); return; }
@@ -115,7 +238,7 @@ export function LivrableSlideOver({
         description:   livrable.description ?? '',
         categorie:     livrable.categorie,
         composante:    livrable.composante ?? '',
-        responsable:   livrable.responsable,
+        responsableId: livrable.responsableId ?? '',
         date_prevue:   livrable.date_prevue,
         date_reelle:   livrable.date_reelle ?? '',
         avancement:    livrable.avancement,
@@ -138,14 +261,18 @@ export function LivrableSlideOver({
     const e: Partial<Record<keyof FormState, string>> = {};
     if (!form.code_livrable.trim()) e.code_livrable = 'Le code est requis.';
     if (!form.nom.trim())           e.nom           = 'Le nom est requis.';
-    if (!form.responsable.trim())   e.responsable   = 'Le responsable est requis.';
+    if (!form.responsableId)        e.responsableId = 'Le responsable est requis.';
     if (!form.date_prevue)          e.date_prevue   = 'La date est requise.';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
+  // Le SlideOver ne se ferme plus lui-même : le parent possède la mutation et
+  // ne ferme qu'après confirmation serveur (cf. audit — fermeture aveugle
+  // avant réponse du serveur, qui masquait tout échec 403/réseau).
   function handleSave() {
     if (!validate()) return;
+    const selectedMember = responsableOptions.find(m => m.id === form.responsableId);
     onSave(
       {
         code_livrable: form.code_livrable.trim(),
@@ -153,7 +280,8 @@ export function LivrableSlideOver({
         description:   form.description.trim() || undefined,
         categorie:     form.categorie,
         composante:    form.composante.trim() || undefined,
-        responsable:   form.responsable.trim(),
+        responsable:   selectedMember?.displayName ?? '',
+        responsableId: form.responsableId,
         date_prevue:   form.date_prevue,
         date_reelle:   form.date_reelle || undefined,
         avancement:    form.avancement,
@@ -162,13 +290,11 @@ export function LivrableSlideOver({
       },
       livrable?.id,
     );
-    onOpenChange(false);
   }
 
   function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     if (livrable?.id) onDelete?.(livrable.id);
-    onOpenChange(false);
   }
 
   const title =
@@ -295,10 +421,19 @@ export function LivrableSlideOver({
               <label className="text-xs font-medium text-foreground" htmlFor="liv-resp">
                 Responsable <span className="text-destructive">*</span>
               </label>
-              <Input id="liv-resp" value={form.responsable}
-                onChange={e => set('responsable', e.target.value)}
-                placeholder="Nom du responsable" disabled={readOnly} error={!!errors.responsable} />
-              {errors.responsable && <p className="text-xs text-destructive">{errors.responsable}</p>}
+              <Select
+                id="liv-resp"
+                value={form.responsableId}
+                onChange={e => set('responsableId', e.target.value)}
+                disabled={readOnly || isLoadingMembers}
+                error={!!errors.responsableId}
+              >
+                <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
+                {responsableOptions.map(m => (
+                  <option key={m.id} value={m.id}>{m.displayName}</option>
+                ))}
+              </Select>
+              {errors.responsableId && <p className="text-xs text-destructive">{errors.responsableId}</p>}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -351,6 +486,17 @@ export function LivrableSlideOver({
             )}
           </div>
 
+          {/* Section: Pièces jointes — uniquement si le livrable existe déjà */}
+          {livrable ? (
+            <AttachmentsSection projectId={projectId} livrableId={livrable.id} canManage={canManage} />
+          ) : (
+            <div className="pt-3 border-t border-border">
+              <p className="text-xs text-muted-foreground italic">
+                Enregistrez d'abord le livrable pour pouvoir y attacher des pièces jointes.
+              </p>
+            </div>
+          )}
+
           {/* Historique (view/edit) */}
           {livrable && (
             <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
@@ -365,13 +511,13 @@ export function LivrableSlideOver({
                   {new Date(livrable.updatedAt).toLocaleDateString('fr-FR')}
                 </span>
                 <span className="text-muted-foreground">Responsable</span>
-                <span className="text-foreground font-medium">{livrable.responsable}</span>
+                <span className="text-foreground font-medium">{livrable.responsable || '—'}</span>
               </div>
             </div>
           )}
 
           {/* Bouton Supprimer (mode edit) */}
-          {mode === 'edit' && livrable && onDelete && (
+          {mode === 'edit' && livrable && onDelete && canDelete && (
             <div className="pt-2 border-t border-border">
               {confirmDelete ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -379,10 +525,10 @@ export function LivrableSlideOver({
                     Confirmer la suppression de {livrable.code_livrable} ?
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="destructive" size="sm" onClick={handleDelete}>
-                      Supprimer définitivement
+                    <Button variant="destructive" size="sm" onClick={handleDelete} disabled={isDeleting}>
+                      {isDeleting ? 'Suppression...' : 'Supprimer définitivement'}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)} disabled={isDeleting}>
                       Annuler
                     </Button>
                   </div>
@@ -398,16 +544,23 @@ export function LivrableSlideOver({
               )}
             </div>
           )}
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
         </SlideOverBody>
 
         {/* ── Footer ── */}
         <SlideOverFooter>
           <SlideOverClose asChild>
-            <Button variant="outline">Fermer</Button>
+            <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
           </SlideOverClose>
           {!readOnly && (
-            <Button onClick={handleSave}>
-              {mode === 'new' ? 'Créer le livrable' : 'Enregistrer'}
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : mode === 'new' ? 'Créer le livrable' : 'Enregistrer'}
             </Button>
           )}
         </SlideOverFooter>

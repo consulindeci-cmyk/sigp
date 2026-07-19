@@ -294,6 +294,7 @@ export interface Livrable {
   categorie: LivrableCategorie;
   composante?: string;        // Composante projet (ex. "Composante A")
   responsable: string;
+  responsableId?: string | null;
   date_prevue: string;        // ISO date
   date_reelle?: string;       // ISO date — renseignée à la livraison
   avancement: number;         // 0–100

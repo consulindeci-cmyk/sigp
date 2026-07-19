@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   useDeliverables, useCreateDeliverable, useUpdateDeliverable, useDeleteDeliverable,
 } from '@/hooks/useDeliverables';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, LineChart, Line,
@@ -11,7 +12,7 @@ import {
 } from 'recharts';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
-  Package, CheckCircle2, Clock, AlertTriangle, TrendingUp,
+  Package, CheckCircle2, Clock, AlertTriangle, TrendingUp, AlertCircle,
   Download, FileSpreadsheet, Plus, Eye, Pencil, Trash2,
 } from 'lucide-react';
 import type { Livrable, StatutLivrable, PrioriteLivrable } from '@/types';
@@ -114,16 +115,28 @@ export default function ProjectDeliverablesTab() {
   const updateMutation  = useUpdateDeliverable(projectId);
   const deleteMutation  = useDeleteDeliverable(projectId);
 
-  const [livrables, setLivrables] = useState<Livrable[]>([]);
+  // Dérivé de la réponse serveur, jamais copié dans un state local — plus de
+  // désynchronisation possible entre l'affichage et la réalité serveur
+  // (cf. audit : l'ancien useEffect+setState laissait aussi les mises à jour
+  // optimistes de handleSave/handleDeleteConfirm "survivre" en cas d'échec serveur).
+  const livrables = useMemo(() => apiData?.data ?? [], [apiData]);
 
-  useEffect(() => {
-    const list = (apiData as { data?: Livrable[] })?.data ?? (Array.isArray(apiData) ? apiData as Livrable[] : []);
-    setLivrables(list);
-  }, [apiData]);
+  // Miroir des rôles serveur : requireRole sur livrables-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
   const [slideLivrable, setSlideLivrable] = useState<Livrable | null>(null);
+  const [slideError, setSlideError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Livrable | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -186,40 +199,44 @@ export default function ProjectDeliverablesTab() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
+  // Le parent possède la mutation et ne ferme le SlideOver qu'après
+  // confirmation serveur (onSuccess) — plus de mise à jour optimiste ni de
+  // fermeture avant réponse (cf. audit). L'erreur reste affichée dans le
+  // SlideOver si la mutation échoue, l'utilisateur peut corriger et réessayer.
   const handleSave = useCallback((payload: LivrableSavePayload, id?: string) => {
-    const now = new Date().toISOString();
+    setSlideError(null);
+    const onError = (err: unknown) => setSlideError(extractErrorMessage(err));
     if (id) {
-      setLivrables(prev => prev.map(l =>
-        l.id === id ? { ...l, ...payload, updatedAt: now } : l,
-      ));
-      updateMutation.mutate({ id, ...payload });
+      updateMutation.mutate(
+        { id, ...payload },
+        { onSuccess: () => setSlideOpen(false), onError },
+      );
     } else {
-      const newLiv: Livrable = {
-        id: `tmp-${Date.now()}`,
-        projet_id: projectId,
-        ...payload,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setLivrables(prev => [...prev, newLiv]);
-      createMutation.mutate({ projet_id: projectId, ...payload });
+      createMutation.mutate(
+        { projet_id: projectId, ...payload },
+        { onSuccess: () => setSlideOpen(false), onError },
+      );
     }
   }, [projectId, createMutation, updateMutation]);
 
   const handleDeleteRequest = useCallback((livrable: Livrable) => {
+    setDeleteError(null);
     setDeleteTarget(livrable);
   }, []);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    setLivrables(prev => prev.filter(l => l.id !== deleteTarget.id));
-    deleteMutation.mutate(deleteTarget.id);
-    setDeleteTarget(null);
+    setDeleteError(null);
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
   }, [deleteTarget, deleteMutation]);
 
   const openNew = useCallback(() => {
     setSlideLivrable(null);
     setSlideMode('new');
+    setSlideError(null);
     setSlideOpen(true);
   }, []);
 
@@ -232,6 +249,7 @@ export default function ProjectDeliverablesTab() {
   const openEdit = useCallback((l: Livrable) => {
     setSlideLivrable(l);
     setSlideMode('edit');
+    setSlideError(null);
     setSlideOpen(true);
   }, []);
 
@@ -392,20 +410,24 @@ export default function ProjectDeliverablesTab() {
           <Button variant="ghost" size="sm" aria-label="Voir" onClick={() => openView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => handleDeleteRequest(row.original)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canManage && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => handleDeleteRequest(row.original)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
-  ], [today, openView, openEdit, handleDeleteRequest]);
+  ], [today, openView, openEdit, handleDeleteRequest, canManage, canDelete]);
 
   // ── Filters config ─────────────────────────────────────────────────────────
 
@@ -454,10 +476,12 @@ export default function ProjectDeliverablesTab() {
             <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             Excel
           </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Nouveau livrable
-          </Button>
+          {canManage && (
+            <Button size="sm" className="h-8 text-xs" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              Nouveau livrable
+            </Button>
+          )}
         </div>
       </div>
 
@@ -637,10 +661,12 @@ export default function ProjectDeliverablesTab() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Registre complet</CardTitle>
-          <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-            Ajouter
-          </Button>
+          {canManage && (
+            <Button size="sm" className="h-7 text-xs" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+              Ajouter
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -657,19 +683,25 @@ export default function ProjectDeliverablesTab() {
       {/* ── SlideOver ─────────────────────────────────────────────────────── */}
       <LivrableSlideOver
         open={slideOpen}
-        onOpenChange={setSlideOpen}
+        onOpenChange={open => { setSlideOpen(open); if (!open) setSlideError(null); }}
         mode={slideMode}
+        projectId={projectId}
         livrable={slideLivrable}
         nextCode={currentNextCode}
         onSave={handleSave}
         onDelete={(id) => {
           const target = livrables.find(l => l.id === id);
-          if (target) { setSlideOpen(false); setDeleteTarget(target); }
+          if (target) { setSlideOpen(false); setDeleteError(null); setDeleteTarget(target); }
         }}
+        canManage={canManage}
+        canDelete={canDelete}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        isDeleting={deleteMutation.isPending}
+        error={slideError}
       />
 
       {/* ── Modal de confirmation de suppression ──────────────────────────── */}
-      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Supprimer le livrable</ModalTitle>
@@ -679,12 +711,18 @@ export default function ProjectDeliverablesTab() {
               <em>{deleteTarget?.nom}</em> ? Cette action est irréversible.
             </ModalDescription>
           </ModalHeader>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Supprimer
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </ModalFooter>
         </ModalContent>

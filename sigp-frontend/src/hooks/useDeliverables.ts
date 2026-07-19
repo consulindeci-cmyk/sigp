@@ -86,8 +86,11 @@ function isoDate(val: string | null | undefined): string {
 }
 
 // ── Adapter: ligne Supabase → frontend Livrable ───────────────────────────────
+// responsable_id est une vraie FK vers users(id), transmise depuis peu (cf.
+// audit Livrables) — le nom affiché est résolu via un aller-retour groupé
+// (mêmes principes que useRisks.ts/useTasks.ts), pas d'embed PostgREST.
 
-function adaptLivrable(row: LivrableRow): Livrable {
+function adaptLivrable(row: LivrableRow, responsableNames: Map<string, string>): Livrable {
   const meta = decodeMeta(row.notes);
   return {
     id:            row.id,
@@ -97,7 +100,8 @@ function adaptLivrable(row: LivrableRow): Livrable {
     description:   row.description ?? undefined,
     categorie:     meta?.categorie  ?? 'Autre',
     composante:    meta?.composante ?? undefined,
-    responsable:   meta?.responsable ?? (row.responsable_id ?? ''),
+    responsable:   row.responsable_id ? responsableNames.get(row.responsable_id) ?? '' : (meta?.responsable ?? ''),
+    responsableId: row.responsable_id,
     date_prevue:   isoDate(row.date_prevue),
     date_reelle:   isoDate(row.date_validation) || isoDate(row.date_soumission) || undefined,
     avancement:    meta?.avancement ?? 0,
@@ -122,12 +126,13 @@ function buildCreatePayload(projectId: string, l: LivPayload) {
   };
   return {
     projectId,
-    nom:         l.nom,
-    code:        l.code_livrable || undefined,
-    description: l.description   || undefined,
-    statut:      feStatutToBe(l.statut),
-    datePrevue:  l.date_prevue   || undefined,
-    notes:       encodeMeta(meta),
+    nom:           l.nom,
+    code:          l.code_livrable || undefined,
+    description:   l.description   || undefined,
+    statut:        feStatutToBe(l.statut),
+    datePrevue:    l.date_prevue   || undefined,
+    responsableId: l.responsableId || undefined,
+    notes:         encodeMeta(meta),
   };
 }
 
@@ -140,11 +145,12 @@ function buildUpdatePayload(l: Partial<Livrable>, current?: Livrable) {
     priorite:    l.priorite    ?? current?.priorite   ?? 'MOYENNE',
   };
   const p: Record<string, unknown> = { notes: encodeMeta(meta) };
-  if (l.nom           !== undefined) p.nom         = l.nom;
-  if (l.code_livrable !== undefined) p.code        = l.code_livrable;
-  if (l.description   !== undefined) p.description = l.description;
-  if (l.statut        !== undefined) p.statut      = feStatutToBe(l.statut);
-  if (l.date_prevue   !== undefined) p.datePrevue  = l.date_prevue || undefined;
+  if (l.nom           !== undefined) p.nom           = l.nom;
+  if (l.code_livrable !== undefined) p.code          = l.code_livrable;
+  if (l.description   !== undefined) p.description   = l.description;
+  if (l.statut        !== undefined) p.statut        = feStatutToBe(l.statut);
+  if (l.date_prevue   !== undefined) p.datePrevue    = l.date_prevue || undefined;
+  if (l.responsableId !== undefined) p.responsableId = l.responsableId || null;
   return p;
 }
 
@@ -168,7 +174,25 @@ export function useDeliverables(projectId: string) {
         .order('created_at', { ascending: false })
         .limit(100);
       if (error) throw error;
-      const livrables = (data as unknown as LivrableRow[]).map(adaptLivrable);
+      const rows = data as unknown as LivrableRow[];
+
+      // Résolution groupée des noms de responsables (cf. note sur
+      // LivrableRow.responsable_id) — un seul aller-retour, pas de N+1.
+      const responsableIds = [...new Set(rows.map(r => r.responsable_id).filter((id): id is string => !!id))];
+      const responsableNames = new Map<string, string>();
+      if (responsableIds.length > 0) {
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, nom, prenom')
+          .in('id', responsableIds);
+        if (usersError) throw usersError;
+        for (const u of (usersData ?? []) as { id: string; nom: string | null; prenom: string | null }[]) {
+          const nom = `${u.prenom ?? ''} ${u.nom ?? ''}`.trim();
+          if (nom) responsableNames.set(u.id, nom);
+        }
+      }
+
+      const livrables = rows.map(row => adaptLivrable(row, responsableNames));
       return { data: livrables, meta: { total: livrables.length, page: 1, limit: 100, totalPages: 1 } };
     },
     enabled: !!projectId,
@@ -181,7 +205,9 @@ export function useCreateDeliverable(projectId: string) {
     mutationFn: async (dto: Omit<Livrable, 'id' | 'createdAt' | 'updatedAt'>) => {
       const payload = buildCreatePayload(projectId, dto);
       const { data } = await invokeEdgeFunction<{ data: LivrableRow }>('livrables-create', payload);
-      return adaptLivrable(data);
+      // Nom du responsable non résolu ici (une seule ligne) — la liste se
+      // rafraîchit de toute façon via l'invalidation ci-dessous.
+      return adaptLivrable(data, new Map());
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: deliverableKeys.all(projectId) }),
   });
@@ -195,7 +221,7 @@ export function useUpdateDeliverable(projectId: string) {
       const current = cached?.data?.find(l => l.id === id);
       const payload = buildUpdatePayload(dto, current);
       const { data } = await invokeEdgeFunction<{ data: LivrableRow }>('livrables-update', { id, ...payload });
-      return adaptLivrable(data);
+      return adaptLivrable(data, new Map());
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: deliverableKeys.all(projectId) }),
   });
