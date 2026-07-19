@@ -30,7 +30,11 @@ export default function EVMSummaryCard({ projectId }: Props) {
     );
   }
 
-  const formatDevise = (val: number) => new Intl.NumberFormat('fr-FR').format(val) + ' XOF';
+  // eac/etc/vac peuvent être +/-Infinity quand ac > 0 et ev = 0 (coûts
+  // engagés sans aucune valeur acquise, CPI = 0) — cf. useEvm.ts. Un chiffre
+  // "∞ XOF" serait techniquement correct mais peu clair sans contexte.
+  const formatDevise = (val: number) =>
+    Number.isFinite(val) ? new Intl.NumberFormat('fr-FR').format(val) + ' XOF' : 'Dérive critique';
   
   const getBadgeColor = (val: number, type: 'index' | 'variance') => {
     if (type === 'index') {

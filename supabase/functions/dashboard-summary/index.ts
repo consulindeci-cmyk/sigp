@@ -93,7 +93,12 @@ Deno.serve(async (req: Request) => {
       db.from('projects').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'SUSPENDU'),
       db.from('projects').select('budget_total').is('deleted_at', null),
       db.from('budget_versions').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-      db.from('budget_lignes').select('categorie, montant_prevu, montant_engage, montant_paye').is('deleted_at', null),
+      // Seule la version budgétaire APPROUVE fait foi (cf. audit EVM : sommer
+      // toutes les versions vivantes double-comptait le budget portefeuille
+      // dès qu'un projet avait plus d'une version simultanée). Même règle que
+      // calculate_project_evm() / project-detail-summary.
+      db.from('budget_lignes').select('categorie, montant_prevu, montant_engage, montant_paye, version:budget_versions!inner(statut)')
+        .is('deleted_at', null).eq('version.statut', 'APPROUVE'),
       db.from('ptba_activites').select('*', { count: 'exact', head: true }).is('deleted_at', null),
       db.from('ptba_activites').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'TERMINE'),
       db.from('ptba_activites').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'EN_COURS'),

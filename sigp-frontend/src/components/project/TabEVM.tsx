@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Download, TrendingUp, TrendingDown, BarChart3, Check } from 'lucide-react';
+import { Download, TrendingUp, TrendingDown, BarChart3, Check, Camera, AlertCircle } from 'lucide-react';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Loader } from '@/components/ui/feedback/Loader';
 import { useUIStore } from '@/stores/uiStore';
-import { useProjectEvmSummary, useProjectEvmHistory } from '@/hooks/useEvm';
+import { useAuthStore } from '@/stores/authStore';
+import { useProjectEvmSummary, useProjectEvmHistory, useGenerateEvmSnapshot } from '@/hooks/useEvm';
 import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -18,8 +19,18 @@ import {
 
 type EvmVariant = 'secondary' | 'warning' | 'destructive' | 'success';
 
-function signedM(v: number): string {
-  return `${v >= 0 ? '' : '−'}$${Math.abs(v).toFixed(1)}M`;
+const CRITICAL_DRIFT_LABEL = 'Dérive critique';
+
+// Aligné sur EVMSummaryCard.tsx — mêmes montants réels en XOF, pas de
+// division par 1M ni d'unité "$"/USD codée en dur (le projet est en XOF).
+function formatXOF(v: number): string {
+  if (!Number.isFinite(v)) return CRITICAL_DRIFT_LABEL;
+  return `${new Intl.NumberFormat('fr-FR').format(Math.round(v))} XOF`;
+}
+
+function signedXOF(v: number): string {
+  if (!Number.isFinite(v)) return CRITICAL_DRIFT_LABEL;
+  return `${v >= 0 ? '' : '−'}${new Intl.NumberFormat('fr-FR').format(Math.round(Math.abs(v)))} XOF`;
 }
 
 function getPerformanceScore(cpi: number, spi: number): string {
@@ -58,44 +69,58 @@ export default function TabEVM() {
   const projectId = urlProjectId || activeProjectId || '';
 
   const [exported, setExported] = useState(false);
+  const [snapshotFeedback, setSnapshotFeedback] = useState<'idle' | 'done' | 'error'>('idle');
+
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canGenerateSnapshot = currentRole === 'FINANCIER' || currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   const { data: evm, isLoading: summaryLoading } = useProjectEvmSummary(projectId);
   const { data: history = [], isLoading: historyLoading } = useProjectEvmHistory(projectId);
+  const generateSnapshot = useGenerateEvmSnapshot(projectId);
 
-  // KPIs calculés — millions USD (les montants stockés sont en unités, /1e6 pour l'affichage).
+  function handleGenerateSnapshot() {
+    setSnapshotFeedback('idle');
+    generateSnapshot.mutate(undefined, {
+      onSuccess: () => { setSnapshotFeedback('done'); setTimeout(() => setSnapshotFeedback('idle'), 3000); },
+      onError: () => { setSnapshotFeedback('error'); },
+    });
+  }
+
+  // KPIs calculés — montants réels en XOF, pas de conversion d'unité (cf. formatXOF).
   const kpis = useMemo(() => {
     if (!evm) return null;
     return {
       ipc: evm.cpi,
       ipd: evm.spi,
-      eac: evm.eac / 1_000_000,
+      eac: evm.eac,
       score: getPerformanceScore(evm.cpi, evm.spi),
     };
   }, [evm]);
 
   const evmRows = useMemo<Array<{ label: string; def: string; val: string; variant: EvmVariant; statut: string }>>(() => {
     if (!evm) return [];
-    const vp = evm.pv / 1_000_000, va = evm.ev / 1_000_000, cr = evm.ac / 1_000_000;
-    const cv = evm.cv / 1_000_000, sv = evm.sv / 1_000_000;
-    const bac = evm.bac / 1_000_000, eac = evm.eac / 1_000_000, etc = evm.etc / 1_000_000, vac = evm.vac / 1_000_000;
     return [
-      { label: 'Valeur Planifiée (VP)',  def: 'Budgeted cost of work scheduled',  val: `$${vp.toFixed(1)}M`, variant: 'secondary',   statut: 'Référence'   },
-      { label: 'Valeur Acquise (VA)',    def: 'Budgeted cost of work performed',   val: `$${va.toFixed(1)}M`, variant: 'warning',     statut: 'Conforme'    },
-      { label: 'Coût Réel (CR)',         def: 'Actual cost of work performed',     val: `$${cr.toFixed(1)}M`, variant: 'warning',     statut: 'Conforme'    },
-      { label: 'Écart de Coût (CV)',     def: 'VA − CR',                           val: signedM(cv),         variant: cv >= 0 ? 'success' : 'warning',  statut: cv >= 0 ? 'Favorable' : 'Défavorable' },
-      { label: 'Écart de Délai (SV)',    def: 'VA − VP',                           val: signedM(sv),         variant: sv >= 0 ? 'success' : 'destructive', statut: sv >= 0 ? 'Favorable' : 'Défavorable' },
+      { label: 'Valeur Planifiée (VP)',  def: 'Budgeted cost of work scheduled',  val: formatXOF(evm.pv), variant: 'secondary',   statut: 'Référence'   },
+      { label: 'Valeur Acquise (VA)',    def: 'Budgeted cost of work performed',   val: formatXOF(evm.ev), variant: 'warning',     statut: 'Conforme'    },
+      { label: 'Coût Réel (CR)',         def: 'Actual cost of work performed',     val: formatXOF(evm.ac), variant: 'warning',     statut: 'Conforme'    },
+      { label: 'Écart de Coût (CV)',     def: 'VA − CR',                           val: signedXOF(evm.cv), variant: evm.cv >= 0 ? 'success' : 'warning',  statut: evm.cv >= 0 ? 'Favorable' : 'Défavorable' },
+      { label: 'Écart de Délai (SV)',    def: 'VA − VP',                           val: signedXOF(evm.sv), variant: evm.sv >= 0 ? 'success' : 'destructive', statut: evm.sv >= 0 ? 'Favorable' : 'Défavorable' },
       { label: 'IPC (CPI)',              def: 'VA / CR',                           val: evm.cpi.toFixed(2),  variant: evm.cpi >= 1 ? 'success' : evm.cpi >= 0.9 ? 'warning' : 'destructive', statut: evm.cpi >= 1 ? 'Conforme' : evm.cpi >= 0.9 ? '>0.9 Attention' : '<0.9 Critique' },
       { label: 'IPD (SPI)',              def: 'VA / VP',                           val: evm.spi.toFixed(2),  variant: evm.spi >= 1 ? 'success' : evm.spi >= 0.9 ? 'warning' : 'destructive', statut: evm.spi >= 1 ? 'Conforme' : evm.spi >= 0.9 ? '>0.9 Attention' : '<0.9 Critique' },
-      { label: 'BAC',                    def: "Budget à l'achèvement",             val: `$${bac.toFixed(1)}M`, variant: 'secondary',   statut: 'Référence'   },
-      { label: 'EAC',                    def: "Estimation à l'achèvement",         val: `$${eac.toFixed(1)}M`, variant: evm.eac > evm.bac ? 'destructive' : 'success', statut: evm.eac > evm.bac ? 'Dépassement' : 'Conforme' },
-      { label: 'ETC',                    def: 'Coût restant estimé',               val: `$${etc.toFixed(1)}M`, variant: 'warning',     statut: 'Attention'   },
-      { label: 'VAC',                    def: "Variation à l'achèvement",          val: signedM(vac),        variant: evm.vac >= 0 ? 'success' : 'destructive', statut: evm.vac >= 0 ? 'Favorable' : 'Défavorable' },
+      { label: 'BAC',                    def: "Budget à l'achèvement",             val: formatXOF(evm.bac), variant: 'secondary',   statut: 'Référence'   },
+      {
+        label: 'EAC', def: "Estimation à l'achèvement", val: formatXOF(evm.eac),
+        variant: !Number.isFinite(evm.eac) ? 'destructive' : evm.eac > evm.bac ? 'destructive' : 'success',
+        statut: !Number.isFinite(evm.eac) ? CRITICAL_DRIFT_LABEL : evm.eac > evm.bac ? 'Dépassement' : 'Conforme',
+      },
+      { label: 'ETC',                    def: 'Coût restant estimé',               val: formatXOF(evm.etc), variant: Number.isFinite(evm.etc) ? 'warning' : 'destructive', statut: Number.isFinite(evm.etc) ? 'Attention' : CRITICAL_DRIFT_LABEL },
+      { label: 'VAC',                    def: "Variation à l'achèvement",          val: signedXOF(evm.vac), variant: !Number.isFinite(evm.vac) ? 'destructive' : evm.vac >= 0 ? 'success' : 'destructive', statut: !Number.isFinite(evm.vac) ? CRITICAL_DRIFT_LABEL : evm.vac >= 0 ? 'Favorable' : 'Défavorable' },
       { label: 'TCPI',                   def: 'To-Complete Performance Index',     val: evm.tcpi.toFixed(2), variant: 'warning',     statut: evm.tcpi <= 1 ? 'Réalisable' : evm.tcpi <= 1.1 ? 'Difficile' : 'Très difficile' },
     ];
   }, [evm]);
 
   const sCurveData = useMemo(() =>
-    history.map(h => ({ mois: h.periode, vp: h.pv / 1_000_000, va: h.ev / 1_000_000, cr: h.ac / 1_000_000 })),
+    history.map(h => ({ mois: h.periode, vp: h.pv, va: h.ev, cr: h.ac })),
   [history]);
 
   const indexTrendData = useMemo(() =>
@@ -145,16 +170,38 @@ export default function TabEVM() {
           <h1 className="text-base font-bold text-foreground">Gestion de la Valeur Acquise (EVM)</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Vue synthétique — calculée à partir du budget et du PTBA</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          leftIcon={exported ? <Check className="h-3.5 w-3.5 text-success" /> : <Download className="h-3.5 w-3.5" />}
-          className="h-8 text-xs"
-          onClick={handleExport}
-        >
-          {exported ? 'Exporté !' : 'Exporter Rapport EVM'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {canGenerateSnapshot && (
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Camera className="h-3.5 w-3.5" />}
+              className="h-8 text-xs"
+              onClick={handleGenerateSnapshot}
+              disabled={generateSnapshot.isPending}
+              title="Génère l'instantané EVM du mois pour tous les projets actifs (pas seulement celui-ci)"
+            >
+              {generateSnapshot.isPending ? 'Génération...' : snapshotFeedback === 'done' ? 'Instantané généré !' : 'Générer un instantané'}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={exported ? <Check className="h-3.5 w-3.5 text-success" /> : <Download className="h-3.5 w-3.5" />}
+            className="h-8 text-xs"
+            onClick={handleExport}
+          >
+            {exported ? 'Exporté !' : 'Exporter Rapport EVM'}
+          </Button>
+        </div>
       </div>
+
+      {snapshotFeedback === 'error' && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>Échec de la génération de l'instantané EVM. Réessayez ou contactez un administrateur.</span>
+        </div>
+      )}
 
       {/* ── KPI STRIP ──────────────────────────────────────────────────────── */}
       {kpis && (
@@ -175,10 +222,12 @@ export default function TabEVM() {
           />
           <StatCard
             title="EAC"
-            value={`$${kpis.eac.toFixed(1)}M`}
+            value={formatXOF(kpis.eac)}
             icon={<BarChart3 className="h-4 w-4" aria-hidden="true" />}
-            iconVariant={evm.eac > evm.bac ? 'destructive' : 'success'}
-            description={`vs $${(evm.bac / 1_000_000).toFixed(1)}M (Budget initial)`}
+            iconVariant={!Number.isFinite(evm.eac) ? 'destructive' : evm.eac > evm.bac ? 'destructive' : 'success'}
+            description={!Number.isFinite(evm.eac)
+              ? 'Coûts engagés sans valeur acquise (CPI = 0)'
+              : `vs ${formatXOF(evm.bac)} (Budget initial)`}
           />
           <StatCard
             title="Score de performance"
@@ -195,12 +244,12 @@ export default function TabEVM() {
         <div className="px-4 py-2.5 border-b border-border bg-muted/5">
           <h3 className="text-sm font-semibold text-foreground">Courbe en S</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Valeur Planifiée (VP) · Valeur Acquise (VA) · Coût Réel (CR), cumul en millions USD
+            Valeur Planifiée (VP) · Valeur Acquise (VA) · Coût Réel (CR), cumul en XOF
           </p>
         </div>
         <div
           role="img"
-          aria-label="Courbe en S — Valeur Planifiée, Valeur Acquise et Coût Réel cumulés en millions USD"
+          aria-label="Courbe en S — Valeur Planifiée, Valeur Acquise et Coût Réel cumulés en XOF"
           className="p-4 h-56"
         >
           {historyLoading ? (
@@ -226,8 +275,13 @@ export default function TabEVM() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} unit="M" />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}M USD`, undefined]} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v: number) => new Intl.NumberFormat('fr-FR', { notation: 'compact', compactDisplay: 'short' }).format(v)}
+                />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${new Intl.NumberFormat('fr-FR').format(Number(v))} XOF`, undefined]} />
                 <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span className="text-[11px] text-muted-foreground">{v}</span>} />
                 <Area type="monotone" dataKey="vp" name="VP Planifiée" stroke="hsl(var(--muted-foreground))" fill="url(#gradVP)" strokeWidth={2} strokeDasharray="4 2" dot={false} />
                 <Area type="monotone" dataKey="va" name="VA Acquise"   stroke="hsl(var(--primary))"          fill="url(#gradVA)"  strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--primary))' }} />

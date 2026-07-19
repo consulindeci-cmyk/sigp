@@ -125,7 +125,13 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
     supabase.from('ptba_activites').select('project_id, statut, taux_realisation, montant_prevu').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('livrables').select('project_id').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('wbs_nodes').select('project_id').is('deleted_at', null).is('parent_id', null).in('project_id', projectIds),
-    supabase.from('budget_lignes').select('montant_prevu, version:budget_versions!inner(project_id)').is('deleted_at', null).in('version.project_id', projectIds),
+    // Seule la version budgétaire APPROUVE fait foi (même règle que
+    // project_montant_paye_view/calculate_project_evm/project-detail-summary/
+    // dashboard-summary) — sinon le dénominateur (budget prévu) resterait
+    // "toutes versions" pendant que le numérateur (payé, via la vue
+    // ci-dessous) est désormais restreint à APPROUVE, un décalage interne au
+    // même taux.
+    supabase.from('budget_lignes').select('montant_prevu, version:budget_versions!inner(project_id)').is('deleted_at', null).in('version.project_id', projectIds).eq('version.statut', 'APPROUVE'),
     // project_montant_paye_view centralise le "payé" (lignes budgétaires +
     // décaissements DECAISSE liés seulement à un Contrat/une Source de
     // financement, sans budget_ligne_id) — même calcul, au même endroit, que

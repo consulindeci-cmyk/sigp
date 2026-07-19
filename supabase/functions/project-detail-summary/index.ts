@@ -67,8 +67,12 @@ Deno.serve(async (req: Request) => {
       criticalActivitiesRows,
       evmRes,
     ] = await Promise.all([
+      // Seule la version budgétaire APPROUVE fait foi (cf. audit EVM :
+      // sommer toutes les versions vivantes — BROUILLON/EN_REVISION/ARCHIVE
+      // confondues — double-comptait le budget dès qu'un projet avait plus
+      // d'une version simultanée). Même règle que calculate_project_evm().
       db.from('budget_lignes').select('categorie, montant_prevu, montant_engage, montant_paye, version:budget_versions!inner(project_id)')
-        .is('deleted_at', null).eq('version.project_id', body.projectId),
+        .is('deleted_at', null).eq('version.project_id', body.projectId).eq('version.statut', 'APPROUVE'),
       db.from('ptba_activites').select('statut, taux_realisation').is('deleted_at', null).eq('project_id', body.projectId),
       db.from('livrables').select('statut').is('deleted_at', null).eq('project_id', body.projectId),
       db.from('contracts').select('id, statut').is('deleted_at', null).eq('project_id', body.projectId),
@@ -76,7 +80,9 @@ Deno.serve(async (req: Request) => {
         .is('deleted_at', null).eq('project_id', body.projectId),
       db.from('wbs_nodes').select('*', { count: 'exact', head: true }).is('deleted_at', null)
         .eq('project_id', body.projectId).is('parent_id', null),
-      db.from('budget_versions').select('id').is('deleted_at', null).eq('project_id', body.projectId),
+      // Idem : seuls les décaissements rattachés à la version APPROUVE via
+      // budget_version_id doivent compter comme "réels" (cf. commentaire ci-dessus).
+      db.from('budget_versions').select('id').is('deleted_at', null).eq('project_id', body.projectId).eq('statut', 'APPROUVE'),
       db.from('funding_sources').select('id, nom, montant, pourcentage').eq('project_id', body.projectId).order('montant', { ascending: false }),
       db.from('livrables').select('id, nom, date_prevue, statut').eq('project_id', body.projectId).order('date_prevue', { ascending: true }),
       db.from('ptba_activites').select('id, code, libelle, responsable_id, statut, taux_realisation, date_fin_prevue')

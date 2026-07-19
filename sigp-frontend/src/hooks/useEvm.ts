@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
+import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Réplique fidèlement EvmService.getEvmSummary/getEvmHistory (project.controller.ts
@@ -62,9 +63,14 @@ export const useProjectEvmSummary = (projectId: string) => {
       const cv = ev - ac;
       const spi = pv > 0 ? ev / pv : 1;
       const cpi = ac > 0 ? ev / ac : 1;
-      const eac = cpi > 0 ? bac / cpi : bac;
-      const etc = eac - ac;
-      const vac = bac - eac;
+      // cpi === 0 signifie ac > 0 et ev = 0 : de l'argent a déjà été dépensé
+      // sans qu'aucune valeur ne soit acquise — le vrai EAC (BAC / CPI)
+      // diverge vers l'infini. Faire retomber silencieusement sur bac (comme
+      // avant) masquait cette dérive critique derrière un chiffre rassurant
+      // identique au budget initial. On la représente fidèlement à la place.
+      const eac = cpi > 0 ? bac / cpi : (ac > 0 ? Infinity : bac);
+      const etc = Number.isFinite(eac) ? eac - ac : Infinity;
+      const vac = Number.isFinite(eac) ? bac - eac : -Infinity;
       // TCPI standard (basé sur BAC) : performance restante nécessaire pour tenir le budget initial.
       const tcpi = (bac - ac) !== 0 ? (bac - ev) / (bac - ac) : 1;
 
@@ -102,5 +108,26 @@ export const useProjectEvmHistory = (projectId: string) => {
     },
     enabled: !!projectId,
     refetchOnWindowFocus: false,
+  });
+};
+
+// evm-snapshot-generate appelle generate_evm_snapshots() côté serveur, qui
+// instantanée TOUS les projets actifs (toutes organisations confondues) en
+// une seule fois — pas seulement le projet courant (cf. audit EVM). On
+// n'invalide donc que l'historique de ce projet ici : les autres projets se
+// mettront à jour à leur prochain chargement de toute façon.
+export const useGenerateEvmSnapshot = (projectId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await invokeEdgeFunction<{ data: { projectsSnapshotted: number } }>(
+        'evm-snapshot-generate',
+        {},
+      );
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['projects', projectId, 'evm', 'history'] });
+    },
   });
 };
