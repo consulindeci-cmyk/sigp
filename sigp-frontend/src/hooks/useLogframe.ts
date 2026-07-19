@@ -104,6 +104,13 @@ const NIVEAU_ABBREV: Record<FELevel, string> = {
   IMPACT: 'OG', OBJECTIF: 'OS', RESULTAT: 'RS', PRODUIT: 'PR', ACTIVITE: 'AC',
 };
 
+// Classification IOV standard (chaîne de résultats) — un indicateur n'est
+// jamais créé pour ACTIVITE (cf. hasIndicatorData / section masquée dans
+// LogframeForm), d'où l'absence de mapping pour ce niveau.
+const NIVEAU_TO_INDICATOR_TYPE: Record<Exclude<FELevel, 'ACTIVITE'>, 'IMPACT' | 'OUTCOME' | 'OUTPUT'> = {
+  IMPACT: 'IMPACT', OBJECTIF: 'OUTCOME', RESULTAT: 'OUTPUT', PRODUIT: 'OUTPUT',
+};
+
 function generateCode(prefix: string, feNiveau: FELevel, existingItems: CadreLogique[]): string {
   const abbrev = NIVEAU_ABBREV[feNiveau];
   const count = existingItems.filter(i => i.niveau_intervention === feNiveau).length + 1;
@@ -180,7 +187,7 @@ export function useCreateLogframe(projectId: string) {
           objectiveId: objective.id,
           code: generateCode('IND', feNiveau, cached),
           libelle: `IOV — ${dto.indicateur || objective.libelle}`.slice(0, 200),
-          type: 'OUTPUT',
+          type: NIVEAU_TO_INDICATOR_TYPE[feNiveau],
           ...buildIndicatorPayload(dto),
         });
       }
@@ -223,11 +230,12 @@ export function useUpdateLogframe(projectId: string) {
           // pour toujours faute d'appel de mise à jour.
           await invokeEdgeFunction('logframe-indicators-update', { id: indicatorId, ...buildIndicatorPayload(data) });
         } else if (hasIndicatorData(data)) {
+          const createNiveau = effectiveNiveau ?? 'RESULTAT';
           await invokeEdgeFunction('logframe-indicators-create', {
             objectiveId: id,
-            code: generateCode('IND', effectiveNiveau ?? 'ACTIVITE', cached),
+            code: generateCode('IND', createNiveau, cached),
             libelle: `IOV — ${data.indicateur || current?.indicateur || ''}`.slice(0, 200),
-            type: 'OUTPUT',
+            type: NIVEAU_TO_INDICATOR_TYPE[createNiveau],
             ...buildIndicatorPayload(data),
           });
         }

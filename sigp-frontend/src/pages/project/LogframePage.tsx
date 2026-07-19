@@ -74,7 +74,7 @@ export default function LogframePage() {
     if (elements.length > 0) setLocalData(elements);
   }, [elements]);
 
-  // Form SlideOver state
+  // Form Modal state
   const [isFormOpen,        setIsFormOpen]        = useState(false);
   const [editingItem,       setEditingItem]        = useState<CadreLogique | null>(null);
   const [parentIdForNew,    setParentIdForNew]     = useState<string | null>(null);
@@ -361,7 +361,7 @@ export default function LogframePage() {
         </div>
       </div>
 
-      {/* ── SLIDEOVER (Formulaire) ──────────────────────────────────────────── */}
+      {/* ── FORMULAIRE (Modal) ─────────────────────────────────────────────── */}
       <LogframeForm
         open={isFormOpen}
         onOpenChange={open => {

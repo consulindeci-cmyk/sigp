@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
-import { X, Info, AlertCircle } from 'lucide-react';
+import { Info, AlertCircle } from 'lucide-react';
 import type { CadreLogique } from '@/types';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
 import { Textarea } from '@/components/ui/forms/Textarea';
 import {
-  SlideOver,
-  SlideOverContent,
-  SlideOverHeader,
-  SlideOverTitle,
-  SlideOverBody,
-  SlideOverFooter,
-  SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalTitle,
+  ModalFooter,
+  ModalClose,
+} from '@/components/ui/overlays/Modal';
 
 interface LogframeFormProps {
   open: boolean;
@@ -126,20 +125,15 @@ export function LogframeForm({
   );
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>
             {isEditing ? "Modifier l'élément" : 'Nouvel élément du Cadre Logique'}
-          </SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+          </ModalTitle>
+        </ModalHeader>
 
-        <SlideOverBody>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           <form id="logframe-form" onSubmit={handleSubmit} className="flex flex-col gap-6">
 
             {/* Niveau & Description */}
@@ -266,17 +260,17 @@ export function LogframeForm({
               <span>{error}</span>
             </div>
           )}
-        </SlideOverBody>
+        </div>
 
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline" type="button">Annuler</Button>
-          </SlideOverClose>
+          </ModalClose>
           <Button variant="default" type="submit" form="logframe-form" disabled={isSaving}>
             {isSaving ? 'Enregistrement...' : isEditing ? 'Enregistrer les modifications' : "Créer l'élément"}
           </Button>
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
