@@ -121,16 +121,24 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   if (projects.length === 0) return result
   const projectIds = projects.map((p) => p.id)
 
-  const [ptbaRes, livrablesRes, wbsRes, budgetLignesRes] = await Promise.all([
+  const [ptbaRes, livrablesRes, wbsRes, budgetLignesRes, montantPayeRes] = await Promise.all([
     supabase.from('ptba_activites').select('project_id, statut, taux_realisation, montant_prevu').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('livrables').select('project_id').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('wbs_nodes').select('project_id').is('deleted_at', null).is('parent_id', null).in('project_id', projectIds),
-    supabase.from('budget_lignes').select('montant_prevu, montant_paye, version:budget_versions!inner(project_id)').is('deleted_at', null).in('version.project_id', projectIds),
+    supabase.from('budget_lignes').select('montant_prevu, version:budget_versions!inner(project_id)').is('deleted_at', null).in('version.project_id', projectIds),
+    // project_montant_paye_view centralise le "payé" (lignes budgétaires +
+    // décaissements DECAISSE liés seulement à un Contrat/une Source de
+    // financement, sans budget_ligne_id) — même calcul, au même endroit, que
+    // la fiche projet (project-detail-summary) et le Dashboard portefeuille
+    // (dashboard-summary). Sans cette vue, ce taux divergeait entre les
+    // cartes de la liste et la fiche projet pour un même projet.
+    supabase.from('project_montant_paye_view').select('project_id, montant_paye').in('project_id', projectIds),
   ])
   if (ptbaRes.error) throw ptbaRes.error
   if (livrablesRes.error) throw livrablesRes.error
   if (wbsRes.error) throw wbsRes.error
   if (budgetLignesRes.error) throw budgetLignesRes.error
+  if (montantPayeRes.error) throw montantPayeRes.error
 
   // sumTaux/count restent pour référence ; ev alimente le vrai "progressScore"
   // (EV/BAC pondéré par le budget, même méthode que calculate_project_evm() /
@@ -146,20 +154,23 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   for (const l of livrablesRes.data ?? []) livrablesMap.set(l.project_id, (livrablesMap.get(l.project_id) ?? 0) + 1)
   const composantesMap = new Map<string, number>()
   for (const w of wbsRes.data ?? []) composantesMap.set(w.project_id, (composantesMap.get(w.project_id) ?? 0) + 1)
-  const budgetMap = new Map<string, { prevu: number; paye: number }>()
+  const budgetMap = new Map<string, { prevu: number }>()
   for (const bl of (budgetLignesRes.data ?? [])) {
     const pid = Array.isArray(bl.version) ? bl.version[0]?.project_id : (bl.version as { project_id?: string })?.project_id
     if (!pid) continue
-    const e = budgetMap.get(pid) ?? { prevu: 0, paye: 0 }
-    e.prevu += Number(bl.montant_prevu ?? 0); e.paye += Number(bl.montant_paye ?? 0)
+    const e = budgetMap.get(pid) ?? { prevu: 0 }
+    e.prevu += Number(bl.montant_prevu ?? 0)
     budgetMap.set(pid, e)
   }
+  const payeMap = new Map<string, number>()
+  for (const row of (montantPayeRes.data ?? [])) payeMap.set(row.project_id, Number(row.montant_paye ?? 0))
 
   for (const project of projects) {
     const act = activitesMap.get(project.id) ?? { count: 0, sumTaux: 0, ev: 0 }
-    const bud = budgetMap.get(project.id) ?? { prevu: 0, paye: 0 }
+    const bud = budgetMap.get(project.id) ?? { prevu: 0 }
+    const paye = payeMap.get(project.id) ?? 0
     const budgetTotal = bud.prevu > 0 ? bud.prevu : Number(project.budgetTotal ?? 0)
-    const tauxDecaissement = budgetTotal > 0 ? Math.round((bud.paye / budgetTotal) * 10000) / 100 : 0
+    const tauxDecaissement = budgetTotal > 0 ? Math.round((paye / budgetTotal) * 10000) / 100 : 0
     // BAC strict (somme des budget_lignes réelles, sans repli sur
     // project.budgetTotal) — même définition que calculate_project_evm(),
     // pour que ce "progressScore" reste identique à celui affiché sur la

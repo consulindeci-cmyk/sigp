@@ -110,14 +110,26 @@ Deno.serve(async (req: Request) => {
     ].filter((c): c is string => c !== null);
 
     const disbursementsRows = disbOrClauses.length
-      ? await db.from('disbursements').select('montant, statut, date_prevue, date_reelle').or(disbOrClauses.join(','))
-      : { data: [] as { montant: number; statut: string; date_prevue: string | null; date_reelle: string | null }[], error: null };
+      ? await db.from('disbursements').select('montant, statut, date_prevue, date_reelle, budget_ligne_id').or(disbOrClauses.join(','))
+      : { data: [] as { montant: number; statut: string; date_prevue: string | null; date_reelle: string | null; budget_ligne_id: string | null }[], error: null };
     if (disbursementsRows.error) throw disbursementsRows.error;
 
     // ── getSummary ──────────────────────────────────────────────────────────
     const budgetTotal = (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_prevu ?? 0), 0);
     const montantEngage = (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_engage ?? 0), 0);
-    const montantPaye = (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_paye ?? 0), 0);
+    // budget_lignes.montant_paye (recalc_budget_ligne_montants) ne somme que
+    // les décaissements DECAISSE rattachés à une Ligne Budgétaire — un
+    // décaissement DECAISSE lié seulement à un Contrat et/ou une Source de
+    // financement (sans budget_ligne_id) est un vrai paiement mais restait
+    // invisible ici, créant un écart avec le taux affiché dans l'onglet
+    // Décaissements (constat utilisateur). Ajouté explicitement, en excluant
+    // par `budget_ligne_id` pour ne jamais compter deux fois un décaissement
+    // qui aurait à la fois une ligne et un contrat.
+    const montantPayeLignes = (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_paye ?? 0), 0);
+    const montantPayeHorsLigne = (disbursementsRows.data ?? [])
+      .filter((d) => d.statut === 'DECAISSE' && !d.budget_ligne_id)
+      .reduce((s, d) => s + Number(d.montant ?? 0), 0);
+    const montantPaye = montantPayeLignes + montantPayeHorsLigne;
     const soldeDisponible = budgetTotal - montantPaye;
     const tauxDecaissement = budgetTotal > 0 ? Math.round((montantPaye / budgetTotal) * 10000) / 100 : 0;
 

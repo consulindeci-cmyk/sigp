@@ -631,11 +631,11 @@ export default function ProjectDisbursementTab() {
           description={`${decaisseCount} décaissé${decaisseCount > 1 ? 's' : ''}`}
         />
         <StatCard
-          title="Taux de décaissement"
+          title="Taux de décaissement (registre)"
           value={`${tauxDec}%`}
           icon={<Wallet className="h-4 w-4 text-success" aria-hidden="true" />}
           iconVariant="success"
-          description="Décaissé / Total"
+          description="Décaissé / Total des décaissements enregistrés ici"
         />
         <StatCard
           title="En Attente"

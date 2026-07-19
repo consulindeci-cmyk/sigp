@@ -77,6 +77,7 @@ Deno.serve(async (req: Request) => {
       notificationsTotal,
       notificationsNonLues,
       disbursementsRows,
+      disbursementsHorsLigneRows,
       fundingSourcesRows,
       activitesCritiquesRows,
       jalonsRows,
@@ -113,6 +114,12 @@ Deno.serve(async (req: Request) => {
       db.from('notifications').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('lue', false),
       db.from('disbursements').select('montant, date_reelle, date_prevue')
         .or(`date_reelle.gte.${since12MIso},date_prevue.gte.${since12MIso}`),
+      // Même correctif que project-detail-summary : budget_lignes.montant_paye
+      // ne capture que les décaissements DECAISSE rattachés à une Ligne
+      // Budgétaire — un décaissement DECAISSE lié seulement à un Contrat/une
+      // Source de financement (sans budget_ligne_id) est un vrai paiement,
+      // exclu sinon du "Taux de décaissement" portefeuille.
+      db.from('disbursements').select('montant').eq('statut', 'DECAISSE').is('budget_ligne_id', null),
       db.from('funding_sources').select('nom, montant').order('montant', { ascending: false }).limit(10),
       db.from('ptba_activites').select('id, code, libelle, statut, date_fin_prevue')
         .or(`statut.eq.EN_RETARD,and(statut.not.in.(TERMINE,ANNULE),date_fin_prevue.lt.${nowIso})`)
@@ -137,7 +144,7 @@ Deno.serve(async (req: Request) => {
       budgetLignesRows, ptbaTotal, ptbaTermines, ptbaEnCours, ptbaNonDemarres, risquesTotal, risquesRows,
       risquesPrincipauxRows, marchesTotal, marchesTermines, etapesTotal, livrablesTotal, livrablesValides,
       livrablesSoumis, documentsTotal, rapportsTotal, notificationsTotal, notificationsNonLues,
-      disbursementsRows, fundingSourcesRows, activitesCritiquesRows, jalonsRows, echeancesRows,
+      disbursementsRows, disbursementsHorsLigneRows, fundingSourcesRows, activitesCritiquesRows, jalonsRows, echeancesRows,
       notificationsRecentesRows, timelineActivitesRows, timelineContractsRows, evmSnapshotsRows,
     })) {
       if (res.error) throw new Error(`[${name}] ${res.error.message}`);
@@ -151,7 +158,9 @@ Deno.serve(async (req: Request) => {
     const budgetTotal = (projetsBudget.data ?? []).reduce((s, p) => s + Number(p.budget_total ?? 0), 0)
       || (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_prevu ?? 0), 0);
     const montantEngage = (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_engage ?? 0), 0);
-    const montantPaye = (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_paye ?? 0), 0);
+    const montantPayeLignes = (budgetLignesRows.data ?? []).reduce((s, l) => s + Number(l.montant_paye ?? 0), 0);
+    const montantPayeHorsLigne = (disbursementsHorsLigneRows.data ?? []).reduce((s, d) => s + Number(d.montant ?? 0), 0);
+    const montantPaye = montantPayeLignes + montantPayeHorsLigne;
 
     const risquesCritiques = (risquesRows.data ?? []).filter((r) => r.niveau_criticite === 'CRITIQUE').length;
     const risquesEleves = (risquesRows.data ?? []).filter((r) => r.niveau_criticite === 'ELEVE').length;

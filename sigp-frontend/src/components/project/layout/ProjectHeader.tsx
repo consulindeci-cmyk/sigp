@@ -118,7 +118,7 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
         ['Date début', project.startDate],
         ['Date fin', project.endDate],
         ['Progression physique', `${project.progressScore}%`],
-        ['Taux de décaissement', `${project.tauxDecaissement}%`],
+        ["Taux d'exécution budgétaire", `${project.tauxDecaissement}%`],
         ['Profil qualité', `${project.profileScore}%`],
       ];
       const csv = '﻿' + rows
@@ -245,7 +245,7 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
                 valueClass={physValClass}
               />
               <GaugeBar
-                label="Taux de Décaissement"
+                label="Taux d'exécution budgétaire"
                 value={project.tauxDecaissement}
                 barClass={project.tauxDecaissement >= 60 ? 'bg-success' : 'bg-warning'}
                 valueClass={project.tauxDecaissement >= 60 ? 'text-success' : 'text-warning'}
