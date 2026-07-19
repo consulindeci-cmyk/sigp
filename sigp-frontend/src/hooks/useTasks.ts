@@ -15,23 +15,17 @@ import type { Tache, StatutTache, PaginatedResponse } from '@/types'
 // apparaîtront aussi dans l'onglet PTBA (même table), et inversement.
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface PtbaResponsableEmbed {
-  id: string;
-  nom: string | null;
-  prenom: string | null;
-}
-
 interface PtbaActiviteRow {
   id: string;
   project_id: string;
   wbs_id: string | null;
   code: string;
   libelle: string;
+  // responsable_id n'a pas de contrainte FK réelle vers users(id) en base —
+  // PostgREST ne peut donc pas résoudre un embed `responsable:users(...)`
+  // (400 PGRST200, "Could not find a relationship"). Le nom est résolu par
+  // un second aller-retour léger dans useTasks() plutôt que côté requête.
   responsable_id: string | null;
-  // responsable_id est une vraie FK vers users(id) (même famille que
-  // historique.user_id) — embarqué ici pour résoudre un nom affichable,
-  // plutôt que d'afficher l'UUID brut comme "responsable" (ancien bug).
-  responsable: PtbaResponsableEmbed | PtbaResponsableEmbed[] | null;
   date_debut_prevue: string | null;
   date_fin_prevue: string | null;
   montant_prevu: number | null;
@@ -45,8 +39,7 @@ interface PtbaActiviteRow {
 const PTBA_SELECT = `
   id, project_id, wbs_id, code, libelle, responsable_id, date_debut_prevue,
   date_fin_prevue, montant_prevu, montant_realise, taux_realisation, statut,
-  created_at, updated_at,
-  responsable:users(id, nom, prenom)
+  created_at, updated_at
 `;
 
 // ── Statut mapping (StatutTache ↔ PtbaStatut) ─────────────────────────────────
@@ -83,11 +76,8 @@ function deriveAnneeTrimestre(dateDebut?: string | null): { annee: number; trime
 
 // ── Adapter: ligne ptba_activites → Tache ─────────────────────────────────────
 
-function adaptRow(row: PtbaActiviteRow): Tache {
-  const responsable = Array.isArray(row.responsable) ? row.responsable[0] : row.responsable;
-  const responsableNom = responsable
-    ? `${responsable.prenom ?? ''} ${responsable.nom ?? ''}`.trim() || null
-    : null;
+function adaptRow(row: PtbaActiviteRow, responsableNames: Map<string, string>): Tache {
+  const responsableNom = row.responsable_id ? responsableNames.get(row.responsable_id) ?? null : null;
 
   return {
     id: row.id,
@@ -133,7 +123,26 @@ export function useTasks(projectId: string, params?: {
 
       const { data, error, count } = await query;
       if (error) throw error;
-      const list = (data as unknown as PtbaActiviteRow[]).map(adaptRow);
+      const rows = data as unknown as PtbaActiviteRow[];
+
+      // Résolution manuelle des noms de responsables (cf. note sur
+      // PtbaActiviteRow.responsable_id) — un seul aller-retour groupé, pas de
+      // N+1 (mêmes principes que dashboard-summary/useEvm dans ce projet).
+      const responsableIds = [...new Set(rows.map(r => r.responsable_id).filter((id): id is string => !!id))];
+      const responsableNames = new Map<string, string>();
+      if (responsableIds.length > 0) {
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, nom, prenom')
+          .in('id', responsableIds);
+        if (usersError) throw usersError;
+        for (const u of (usersData ?? []) as { id: string; nom: string | null; prenom: string | null }[]) {
+          const nom = `${u.prenom ?? ''} ${u.nom ?? ''}`.trim();
+          if (nom) responsableNames.set(u.id, nom);
+        }
+      }
+
+      const list = rows.map(row => adaptRow(row, responsableNames));
       const total = count ?? list.length;
       return { data: list, meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) } };
     },
@@ -159,7 +168,10 @@ export function useCreateTask(projectId: string) {
         statut: dto.statut ? feStatutToBe(dto.statut) : undefined,
         annee, trimestre,
       });
-      return adaptRow(data);
+      // Nom du responsable non résolu ici (une seule ligne, pas besoin d'un
+      // aller-retour dédié) — la liste se rafraîchit de toute façon via
+      // l'invalidation ci-dessous, avec le nom correctement résolu.
+      return adaptRow(data, new Map());
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all(projectId) })
@@ -191,7 +203,10 @@ export function useUpdateTask(projectId: string) {
         tauxRealisation: dto.avancement,
         statut: dto.statut ? feStatutToBe(dto.statut) : undefined,
       });
-      return adaptRow(data);
+      // Nom du responsable non résolu ici (une seule ligne, pas besoin d'un
+      // aller-retour dédié) — la liste se rafraîchit de toute façon via
+      // l'invalidation ci-dessous, avec le nom correctement résolu.
+      return adaptRow(data, new Map());
     },
     onMutate: async ({ id, ...dto }) => {
       await qc.cancelQueries({ queryKey: taskKeys.list(projectId) })
