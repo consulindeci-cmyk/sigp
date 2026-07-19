@@ -70,6 +70,7 @@ export default function TabEVM() {
 
   const [exported, setExported] = useState(false);
   const [snapshotFeedback, setSnapshotFeedback] = useState<'idle' | 'done' | 'error'>('idle');
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
 
   const currentRole = useAuthStore(s => s.user?.role);
   const canGenerateSnapshot = currentRole === 'FINANCIER' || currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
@@ -80,9 +81,13 @@ export default function TabEVM() {
 
   function handleGenerateSnapshot() {
     setSnapshotFeedback('idle');
+    setSnapshotError(null);
     generateSnapshot.mutate(undefined, {
       onSuccess: () => { setSnapshotFeedback('done'); setTimeout(() => setSnapshotFeedback('idle'), 3000); },
-      onError: () => { setSnapshotFeedback('error'); },
+      onError: (err) => {
+        setSnapshotFeedback('error');
+        setSnapshotError(err instanceof Error ? err.message : 'Erreur inconnue.');
+      },
     });
   }
 
@@ -199,7 +204,7 @@ export default function TabEVM() {
       {snapshotFeedback === 'error' && (
         <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
-          <span>Échec de la génération de l'instantané EVM. Réessayez ou contactez un administrateur.</span>
+          <span>Échec de la génération de l'instantané EVM{snapshotError ? ` : ${snapshotError}` : '.'}</span>
         </div>
       )}
 
