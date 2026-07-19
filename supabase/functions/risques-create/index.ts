@@ -90,10 +90,43 @@ Deno.serve(async (req: Request) => {
       apres: risque,
     });
 
-    // NOTE : NestJS émettait ici RISQUE_CREATED + RISK_CRITICAL_DETECTED
-    // (niveauCriticite === 'CRITIQUE') pour déclencher des notifications.
-    // Reporté à la migration du module Notifications (Phase 2) — pas encore
-    // câblé ici, le risque est bien créé mais ne notifie personne pour l'instant.
+    // Premier pont vers le module Notifications (cf. audit Risques & Alertes :
+    // notifications-create n'était jamais appelé par aucun code du repo — la
+    // cloche restait structurellement vide). Insertion directe via le client
+    // service_role déjà disponible ici plutôt qu'un appel HTTP imbriqué vers
+    // notifications-create (évite une ré-authentification fragile pour un
+    // effet secondaire non bloquant). Notifie le responsable du risque et le
+    // manager du projet — pas encore une diffusion large à tout le rôle
+    // COORDINATEUR/CHARGE_PROGRAMME de l'organisation (hors périmètre de ce
+    // premier câblage).
+    if (niveauCriticite === 'CRITIQUE') {
+      try {
+        const notifyUserIds = new Set<string>();
+        if (body.responsableId) notifyUserIds.add(body.responsableId);
+        const { data: projectRow } = await admin
+          .from('projects').select('manager_id').eq('id', body.projectId).maybeSingle();
+        if (projectRow?.manager_id) notifyUserIds.add(projectRow.manager_id);
+
+        for (const uid of notifyUserIds) {
+          await admin.from('notifications').insert({
+            id: crypto.randomUUID(),
+            user_id: uid,
+            project_id: body.projectId,
+            type: 'RISQUE_CRITIQUE',
+            titre: 'Nouveau risque critique',
+            message: `Un risque critique a été enregistré : ${risque.description}`,
+            lue: false,
+            data: { risqueId: risque.id },
+            created_by: profile.id,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch (notifError) {
+        // Non bloquant : le risque est déjà créé, une notification manquée
+        // ne doit pas faire échouer l'opération principale.
+        console.error('[risques-create] notification RISQUE_CRITIQUE', notifError);
+      }
+    }
 
     return json({ data: risque }, 201);
   } catch (err) {

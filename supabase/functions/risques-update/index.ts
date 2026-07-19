@@ -89,8 +89,36 @@ Deno.serve(async (req: Request) => {
       apres: updated,
     });
 
-    // NOTE : idem création — RISQUE_UPDATED / RISK_STATUS_CHANGED /
-    // RISK_CRITICAL_DETECTED non câblés, reportés au module Notifications.
+    // Notifie seulement la TRANSITION vers CRITIQUE (pas à chaque
+    // modification d'un risque déjà critique, pour ne pas spammer) — même
+    // logique que risques-create, cf. commentaire là-bas.
+    if (niveauCriticite === 'CRITIQUE' && existing.niveau_criticite !== 'CRITIQUE') {
+      try {
+        const notifyUserIds = new Set<string>();
+        const effResponsableId = body.responsableId !== undefined ? body.responsableId : existing.responsable_id;
+        if (effResponsableId) notifyUserIds.add(effResponsableId);
+        const { data: projectRow } = await admin
+          .from('projects').select('manager_id').eq('id', existing.project_id).maybeSingle();
+        if (projectRow?.manager_id) notifyUserIds.add(projectRow.manager_id);
+
+        for (const uid of notifyUserIds) {
+          await admin.from('notifications').insert({
+            id: crypto.randomUUID(),
+            user_id: uid,
+            project_id: existing.project_id,
+            type: 'RISQUE_CRITIQUE',
+            titre: 'Risque devenu critique',
+            message: `Un risque est passé au niveau critique : ${updated.description}`,
+            lue: false,
+            data: { risqueId: updated.id },
+            created_by: profile.id,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch (notifError) {
+        console.error('[risques-update] notification RISQUE_CRITIQUE', notifError);
+      }
+    }
 
     return json({ data: updated });
   } catch (err) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 import type { Risque, NiveauRisque, RisqueCategorie, StatutRisque } from '@/types';
 import { RISK_CATEGORIES, STATUT_RISQUE_OPTIONS } from '@/mocks/risksMocks';
 import {
@@ -50,6 +50,10 @@ export interface RiskSlideOverProps {
   risque?: Risque | null;
   onSave: (payload: RiskSlideOverSavePayload, id?: string) => void;
   onDelete?: (id: string) => void;
+  canDelete?: boolean;
+  isSaving?: boolean;
+  isDeleting?: boolean;
+  error?: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -104,6 +108,7 @@ const INIT: FormState = {
 
 export function RiskSlideOver({
   open, onOpenChange, mode, risque, onSave, onDelete,
+  canDelete = true, isSaving = false, isDeleting = false, error = null,
 }: RiskSlideOverProps) {
   const [form, setForm] = useState<FormState>(INIT);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -153,6 +158,9 @@ export function RiskSlideOver({
     return Object.keys(e).length === 0;
   }
 
+  // Le SlideOver ne se ferme plus lui-même : le parent possède la mutation
+  // et ne ferme qu'après confirmation serveur (cf. audit — fermeture aveugle
+  // avant réponse du serveur, qui masquait tout échec 403/réseau).
   function handleSave() {
     if (!validate()) return;
     onSave(
@@ -169,13 +177,11 @@ export function RiskSlideOver({
       },
       risque?.id,
     );
-    onOpenChange(false);
   }
 
   function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     if (risque?.id) onDelete?.(risque.id);
-    onOpenChange(false);
   }
 
   const title =
@@ -393,7 +399,7 @@ export function RiskSlideOver({
           )}
 
           {/* Bouton Supprimer (mode edit) */}
-          {mode === 'edit' && risque && onDelete && (
+          {mode === 'edit' && risque && onDelete && canDelete && (
             <div className="pt-2 border-t border-border">
               {confirmDelete ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -405,13 +411,15 @@ export function RiskSlideOver({
                       variant="destructive"
                       size="sm"
                       onClick={handleDelete}
+                      disabled={isDeleting}
                     >
-                      Supprimer définitivement
+                      {isDeleting ? 'Suppression...' : 'Supprimer définitivement'}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setConfirmDelete(false)}
+                      disabled={isDeleting}
                     >
                       Annuler
                     </Button>
@@ -429,6 +437,13 @@ export function RiskSlideOver({
               )}
             </div>
           )}
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
         </SlideOverBody>
 
         {/* ── Footer ── */}
@@ -437,8 +452,8 @@ export function RiskSlideOver({
             <Button variant="outline">Fermer</Button>
           </SlideOverClose>
           {!readOnly && (
-            <Button onClick={handleSave}>
-              {mode === 'new' ? 'Créer le risque' : 'Enregistrer'}
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : mode === 'new' ? 'Créer le risque' : 'Enregistrer'}
             </Button>
           )}
           {readOnly && (

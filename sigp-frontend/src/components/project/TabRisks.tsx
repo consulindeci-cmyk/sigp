@@ -1,16 +1,16 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useRisks, useCreateRisk, useUpdateRisk, useDeleteRisk } from '@/hooks/useRisks';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import type { ColumnDef } from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import {
-  AlertTriangle, Download, FileSpreadsheet, Plus, Eye, Pencil, Trash2,
+  AlertTriangle, AlertCircle, Download, FileSpreadsheet, Plus, Eye, Pencil, Trash2,
   Shield, ShieldAlert, CheckCircle2, Info,
 } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  AreaChart, Area, Legend, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 
 import type { Risque, NiveauRisque } from '@/types';
@@ -132,19 +132,30 @@ export default function TabRisks() {
   const updateMutation  = useUpdateRisk(projectId);
   const deleteMutation  = useDeleteRisk(projectId);
 
-  const [risques, setRisques] = useState<Risque[]>([]);
+  // Dérivé de la réponse serveur, jamais copié dans un state local — plus
+  // de désynchronisation possible entre l'affichage et la réalité serveur
+  // (cf. audit : l'ancien useEffect+setState laissait aussi les mises à jour
+  // optimistes de handleSave/handleDelete "survivre" en cas d'échec serveur).
+  const risques = useMemo(() => apiRisques?.data ?? [], [apiRisques]);
 
-  useEffect(() => {
-    const list = apiRisques?.data ?? (Array.isArray(apiRisques) ? apiRisques : []);
-    if (list.length > 0 || apiRisques) setRisques(list);
-  }, [apiRisques]);
+  // Miroir des rôles serveur : requireRole sur risques-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   const [slideOpen, setSlideOpen]   = useState(false);
   const [slideMode, setSlideMode]   = useState<'new' | 'edit' | 'view'>('new');
   const [selected, setSelected]     = useState<Risque | null>(null);
+  const [slideError, setSlideError] = useState<string | null>(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [toDelete, setToDelete]     = useState<Risque | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
 
   // ── KPIs ────────────────────────────────────────────────────────────────
 
@@ -183,7 +194,7 @@ export default function TabRisks() {
   // ── Handlers ────────────────────────────────────────────────────────────
 
   const handleOpenNew = useCallback(() => {
-    setSelected(null); setSlideMode('new'); setSlideOpen(true);
+    setSelected(null); setSlideMode('new'); setSlideError(null); setSlideOpen(true);
   }, []);
 
   const handleView = useCallback((r: Risque) => {
@@ -191,24 +202,28 @@ export default function TabRisks() {
   }, []);
 
   const handleEdit = useCallback((r: Risque) => {
-    setSelected(r); setSlideMode('edit'); setSlideOpen(true);
+    setSelected(r); setSlideMode('edit'); setSlideError(null); setSlideOpen(true);
   }, []);
 
   const openDeleteModal = useCallback((r: Risque) => {
-    setToDelete(r); setDeleteOpen(true);
+    setToDelete(r); setDeleteError(null); setDeleteOpen(true);
   }, []);
 
+  // Le parent possède la mutation et ne ferme le SlideOver qu'après
+  // confirmation serveur (onSuccess) — plus de mise à jour optimiste ni de
+  // fermeture avant réponse (cf. audit). L'erreur reste affichée dans le
+  // SlideOver si la mutation échoue, l'utilisateur peut corriger et réessayer.
   const handleSave = useCallback((payload: RiskSlideOverSavePayload, id?: string) => {
+    setSlideError(null);
     const criticite = payload.probabilite * payload.impact;
     const niveau    = getNiveauCriticite(criticite);
+    const onError = (err: unknown) => setSlideError(extractErrorMessage(err));
     if (id) {
-      setRisques(prev => prev.map(r => r.id !== id ? r : {
-        ...r, ...payload, criticite, niveau_criticite: niveau,
-        updatedAt: new Date().toISOString(),
-      }));
-      updateMutation.mutate({ id, ...payload, criticite, niveau_criticite: niveau });
+      updateMutation.mutate(
+        { id, ...payload, criticite, niveau_criticite: niveau },
+        { onSuccess: () => setSlideOpen(false), onError },
+      );
     } else {
-      const now = new Date().toISOString();
       const dto: Partial<Risque> = {
         projet_id:            projectId,
         code_risque:          nextCode(risques),
@@ -223,25 +238,26 @@ export default function TabRisks() {
         plan_mitigation:      payload.plan_mitigation,
         date_identification:  payload.date_identification,
         date_revision_prevue: payload.date_revision_prevue,
-        createdAt: now, updatedAt: now,
       };
-      setRisques(prev => [...prev, { ...dto, id: `tmp-${Date.now()}` } as Risque]);
-      createMutation.mutate(dto);
+      createMutation.mutate(dto, { onSuccess: () => setSlideOpen(false), onError });
     }
   }, [risques, projectId, createMutation, updateMutation]);
 
   const handleDeleteFromSlideOver = useCallback((id: string) => {
-    setRisques(prev => prev.filter(r => r.id !== id));
-    deleteMutation.mutate(id);
+    setSlideError(null);
+    deleteMutation.mutate(id, {
+      onSuccess: () => setSlideOpen(false),
+      onError: (err) => setSlideError(extractErrorMessage(err)),
+    });
   }, [deleteMutation]);
 
   const confirmDelete = useCallback(() => {
-    if (toDelete) {
-      setRisques(prev => prev.filter(r => r.id !== toDelete.id));
-      deleteMutation.mutate(toDelete.id);
-    }
-    setDeleteOpen(false);
-    setToDelete(null);
+    if (!toDelete) return;
+    setDeleteError(null);
+    deleteMutation.mutate(toDelete.id, {
+      onSuccess: () => { setDeleteOpen(false); setToDelete(null); },
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
   }, [toDelete, deleteMutation]);
 
   // ── Columns ─────────────────────────────────────────────────────────────
@@ -338,19 +354,23 @@ export default function TabRisks() {
             onClick={() => handleView(row.original)} title="Consulter">
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7"
-            onClick={() => handleEdit(row.original)} title="Modifier">
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon"
-            className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => openDeleteModal(row.original)} title="Supprimer">
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canManage && (
+            <Button variant="ghost" size="icon" className="h-7 w-7"
+              onClick={() => handleEdit(row.original)} title="Modifier">
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button variant="ghost" size="icon"
+              className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => openDeleteModal(row.original)} title="Supprimer">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
-  ], [handleView, handleEdit, openDeleteModal]);
+  ], [handleView, handleEdit, openDeleteModal, canManage, canDelete]);
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -434,55 +454,43 @@ export default function TabRisks() {
             </ResponsiveContainer>
           </div>
 
-          {/* Évolution du portefeuille */}
+          {/* Répartition par niveau de criticité — remplace un graphique
+              d'évolution historique qui était figé sur un tableau vide
+              codé en dur (aucun historique de risques n'est stocké côté
+              serveur, cf. audit) ; ces compteurs, eux, reflètent l'état réel
+              et actuel du registre. */}
           <div className="bg-card border border-border rounded-lg p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-4">Évolution du portefeuille de risques</h3>
-            <ResponsiveContainer width="100%" height={190}>
-              <AreaChart data={[]} margin={{ left: -10, right: 10, top: 4, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gcrit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="hsl(var(--destructive))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gelev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="hsl(var(--warning))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--warning))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gmod" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gfai" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="hsl(var(--success))" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="mois"
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                  axisLine={false} tickLine={false} />
-                <YAxis allowDecimals={false}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                  axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    background: 'hsl(var(--popover))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px', fontSize: '12px',
-                  }}
-                />
-                <Legend iconType="circle" iconSize={8}
-                  wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                <Area type="monotone" dataKey="critique" name="Critique" stackId="1"
-                  stroke="hsl(var(--destructive))" fill="url(#gcrit)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="eleve" name="Élevé" stackId="1"
-                  stroke="hsl(var(--warning))" fill="url(#gelev)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="modere" name="Modéré" stackId="1"
-                  stroke="hsl(var(--primary))" fill="url(#gmod)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="faible" name="Faible" stackId="1"
-                  stroke="hsl(var(--success))" fill="url(#gfai)" strokeWidth={1.5} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <h3 className="text-sm font-semibold text-foreground mb-4">Répartition par niveau de criticité</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <span className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-destructive" aria-hidden="true" />
+                  Critiques
+                </span>
+                <span className="font-mono text-sm font-bold text-foreground">{kpis.critique}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <span className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-warning" aria-hidden="true" />
+                  Élevés
+                </span>
+                <span className="font-mono text-sm font-bold text-foreground">{kpis.eleve}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <span className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                  Modérés
+                </span>
+                <span className="font-mono text-sm font-bold text-foreground">{kpis.modere}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <span className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />
+                  Faibles
+                </span>
+                <span className="font-mono text-sm font-bold text-foreground">{kpis.faible}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -503,9 +511,11 @@ export default function TabRisks() {
             <Button variant="outline" size="sm" onClick={() => doExportXlsx(risques)}>
               <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />Excel
             </Button>
-            <Button size="sm" onClick={handleOpenNew}>
-              <Plus className="h-3.5 w-3.5 mr-1.5" />Nouveau risque
-            </Button>
+            {canManage && (
+              <Button size="sm" onClick={handleOpenNew}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />Nouveau risque
+              </Button>
+            )}
           </div>
         </div>
 
@@ -527,15 +537,19 @@ export default function TabRisks() {
       {/* SlideOver CRUD */}
       <RiskSlideOver
         open={slideOpen}
-        onOpenChange={setSlideOpen}
+        onOpenChange={open => { setSlideOpen(open); if (!open) setSlideError(null); }}
         mode={slideMode}
         risque={selected}
         onSave={handleSave}
         onDelete={handleDeleteFromSlideOver}
+        canDelete={canDelete}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        isDeleting={deleteMutation.isPending}
+        error={slideError}
       />
 
       {/* Modal suppression (depuis le tableau) */}
-      <Modal open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Modal open={deleteOpen} onOpenChange={open => { setDeleteOpen(open); if (!open) { setToDelete(null); setDeleteError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Supprimer le risque</ModalTitle>
@@ -544,11 +558,19 @@ export default function TabRisks() {
               <strong>{toDelete?.code_risque}</strong> ?
             </ModalDescription>
           </ModalHeader>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={confirmDelete}>Supprimer</Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
