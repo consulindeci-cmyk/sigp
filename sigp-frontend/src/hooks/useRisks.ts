@@ -16,6 +16,7 @@ interface RisqueRow {
   impact: string        // FAIBLE | MODERE | IMPORTANT | CRITIQUE
   niveau_criticite: string
   statut: string        // OUVERT | EN_COURS | RESOLU | ACCEPTE | FERME
+  strategie: string | null
   plan_action: string | null
   responsable_id: string | null
   date_detection: string | null
@@ -26,7 +27,7 @@ interface RisqueRow {
 
 const RISQUE_SELECT = `
   id, project_id, wbs_id, code, description, categorie, probabilite, impact,
-  niveau_criticite, statut, plan_action, responsable_id, date_detection,
+  niveau_criticite, statut, strategie, plan_action, responsable_id, date_detection,
   date_echeance, created_at, updated_at
 `
 
@@ -84,8 +85,13 @@ function isoDate(val: string | null | undefined): string | undefined {
 }
 
 // ── Adapter: ligne Supabase → Risque frontend ─────────────────────────────────
+// responsable_id est une vraie FK vers users(id) — jamais transmise par le
+// frontend jusqu'ici (cf. audit Risques & Alertes), donc toujours NULL en
+// base. Le nom affiché est résolu via un second aller-retour groupé (mêmes
+// principes que useTasks.ts/useEvm.ts), pas d'embed PostgREST (pas de FK
+// déclarée garantie).
 
-function adaptRisque(row: RisqueRow): Risque {
+function adaptRisque(row: RisqueRow, responsableNames: Map<string, string>): Risque {
   const prob = probToNumber(row.probabilite)
   const imp = impactToNumber(row.impact)
   return {
@@ -99,7 +105,9 @@ function adaptRisque(row: RisqueRow): Risque {
     criticite:            prob * imp,
     niveau_criticite:     niveauToFe(row.niveau_criticite),
     statut:               beStatutToFe(row.statut),
-    responsable:          row.responsable_id ?? '',
+    responsable:          row.responsable_id ? responsableNames.get(row.responsable_id) ?? '' : '',
+    responsableId:        row.responsable_id,
+    strategie:            row.strategie,
     plan_mitigation:      row.plan_action ?? undefined,
     date_identification:  isoDate(row.date_detection) ?? isoDate(row.created_at) ?? '',
     date_revision_prevue: isoDate(row.date_echeance),
@@ -119,6 +127,8 @@ function buildCreatePayload(projectId: string, dto: Partial<Risque>) {
     code:          dto.code_risque        || undefined,
     categorie:     dto.categorie          || undefined,
     statut:        dto.statut             ? feStatutToBe(dto.statut) : undefined,
+    responsableId: dto.responsableId      || undefined,
+    strategie:     dto.strategie          || undefined,
     planAction:    dto.plan_mitigation    || undefined,
     dateDetection: dto.date_identification    || undefined,
     dateEcheance:  dto.date_revision_prevue   || undefined,
@@ -133,6 +143,8 @@ function buildUpdatePayload(dto: Partial<Risque>) {
   if (dto.categorie            !== undefined) p.categorie     = dto.categorie
   if (dto.code_risque          !== undefined) p.code          = dto.code_risque
   if (dto.statut               !== undefined) p.statut        = feStatutToBe(dto.statut)
+  if (dto.responsableId        !== undefined) p.responsableId = dto.responsableId || null
+  if (dto.strategie            !== undefined) p.strategie     = dto.strategie
   if (dto.plan_mitigation      !== undefined) p.planAction    = dto.plan_mitigation
   if (dto.date_identification  !== undefined) p.dateDetection = dto.date_identification
   if (dto.date_revision_prevue !== undefined) p.dateEcheance  = dto.date_revision_prevue
@@ -153,7 +165,25 @@ export function useRisks(projectId: string) {
         .order('created_at', { ascending: false })
         .limit(100)
       if (error) throw error
-      const risques = (data as unknown as RisqueRow[]).map(adaptRisque)
+      const rows = data as unknown as RisqueRow[]
+
+      // Résolution groupée des noms de responsables (cf. note sur
+      // RisqueRow.responsable_id) — un seul aller-retour, pas de N+1.
+      const responsableIds = [...new Set(rows.map(r => r.responsable_id).filter((id): id is string => !!id))]
+      const responsableNames = new Map<string, string>()
+      if (responsableIds.length > 0) {
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, nom, prenom')
+          .in('id', responsableIds)
+        if (usersError) throw usersError
+        for (const u of (usersData ?? []) as { id: string; nom: string | null; prenom: string | null }[]) {
+          const nom = `${u.prenom ?? ''} ${u.nom ?? ''}`.trim()
+          if (nom) responsableNames.set(u.id, nom)
+        }
+      }
+
+      const risques = rows.map(row => adaptRisque(row, responsableNames))
       return { data: risques, meta: { total: risques.length, page: 1, limit: 100, totalPages: 1 } }
     },
     enabled: !!projectId,
@@ -166,7 +196,10 @@ export function useCreateRisk(projectId: string) {
     mutationFn: async (dto: Partial<Risque>) => {
       const payload = buildCreatePayload(projectId, dto)
       const { data } = await invokeEdgeFunction<{ data: RisqueRow }>('risques-create', payload)
-      return adaptRisque(data)
+      // Nom du responsable non résolu ici (une seule ligne) — la liste se
+      // rafraîchit de toute façon via l'invalidation ci-dessous, avec le nom
+      // correctement résolu.
+      return adaptRisque(data, new Map())
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
   })
@@ -178,7 +211,7 @@ export function useUpdateRisk(projectId: string) {
     mutationFn: async ({ id, ...dto }: Partial<Risque> & { id: string }) => {
       const payload = buildUpdatePayload(dto)
       const { data } = await invokeEdgeFunction<{ data: RisqueRow }>('risques-update', { id, ...payload })
-      return adaptRisque(data)
+      return adaptRisque(data, new Map())
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
   })

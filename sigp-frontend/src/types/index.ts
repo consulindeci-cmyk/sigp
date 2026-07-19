@@ -151,6 +151,8 @@ export interface Risque {
   niveau_criticite: NiveauRisque;
   statut: StatutRisque;
   responsable: string;
+  responsableId?: string | null;
+  strategie?: string | null;
   plan_mitigation?: string;
   date_identification: string;
   date_revision_prevue?: string;

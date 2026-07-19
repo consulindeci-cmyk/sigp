@@ -235,6 +235,8 @@ export default function TabRisks() {
         niveau_criticite:     niveau,
         statut:               payload.statut,
         responsable:          payload.responsable,
+        responsableId:        payload.responsableId,
+        strategie:            payload.strategie,
         plan_mitigation:      payload.plan_mitigation,
         date_identification:  payload.date_identification,
         date_revision_prevue: payload.date_revision_prevue,
@@ -539,6 +541,7 @@ export default function TabRisks() {
         open={slideOpen}
         onOpenChange={open => { setSlideOpen(open); if (!open) setSlideError(null); }}
         mode={slideMode}
+        projectId={projectId}
         risque={selected}
         onSave={handleSave}
         onDelete={handleDeleteFromSlideOver}
