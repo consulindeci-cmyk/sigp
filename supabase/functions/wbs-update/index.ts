@@ -49,6 +49,7 @@ Deno.serve(async (req: Request) => {
         .from('logframe_objectives')
         .select('id')
         .eq('id', body.objectiveId)
+        .is('deleted_at', null)
         .maybeSingle();
       if (objError) throw objError;
       if (!objective) return json({ error: 'Objectif du cadre logique introuvable' }, 404);

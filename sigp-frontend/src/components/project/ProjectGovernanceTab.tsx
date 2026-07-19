@@ -10,22 +10,13 @@ import {
   useContacts, useCreateContact, useUpdateContact, useDeleteContact,
   useOrganisationMembersForPicker,
 } from '@/hooks/useGovernance';
-import { Plus, Edit, Trash2, User, Mail, Phone, X, Crown, Star, Eye, Building2, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, User, Mail, Phone, Crown, Star, Eye, Building2, AlertCircle } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
-import {
-  SlideOver,
-  SlideOverContent,
-  SlideOverHeader,
-  SlideOverTitle,
-  SlideOverBody,
-  SlideOverFooter,
-  SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
   ModalFooter, ModalClose,
@@ -139,7 +130,7 @@ function KeyActorCard({ member, label, icon: Icon }: { member: TeamMember | unde
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Controlled form state for TeamMemberSlideOver
+// Controlled form state for TeamMemberFormModal
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface TeamFormValues {
@@ -182,12 +173,12 @@ function FRow({ id, label, error, full = false, children }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SlideOver — Voir / Ajouter / Modifier membre d'équipe
+// Formulaire — Voir / Ajouter / Modifier membre d'équipe
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SlideOverMode = 'view' | 'edit' | 'new';
+type FormMode = 'view' | 'edit' | 'new';
 
-function TeamMemberSlideOver({
+function TeamMemberFormModal({
   open,
   onOpenChange,
   member,
@@ -198,7 +189,7 @@ function TeamMemberSlideOver({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member: TeamMember | null;
-  mode: SlideOverMode;
+  mode: FormMode;
   onSave?: (data: Partial<TeamMember>) => void;
   projectId: string;
 }) {
@@ -245,25 +236,20 @@ function TeamMemberSlideOver({
 
   const selectedOrgMember = orgMembers.find(u => u.id === values.userId);
 
-  const titles: Record<SlideOverMode, string> = {
+  const titles: Record<FormMode, string> = {
     view: 'Détails du membre',
     edit: 'Modifier le membre',
     new:  'Ajouter un membre',
   };
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+        </ModalHeader>
 
-        <SlideOverBody>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && member ? (
             <div className="flex flex-col gap-5">
               <div className="flex items-center gap-4">
@@ -375,25 +361,25 @@ function TeamMemberSlideOver({
               </FRow>
             </div>
           )}
-        </SlideOverBody>
+        </div>
 
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button variant="default" onClick={handleSave}>
               {mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SlideOver — Comité de Pilotage
+// Formulaire — Comité de Pilotage
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface CommitteeFormValues {
@@ -418,13 +404,13 @@ function committeeToForm(m: CommitteeMember): CommitteeFormValues {
   };
 }
 
-function CommitteeMemberSlideOver({
+function CommitteeMemberFormModal({
   open, onOpenChange, member, mode, onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member: CommitteeMember | null;
-  mode: SlideOverMode;
+  mode: FormMode;
   onSave?: (data: Partial<CommitteeMember>) => void;
 }) {
   const [values, setValues] = useState<CommitteeFormValues>(EMPTY_COMMITTEE);
@@ -467,20 +453,17 @@ function CommitteeMemberSlideOver({
     });
   }
 
-  const titles: Record<SlideOverMode, string> = {
+  const titles: Record<FormMode, string> = {
     view: 'Détails du membre', edit: 'Modifier le membre', new: 'Ajouter un membre au comité',
   };
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer"><X className="h-4 w-4" /></Button>
-          </SlideOverClose>
-        </SlideOverHeader>
-        <SlideOverBody>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+        </ModalHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && member ? (
             <div className="flex flex-col gap-5">
               <div className="flex items-center gap-4">
@@ -561,22 +544,22 @@ function CommitteeMemberSlideOver({
               </FRow>
             </div>
           )}
-        </SlideOverBody>
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        </div>
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button variant="default" onClick={handleSave}>{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SlideOver — Partie prenante / Bailleur (même table, mêmes champs)
+// Formulaire — Partie prenante / Bailleur (même table, mêmes champs)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface StakeholderFormValues {
@@ -598,13 +581,13 @@ function stakeholderToForm(s: Stakeholder): StakeholderFormValues {
   };
 }
 
-function StakeholderSlideOver({
+function StakeholderFormModal({
   open, onOpenChange, stakeholder, mode, onSave, defaultType,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   stakeholder: Stakeholder | null;
-  mode: SlideOverMode;
+  mode: FormMode;
   onSave?: (data: Partial<Stakeholder>) => void;
   defaultType?: string;
 }) {
@@ -645,20 +628,17 @@ function StakeholderSlideOver({
     });
   }
 
-  const titles: Record<SlideOverMode, string> = {
+  const titles: Record<FormMode, string> = {
     view: 'Détails', edit: 'Modifier', new: 'Ajouter',
   };
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer"><X className="h-4 w-4" /></Button>
-          </SlideOverClose>
-        </SlideOverHeader>
-        <SlideOverBody>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+        </ModalHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && stakeholder ? (
             <div className="flex flex-col gap-5">
               <div>
@@ -726,22 +706,22 @@ function StakeholderSlideOver({
               </FRow>
             </div>
           )}
-        </SlideOverBody>
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        </div>
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button variant="default" onClick={handleSave}>{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SlideOver — Contact
+// Formulaire — Contact
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ContactFormValues {
@@ -762,13 +742,13 @@ function contactToForm(c: Contact): ContactFormValues {
   };
 }
 
-function ContactSlideOver({
+function ContactFormModal({
   open, onOpenChange, contact, mode, onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contact: Contact | null;
-  mode: SlideOverMode;
+  mode: FormMode;
   onSave?: (data: Partial<Contact>) => void;
 }) {
   const [values, setValues] = useState<ContactFormValues>(EMPTY_CONTACT);
@@ -809,20 +789,17 @@ function ContactSlideOver({
     });
   }
 
-  const titles: Record<SlideOverMode, string> = {
+  const titles: Record<FormMode, string> = {
     view: 'Détails du contact', edit: 'Modifier le contact', new: 'Ajouter un contact',
   };
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer"><X className="h-4 w-4" /></Button>
-          </SlideOverClose>
-        </SlideOverHeader>
-        <SlideOverBody>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+        </ModalHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && contact ? (
             <div className="flex flex-col gap-5">
               <div>
@@ -876,17 +853,17 @@ function ContactSlideOver({
               </FRow>
             </div>
           )}
-        </SlideOverBody>
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        </div>
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button variant="default" onClick={handleSave}>{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
 
@@ -1382,20 +1359,20 @@ export default function ProjectGovernanceTab() {
   const deleteContactMutation = useDeleteContact(projectId);
 
   const [slideOverOpen,  setSlideOverOpen]  = useState(false);
-  const [slideOverMode,  setSlideOverMode]  = useState<SlideOverMode>('new');
+  const [slideOverMode,  setSlideOverMode]  = useState<FormMode>('new');
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
 
   const [committeeSlideOverOpen, setCommitteeSlideOverOpen] = useState(false);
-  const [committeeSlideOverMode, setCommitteeSlideOverMode] = useState<SlideOverMode>('new');
+  const [committeeSlideOverMode, setCommitteeSlideOverMode] = useState<FormMode>('new');
   const [selectedCommittee, setSelectedCommittee] = useState<CommitteeMember | null>(null);
 
   const [stakeholderSlideOverOpen, setStakeholderSlideOverOpen] = useState(false);
-  const [stakeholderSlideOverMode, setStakeholderSlideOverMode] = useState<SlideOverMode>('new');
+  const [stakeholderSlideOverMode, setStakeholderSlideOverMode] = useState<FormMode>('new');
   const [selectedStakeholder, setSelectedStakeholder] = useState<Stakeholder | null>(null);
   const [stakeholderDefaultType, setStakeholderDefaultType] = useState<string | undefined>(undefined);
 
   const [contactSlideOverOpen, setContactSlideOverOpen] = useState(false);
-  const [contactSlideOverMode, setContactSlideOverMode] = useState<SlideOverMode>('new');
+  const [contactSlideOverMode, setContactSlideOverMode] = useState<FormMode>('new');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
   // Confirmation de suppression — unifiée pour les 4 entités
@@ -1502,15 +1479,6 @@ export default function ProjectGovernanceTab() {
           <h1 className="text-base font-bold text-foreground">Membres &amp; Acteurs</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Équipe projet, comités, bailleurs et parties prenantes</p>
         </div>
-        {canManage && (
-          <Button
-            variant="default" size="sm" className="h-8 text-xs"
-            onClick={() => { setSelectedMember(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-          >
-            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Ajouter un membre
-          </Button>
-        )}
       </div>
 
       {actionError && (
@@ -1753,8 +1721,8 @@ export default function ProjectGovernanceTab() {
         </TabsContent>
       </Tabs>
 
-      {/* ── SlideOvers ───────────────────────────────────────────────────── */}
-      <TeamMemberSlideOver
+      {/* ── Formulaires ──────────────────────────────────────────────────── */}
+      <TeamMemberFormModal
         open={slideOverOpen}
         onOpenChange={setSlideOverOpen}
         member={selectedMember}
@@ -1763,7 +1731,7 @@ export default function ProjectGovernanceTab() {
         projectId={projectId}
       />
 
-      <CommitteeMemberSlideOver
+      <CommitteeMemberFormModal
         open={committeeSlideOverOpen}
         onOpenChange={setCommitteeSlideOverOpen}
         member={selectedCommittee}
@@ -1771,7 +1739,7 @@ export default function ProjectGovernanceTab() {
         onSave={handleCommitteeSave}
       />
 
-      <StakeholderSlideOver
+      <StakeholderFormModal
         open={stakeholderSlideOverOpen}
         onOpenChange={setStakeholderSlideOverOpen}
         stakeholder={selectedStakeholder}
@@ -1780,7 +1748,7 @@ export default function ProjectGovernanceTab() {
         defaultType={stakeholderDefaultType}
       />
 
-      <ContactSlideOver
+      <ContactFormModal
         open={contactSlideOverOpen}
         onOpenChange={setContactSlideOverOpen}
         contact={selectedContact}

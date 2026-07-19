@@ -12,7 +12,10 @@ export const logframeKeys = {
 // ── Level mapping (backend ↔ frontend) ────────────────────────────────────────
 // Backend LogframeLevel: OBJECTIF_GLOBAL | OBJECTIF_SPECIFIQUE | RESULTAT | ACTIVITE
 // Frontend niveau_intervention: IMPACT | OBJECTIF | RESULTAT | PRODUIT | ACTIVITE
-// PRODUIT has no backend equivalent → stored in meta only, mapped to RESULTAT on write.
+// PRODUIT n'a pas d'équivalent backend historique (contrainte niveau non
+// modifiée) → toujours compressé sur RESULTAT pour cette colonne-là, mais le
+// niveau réel est désormais porté par sa propre colonne niveau_intervention_fe
+// (logframe_objectives), plus par un JSON caché dans description.
 
 type FELevel = CadreLogique['niveau_intervention'];
 type BELevel = 'OBJECTIF_GLOBAL' | 'OBJECTIF_SPECIFIQUE' | 'RESULTAT' | 'ACTIVITE';
@@ -21,76 +24,60 @@ const FE_TO_BE: Record<FELevel, BELevel> = {
   IMPACT:   'OBJECTIF_GLOBAL',
   OBJECTIF: 'OBJECTIF_SPECIFIQUE',
   RESULTAT: 'RESULTAT',
-  PRODUIT:  'RESULTAT',   // no backend equivalent — stored in meta
+  PRODUIT:  'RESULTAT',   // pas d'équivalent backend — la vraie valeur vit dans niveau_intervention_fe
   ACTIVITE: 'ACTIVITE',
 };
 
-const BE_TO_FE: Record<BELevel, FELevel> = {
-  OBJECTIF_GLOBAL:    'IMPACT',
-  OBJECTIF_SPECIFIQUE: 'OBJECTIF',
-  RESULTAT:            'RESULTAT',
-  ACTIVITE:            'ACTIVITE',
-};
+// ── Ligne Supabase (colonnes snake_case de `logframe_objectives`, avec
+// l'indicateur IOV principal embarqué depuis `logframe_indicators`) ──────────
 
-// ── Meta encoding (description field) — inchangé, même colonne côté Supabase ──
-
-const LF_META_PREFIX = '__LF_META__:';
-
-interface LFMeta {
-  feNiveau: FELevel;
-  valeur_reference?: string;
-  cible?: string;
-  source_verification?: string;
-  hypotheses?: string;
+interface LogframeIndicatorEmbed {
+  id: string;
+  valeur_baseline: number | null;
+  valeur_cible: number | null;
+  unite: string | null;
+  source_verification: string | null;
+  deleted_at: string | null;
 }
-
-function encodeMeta(meta: LFMeta): string {
-  return `${LF_META_PREFIX}${JSON.stringify(meta)}`;
-}
-
-function decodeMeta(description: string | null | undefined): LFMeta | null {
-  if (!description?.startsWith(LF_META_PREFIX)) return null;
-  try {
-    return JSON.parse(description.slice(LF_META_PREFIX.length)) as LFMeta;
-  } catch {
-    return null;
-  }
-}
-
-// ── Ligne Supabase (colonnes snake_case de `logframe_objectives`) ────────────
 
 interface LogframeObjectiveRow {
   id: string;
   project_id: string;
-  niveau: BELevel;
+  niveau_intervention_fe: FELevel;
   code: string;
   libelle: string;
-  description: string | null;
+  hypotheses: string | null;
   parent_id: string | null;
   ordre: number;
   actif: boolean;
   created_at: string;
   updated_at: string;
+  logframe_indicators: LogframeIndicatorEmbed[] | null;
 }
 
-const OBJECTIVE_SELECT = 'id, project_id, niveau, code, libelle, description, parent_id, ordre, actif, created_at, updated_at';
+const OBJECTIVE_SELECT = `
+  id, project_id, niveau_intervention_fe, code, libelle, hypotheses, parent_id, ordre, actif,
+  created_at, updated_at,
+  logframe_indicators(id, valeur_baseline, valeur_cible, unite, source_verification, deleted_at)
+`;
 
 // ── Adapter: ligne Supabase → CadreLogique ────────────────────────────────────
 
 function adaptObjective(row: LogframeObjectiveRow): CadreLogique {
-  const meta = decodeMeta(row.description);
-  const feNiveau: FELevel = meta?.feNiveau ?? BE_TO_FE[row.niveau] ?? 'IMPACT';
+  const indicator = (row.logframe_indicators ?? []).find(i => !i.deleted_at) ?? null;
 
   return {
     id:                   row.id,
     projet_id:            row.project_id,
     parent_id:            row.parent_id ?? null,
-    niveau_intervention:  feNiveau,
+    niveau_intervention:  row.niveau_intervention_fe,
     indicateur:           row.libelle,
-    valeur_reference:     meta?.valeur_reference,
-    cible:                meta?.cible,
-    source_verification:  meta?.source_verification,
-    hypotheses:           meta?.hypotheses ?? (meta ? undefined : (row.description ?? undefined)),
+    indicator_id:         indicator?.id ?? null,
+    valeur_reference:     indicator?.valeur_baseline ?? null,
+    cible:                indicator?.valeur_cible ?? null,
+    unite:                indicator?.unite ?? null,
+    source_verification:  indicator?.source_verification ?? undefined,
+    hypotheses:           row.hypotheses ?? undefined,
   };
 }
 
@@ -117,51 +104,36 @@ const NIVEAU_ABBREV: Record<FELevel, string> = {
   IMPACT: 'OG', OBJECTIF: 'OS', RESULTAT: 'RS', PRODUIT: 'PR', ACTIVITE: 'AC',
 };
 
-function generateCode(feNiveau: FELevel, existingItems: CadreLogique[]): string {
+function generateCode(prefix: string, feNiveau: FELevel, existingItems: CadreLogique[]): string {
   const abbrev = NIVEAU_ABBREV[feNiveau];
   const count = existingItems.filter(i => i.niveau_intervention === feNiveau).length + 1;
-  return `${abbrev}-${count}-${Date.now().toString(36)}`.substring(0, 20).toUpperCase();
+  return `${prefix}-${abbrev}-${count}-${Date.now().toString(36)}`.substring(0, 24).toUpperCase();
 }
 
-function buildCreatePayload(
-  projectId: string,
-  data: Partial<CadreLogique>,
-  existingItems: CadreLogique[],
-) {
-  const feNiveau: FELevel = data.niveau_intervention ?? 'IMPACT';
-  const meta: LFMeta = {
-    feNiveau,
-    valeur_reference:   data.valeur_reference,
-    cible:              data.cible,
-    source_verification: data.source_verification,
-    hypotheses:         data.hypotheses,
-  };
-
-  return {
-    projectId,
-    niveau:    FE_TO_BE[feNiveau],
-    code:      generateCode(feNiveau, existingItems),
-    libelle:   data.indicateur || '',
-    description: encodeMeta(meta),
-    parentId:  isUUID(data.parent_id) ? data.parent_id : undefined,
-  };
+// Un indicateur IOV n'a de sens que pour les niveaux non-ACTIVITE — reflète
+// exactement la section "Mesure & Vérification" masquée pour ACTIVITE côté
+// LogframeForm.
+function hasIndicatorData(data: Partial<CadreLogique>): boolean {
+  return (
+    data.valeur_reference != null ||
+    data.cible != null ||
+    !!data.unite?.trim() ||
+    !!data.source_verification?.trim()
+  );
 }
 
-function buildUpdatePayload(data: Partial<CadreLogique>, current?: CadreLogique) {
-  const feNiveau: FELevel = data.niveau_intervention ?? current?.niveau_intervention ?? 'ACTIVITE';
-  const meta: LFMeta = {
-    feNiveau,
-    valeur_reference:    data.valeur_reference   ?? current?.valeur_reference,
-    cible:               data.cible              ?? current?.cible,
-    source_verification: data.source_verification ?? current?.source_verification,
-    hypotheses:          data.hypotheses          ?? current?.hypotheses,
-  };
-
+// `?? undefined` / `|| undefined` effaceraient la distinction entre "champ
+// non fourni" (undefined → l'Edge Function ignore la clé, ne touche pas la
+// valeur existante) et "champ explicitement vidé" (null → l'Edge Function
+// écrase avec null) : LogframeForm envoie toujours null/'' quand l'utilisateur
+// vide Baseline/Cible/Unité/Source, ce qui doit réellement effacer la valeur
+// stockée plutôt que de la laisser inchangée pour toujours.
+function buildIndicatorPayload(data: Partial<CadreLogique>) {
   return {
-    libelle:     data.indicateur ?? undefined,
-    description: encodeMeta(meta),
-    niveau:      data.niveau_intervention ? FE_TO_BE[data.niveau_intervention] : undefined,
-    parentId:    isUUID(data.parent_id) ? data.parent_id : undefined,
+    unite:              data.unite === undefined ? undefined : (data.unite?.trim() || null),
+    valeurBaseline:      data.valeur_reference,
+    valeurCible:         data.cible,
+    sourceVerification: data.source_verification === undefined ? undefined : (data.source_verification.trim() || null),
   };
 }
 
@@ -175,7 +147,12 @@ export function useLogframe(projectId: string) {
   });
 }
 
-// ── CRUD — Objectifs ──────────────────────────────────────────────────────────
+// ── CRUD — Objectifs + indicateur IOV principal ───────────────────────────────
+// Un objectif du Cadre Logique et son indicateur IOV principal vivent dans
+// deux tables distinctes (logframe_objectives / logframe_indicators) mais
+// sont créés/modifiés ensemble depuis ce même formulaire — orchestration de
+// deux appels Edge Function ici plutôt que de dupliquer cette logique dans
+// chaque composant appelant.
 
 export function useCreateLogframe(projectId: string) {
   const qc = useQueryClient();
@@ -183,9 +160,32 @@ export function useCreateLogframe(projectId: string) {
     mutationFn: async (dto: Partial<CadreLogique>) => {
       const cached: CadreLogique[] =
         (qc.getQueryData<{ data: CadreLogique[] }>(logframeKeys.all(projectId))?.data) ?? [];
-      const payload = buildCreatePayload(projectId, dto, cached);
-      const { data } = await invokeEdgeFunction<{ data: LogframeObjectiveRow }>('logframe-objectives-create', payload);
-      return data;
+      const feNiveau: FELevel = dto.niveau_intervention ?? 'IMPACT';
+
+      const { data: objective } = await invokeEdgeFunction<{ data: LogframeObjectiveRow }>(
+        'logframe-objectives-create',
+        {
+          projectId,
+          niveau:    FE_TO_BE[feNiveau],
+          niveauFe:  feNiveau,
+          code:      generateCode('OBJ', feNiveau, cached),
+          libelle:   dto.indicateur || '',
+          hypotheses: dto.hypotheses?.trim() || undefined,
+          parentId:  isUUID(dto.parent_id) ? dto.parent_id : undefined,
+        },
+      );
+
+      if (feNiveau !== 'ACTIVITE' && hasIndicatorData(dto)) {
+        await invokeEdgeFunction('logframe-indicators-create', {
+          objectiveId: objective.id,
+          code: generateCode('IND', feNiveau, cached),
+          libelle: `IOV — ${dto.indicateur || objective.libelle}`.slice(0, 200),
+          type: 'OUTPUT',
+          ...buildIndicatorPayload(dto),
+        });
+      }
+
+      return objective;
     },
     onSuccess:  () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
     onError:    () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
@@ -199,8 +199,40 @@ export function useUpdateLogframe(projectId: string) {
       const cached: CadreLogique[] =
         (qc.getQueryData<{ data: CadreLogique[] }>(logframeKeys.all(projectId))?.data) ?? [];
       const current = cached.find(i => i.id === id);
-      const payload = buildUpdatePayload(data, current);
-      const { data: resp } = await invokeEdgeFunction<{ data: LogframeObjectiveRow }>('logframe-objectives-update', { id, ...payload });
+      const feNiveau: FELevel | undefined = data.niveau_intervention;
+
+      const { data: resp } = await invokeEdgeFunction<{ data: LogframeObjectiveRow }>(
+        'logframe-objectives-update',
+        {
+          id,
+          niveau:    feNiveau ? FE_TO_BE[feNiveau] : undefined,
+          niveauFe:  feNiveau,
+          libelle:   data.indicateur,
+          hypotheses: data.hypotheses !== undefined ? (data.hypotheses?.trim() || null) : undefined,
+          parentId:  isUUID(data.parent_id) ? data.parent_id : undefined,
+        },
+      );
+
+      const effectiveNiveau = feNiveau ?? current?.niveau_intervention;
+      if (effectiveNiveau !== 'ACTIVITE') {
+        const indicatorId = current?.indicator_id;
+        if (indicatorId) {
+          // Toujours réconcilié quand l'indicateur existe déjà — sinon vider
+          // Baseline/Cible/Unité/Source dans le formulaire n'a aucun effet
+          // observable : l'ancien indicateur garderait ses anciennes valeurs
+          // pour toujours faute d'appel de mise à jour.
+          await invokeEdgeFunction('logframe-indicators-update', { id: indicatorId, ...buildIndicatorPayload(data) });
+        } else if (hasIndicatorData(data)) {
+          await invokeEdgeFunction('logframe-indicators-create', {
+            objectiveId: id,
+            code: generateCode('IND', effectiveNiveau ?? 'ACTIVITE', cached),
+            libelle: `IOV — ${data.indicateur || current?.indicateur || ''}`.slice(0, 200),
+            type: 'OUTPUT',
+            ...buildIndicatorPayload(data),
+          });
+        }
+      }
+
       return resp;
     },
     onSuccess:  () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
@@ -216,68 +248,5 @@ export function useDeleteLogframe(projectId: string) {
     },
     onSuccess:  () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
     onError:    () => qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) }),
-  });
-}
-
-// ── CRUD — Indicateurs ────────────────────────────────────────────────────────
-// Ces hooks complètent la connexion du module sans impacter l'UI existante.
-
-export function useCreateLogframeIndicator(projectId?: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (dto: {
-      objectiveId: string;
-      libelle: string;
-      code?: string;
-      type?: 'IMPACT' | 'OUTCOME' | 'OUTPUT' | 'PROCESS';
-      unite?: string;
-      valeurBaseline?: number;
-      valeurCible?: number;
-      valeurActuelle?: number;
-      sourceVerification?: string;
-      periodicite?: string;
-    }) => {
-      const code = dto.code ?? `IND-${Date.now().toString(36)}`.substring(0, 30).toUpperCase();
-      return invokeEdgeFunction<{ data: unknown }>('logframe-indicators-create', { ...dto, code });
-    },
-    onSuccess: () => {
-      if (projectId) qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) });
-    },
-  });
-}
-
-export function useUpdateLogframeIndicator(projectId?: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      id,
-      ...dto
-    }: {
-      id: string;
-      libelle?: string;
-      type?: 'IMPACT' | 'OUTCOME' | 'OUTPUT' | 'PROCESS';
-      unite?: string;
-      valeurBaseline?: number;
-      valeurCible?: number;
-      valeurActuelle?: number;
-      sourceVerification?: string;
-      periodicite?: string;
-      actif?: boolean;
-    }) => invokeEdgeFunction<{ data: unknown }>('logframe-indicators-update', { id, ...dto }),
-    onSuccess: () => {
-      if (projectId) qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) });
-    },
-  });
-}
-
-export function useDeleteLogframeIndicator(projectId?: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await invokeEdgeFunction<{ message: string }>('logframe-indicators-delete', { id });
-    },
-    onSuccess: () => {
-      if (projectId) qc.invalidateQueries({ queryKey: logframeKeys.all(projectId) });
-    },
   });
 }

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useLogframe, useCreateLogframe, useUpdateLogframe, useDeleteLogframe } from '@/hooks/useLogframe';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { LogframeMatrix } from '@/components/project/logframe/LogframeMatrix';
 import { LogframeForm } from '@/components/project/logframe/LogframeForm';
 import type { CadreLogique } from '@/types';
@@ -60,6 +61,12 @@ export default function LogframePage() {
   const updateMutation = useUpdateLogframe(resolvedProjectId);
   const deleteMutation = useDeleteLogframe(resolvedProjectId);
 
+  // Miroir des rôles serveur (requireRole) sur logframe-objectives-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const elements = logframeData?.data ?? [];
   const [localData, setLocalData] = useState<CadreLogique[]>([]);
 
@@ -72,9 +79,11 @@ export default function LogframePage() {
   const [editingItem,       setEditingItem]        = useState<CadreLogique | null>(null);
   const [parentIdForNew,    setParentIdForNew]     = useState<string | null>(null);
   const [parentLevelForNew, setParentLevelForNew]  = useState<string | undefined>(undefined);
+  const [formError,         setFormError]          = useState<string | null>(null);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<CadreLogique | null>(null);
+  const [deleteError,  setDeleteError]  = useState<string | null>(null);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
@@ -106,27 +115,35 @@ export default function LogframePage() {
   const handleEdit = (item: CadreLogique) => {
     setEditingItem(item);
     setParentIdForNew(item.parent_id || null);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
   const handleDeleteRequest = (id: string) => {
     const item = localData.find(i => i.id === id) || null;
+    setDeleteError(null);
     setDeleteTarget(item);
   };
 
   const handleDeleteConfirm = () => {
     if (!deleteTarget) return;
-    setLocalData(prev =>
-      prev.filter(i => i.id !== deleteTarget.id && i.parent_id !== deleteTarget.id)
-    );
-    deleteMutation.mutate(deleteTarget.id);
-    setDeleteTarget(null);
+    setDeleteError(null);
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        setLocalData(prev =>
+          prev.filter(i => i.id !== deleteTarget.id && i.parent_id !== deleteTarget.id)
+        );
+        setDeleteTarget(null);
+      },
+      onError: (err) => setDeleteError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.'),
+    });
   };
 
   const handleAddChild = (parentId: string, parentLevel: string) => {
     setEditingItem(null);
     setParentIdForNew(parentId);
     setParentLevelForNew(parentLevel);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
@@ -134,14 +151,25 @@ export default function LogframePage() {
     setEditingItem(null);
     setParentIdForNew(null);
     setParentLevelForNew(undefined);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
   const handleSubmit = (data: Partial<CadreLogique>) => {
+    setFormError(null);
+    const onError = (err: unknown) => setFormError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
     if (editingItem) {
       const updated = { ...editingItem, ...data };
-      setLocalData(prev => prev.map(i => (i.id === editingItem.id ? updated : i)));
-      updateMutation.mutate({ id: editingItem.id, ...data });
+      updateMutation.mutate(
+        { id: editingItem.id, ...data },
+        {
+          onSuccess: () => {
+            setLocalData(prev => prev.map(i => (i.id === editingItem.id ? updated : i)));
+            setIsFormOpen(false);
+          },
+          onError,
+        }
+      );
     } else {
       const newItem: CadreLogique = {
         id: `lf-new-${Date.now()}`,
@@ -151,11 +179,17 @@ export default function LogframePage() {
         indicateur: data.indicateur || '',
         valeur_reference: data.valeur_reference,
         cible: data.cible,
+        unite: data.unite,
         source_verification: data.source_verification,
         hypotheses: data.hypotheses,
       };
-      setLocalData(prev => [...prev, newItem]);
-      createMutation.mutate(newItem);
+      createMutation.mutate(newItem, {
+        onSuccess: () => {
+          setLocalData(prev => [...prev, newItem]);
+          setIsFormOpen(false);
+        },
+        onError,
+      });
     }
   };
 
@@ -165,6 +199,10 @@ export default function LogframePage() {
     const raw = activeProjectName || '';
     return raw.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'export';
   };
+
+  // 0 est une valeur de baseline légitime — ne jamais tester avec `|| ''`.
+  const formatIov = (value: number | null | undefined, unite: string | null | undefined) =>
+    value == null ? '' : unite ? `${value} ${unite}` : String(value);
 
   const exportPDF = () => {
     const projectName = activeProjectName || '';
@@ -176,8 +214,8 @@ export default function LogframePage() {
       body: localData.map(row => [
         row.niveau_intervention,
         row.indicateur,
-        row.valeur_reference || '',
-        row.cible || '',
+        formatIov(row.valeur_reference, row.unite),
+        formatIov(row.cible, row.unite),
         row.source_verification || '',
         row.hypotheses || '',
       ]),
@@ -193,8 +231,8 @@ export default function LogframePage() {
       localData.map(row => ({
         Niveau: row.niveau_intervention,
         Description: row.indicateur,
-        Baseline: row.valeur_reference || '',
-        Cible: row.cible || '',
+        Baseline: formatIov(row.valeur_reference, row.unite),
+        Cible: formatIov(row.cible, row.unite),
         Vérification: row.source_verification || '',
         'Hypothèses/Risques': row.hypotheses || '',
       }))
@@ -237,7 +275,7 @@ export default function LogframePage() {
           >
             Excel
           </Button>
-          {!hasImpact && (
+          {!hasImpact && canManage && (
             <Button
               variant="default"
               size="sm"
@@ -316,6 +354,8 @@ export default function LogframePage() {
               onEdit={handleEdit}
               onDelete={handleDeleteRequest}
               onAddChild={handleAddChild}
+              canManage={canManage}
+              canDelete={canDelete}
             />
           )}
         </div>
@@ -326,16 +366,18 @@ export default function LogframePage() {
         open={isFormOpen}
         onOpenChange={open => {
           setIsFormOpen(open);
-          if (!open) setEditingItem(null);
+          if (!open) { setEditingItem(null); setFormError(null); }
         }}
         initialData={editingItem || undefined}
         parentId={parentIdForNew}
         parentLevel={parentLevelForNew}
         onSubmit={handleSubmit}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        error={formError}
       />
 
       {/* ── MODAL DE CONFIRMATION DE SUPPRESSION ───────────────────────────── */}
-      <Modal open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+      <Modal open={!!deleteTarget} onOpenChange={open => { if (!open) { setDeleteTarget(null); setDeleteError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <div className="flex items-center gap-3">
@@ -357,12 +399,18 @@ export default function LogframePage() {
             </span>{' '}
             et tous ses éléments subordonnés ?
           </p>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
           <ModalFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
               Annuler
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Supprimer
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </ModalFooter>
         </ModalContent>

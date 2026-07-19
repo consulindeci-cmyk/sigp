@@ -4,9 +4,12 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 interface CreateLogframeObjectiveBody {
   projectId: string;
   niveau: 'OBJECTIF_GLOBAL' | 'OBJECTIF_SPECIFIQUE' | 'RESULTAT' | 'ACTIVITE';
+  // Niveau frontend réel (PRODUIT y compris) — niveau (ci-dessus) reste la
+  // valeur compressée compatible avec la contrainte backend historique.
+  niveauFe: 'IMPACT' | 'OBJECTIF' | 'RESULTAT' | 'PRODUIT' | 'ACTIVITE';
   code: string;
   libelle: string;
-  description?: string;
+  hypotheses?: string;
   parentId?: string;
   ordre?: number;
 }
@@ -22,6 +25,7 @@ Deno.serve(async (req: Request) => {
     const body: CreateLogframeObjectiveBody = await req.json();
     if (!body.projectId) return json({ error: 'projectId est obligatoire' }, 400);
     if (!body.niveau) return json({ error: 'niveau est obligatoire' }, 400);
+    if (!body.niveauFe) return json({ error: 'niveauFe est obligatoire' }, 400);
     if (!body.code?.trim()) return json({ error: 'code est obligatoire' }, 400);
     if (!body.libelle?.trim()) return json({ error: 'libelle est obligatoire' }, 400);
 
@@ -63,9 +67,10 @@ Deno.serve(async (req: Request) => {
         id: crypto.randomUUID(),
         project_id: body.projectId,
         niveau: body.niveau,
+        niveau_intervention_fe: body.niveauFe,
         code: body.code.trim().toUpperCase(),
         libelle: body.libelle.trim(),
-        description: body.description?.trim() ?? null,
+        hypotheses: body.hypotheses?.trim() || null,
         parent_id: body.parentId ?? null,
         ordre: body.ordre ?? 0,
         created_by: profile.id,

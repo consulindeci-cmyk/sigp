@@ -4,8 +4,9 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 interface UpdateLogframeObjectiveBody {
   id: string;
   niveau?: 'OBJECTIF_GLOBAL' | 'OBJECTIF_SPECIFIQUE' | 'RESULTAT' | 'ACTIVITE';
+  niveauFe?: 'IMPACT' | 'OBJECTIF' | 'RESULTAT' | 'PRODUIT' | 'ACTIVITE';
   libelle?: string;
-  description?: string;
+  hypotheses?: string;
   parentId?: string;
   ordre?: number;
   actif?: boolean;
@@ -63,8 +64,9 @@ Deno.serve(async (req: Request) => {
       updated_at: new Date().toISOString(),
     };
     if (body.niveau !== undefined) updatePayload.niveau = body.niveau;
+    if (body.niveauFe !== undefined) updatePayload.niveau_intervention_fe = body.niveauFe;
     if (body.libelle !== undefined) updatePayload.libelle = body.libelle.trim();
-    if (body.description !== undefined) updatePayload.description = body.description?.trim() ?? null;
+    if (body.hypotheses !== undefined) updatePayload.hypotheses = body.hypotheses?.trim() || null;
     if (body.parentId !== undefined) updatePayload.parent_id = body.parentId;
     if (body.ordre !== undefined) updatePayload.ordre = body.ordre;
     if (body.actif !== undefined) updatePayload.actif = body.actif;

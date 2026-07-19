@@ -73,6 +73,7 @@ Deno.serve(async (req: Request) => {
         .from('logframe_indicators')
         .select('id, objective_id')
         .eq('id', body.logframeIndicatorId)
+        .is('deleted_at', null)
         .maybeSingle();
       if (indicatorError) throw indicatorError;
       if (!indicator) return json({ error: 'Indicateur introuvable' }, 404);
@@ -81,6 +82,7 @@ Deno.serve(async (req: Request) => {
         .from('logframe_objectives')
         .select('id, project_id')
         .eq('id', indicator.objective_id)
+        .is('deleted_at', null)
         .maybeSingle();
       if (objError) throw objError;
       if (!objective) return json({ error: 'Objectif introuvable' }, 404);

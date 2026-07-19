@@ -202,8 +202,13 @@ export interface CadreLogique {
   parent_id?: string | null;
   niveau_intervention: 'IMPACT' | 'OBJECTIF' | 'RESULTAT' | 'PRODUIT' | 'ACTIVITE';
   indicateur: string;
-  valeur_reference?: string;
-  cible?: string;
+  // Indicateur IOV principal — persisté en base sur une ligne dédiée de
+  // logframe_indicators (identifiée par indicator_id), pas sur l'objectif
+  // lui-même. Modèle numérique (valeur + unité), pas de texte composite.
+  indicator_id?: string | null;
+  valeur_reference?: number | null;
+  cible?: number | null;
+  unite?: string | null;
   source_verification?: string;
   hypotheses?: string;
   risques?: string;

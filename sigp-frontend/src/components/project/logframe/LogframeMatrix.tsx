@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, Link2, LayoutList } from 'lucide-react';
+import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, LayoutList } from 'lucide-react';
 import type { CadreLogique } from '@/types';
 import { flattenLogframeHierarchy } from '@/utils/tree';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -9,6 +9,8 @@ interface LogframeMatrixProps {
   onEdit: (item: CadreLogique) => void;
   onDelete: (id: string) => void;
   onAddChild: (parentId: string, parentLevel: string) => void;
+  canManage: boolean;
+  canDelete: boolean;
 }
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'warning' | 'success' | 'info' | 'outline';
@@ -35,7 +37,14 @@ function getNiveauLabel(niveau: string): string {
   }
 }
 
-export function LogframeMatrix({ data, onEdit, onDelete, onAddChild }: LogframeMatrixProps) {
+// 0 est une valeur de baseline légitime (ex: "0% de couverture au
+// démarrage") — ne jamais tester avec une simple troncature JS falsy.
+function formatIovValue(value: number | null | undefined, unite: string | null | undefined): string | null {
+  if (value == null) return null;
+  return unite ? `${value} ${unite}` : String(value);
+}
+
+export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, canManage, canDelete }: LogframeMatrixProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
@@ -154,12 +163,12 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild }: LogframeM
 
               {/* Baseline */}
               <div role="cell" className="w-28 shrink-0 text-sm text-muted-foreground pr-3">
-                {item.valeur_reference || <span className="text-muted-foreground/40">—</span>}
+                {formatIovValue(item.valeur_reference, item.unite) ?? <span className="text-muted-foreground/40">—</span>}
               </div>
 
               {/* Cible */}
               <div role="cell" className="w-28 shrink-0 text-sm text-muted-foreground pr-3">
-                {item.cible || <span className="text-muted-foreground/40">—</span>}
+                {formatIovValue(item.cible, item.unite) ?? <span className="text-muted-foreground/40">—</span>}
               </div>
 
               {/* Source vérification */}
@@ -174,7 +183,7 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild }: LogframeM
 
               {/* Actions */}
               <div role="cell" className="w-24 shrink-0 flex items-center justify-end gap-0.5">
-                {!isActivite && (
+                {!isActivite && canManage && (
                   <button
                     onClick={() => onAddChild(item.id, item.niveau_intervention)}
                     title="Ajouter un sous-élément"
@@ -184,31 +193,26 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild }: LogframeM
                     <Plus size={14} />
                   </button>
                 )}
-                {isActivite && (
+                {canManage && (
                   <button
-                    title="Lier à une composante WBS"
-                    aria-label="Lier au WBS"
-                    className="p-1.5 text-muted-foreground hover:text-info hover:bg-info/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onEdit(item)}
+                    title="Modifier"
+                    aria-label={`Modifier ${item.indicateur}`}
+                    className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <Link2 size={14} />
+                    <Edit2 size={14} />
                   </button>
                 )}
-                <button
-                  onClick={() => onEdit(item)}
-                  title="Modifier"
-                  aria-label={`Modifier ${item.indicateur}`}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Edit2 size={14} />
-                </button>
-                <button
-                  onClick={() => onDelete(item.id)}
-                  title="Supprimer"
-                  aria-label={`Supprimer ${item.indicateur}`}
-                  className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {canDelete && (
+                  <button
+                    onClick={() => onDelete(item.id)}
+                    title="Supprimer"
+                    aria-label={`Supprimer ${item.indicateur}`}
+                    className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
 
             </div>
