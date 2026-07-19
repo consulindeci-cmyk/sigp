@@ -24,6 +24,10 @@ import {
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useFundingSources } from '@/hooks/useFundingSources';
+import { useContracts } from '@/hooks/useContracts';
+import { useBudget, useBudgetVersion } from '@/hooks/useBudget';
+import type { Contract } from '@/types/contract';
+import type { BudgetLigne } from '@/types/budget';
 import {
   useDisbursements, useCreateDisbursement, useUpdateDisbursement, useDeleteDisbursement,
   type Disbursement, type DisbursementStatut,
@@ -108,20 +112,23 @@ function isLate(r: Disbursement): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface DisbFormValues {
-  fundingSourceId: string; statut: string; montant: string;
+  fundingSourceId: string; budgetLigneId: string; contractId: string;
+  statut: string; montant: string;
   datePrevue: string; dateReelle: string; reference: string; description: string;
 }
 
 type DisbFormErrors = Partial<Record<keyof DisbFormValues, string>>;
 
 const EMPTY_FORM: DisbFormValues = {
-  fundingSourceId: '', statut: 'PLANIFIE', montant: '',
+  fundingSourceId: '', budgetLigneId: '', contractId: '', statut: 'PLANIFIE', montant: '',
   datePrevue: '', dateReelle: '', reference: '', description: '',
 };
 
 function recordToForm(r: Disbursement): DisbFormValues {
   return {
     fundingSourceId: r.fundingSourceId ?? '',
+    budgetLigneId: r.budgetLigneId ?? '',
+    contractId: r.contractId ?? '',
     statut: r.statut,
     montant: String(r.montant),
     datePrevue: r.datePrevue ?? '',
@@ -156,7 +163,9 @@ function FRow({
 type SlideOverMode = 'view' | 'edit' | 'new';
 
 function DisbursementSlideOver({
-  open, onOpenChange, record, mode, onSave, fundingSourceOptions, isSaving, error,
+  open, onOpenChange, record, mode, onSave,
+  fundingSourceOptions, contractOptions, budgetLigneOptions, allDisbursements,
+  canSetDecaisse, isSaving, error,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -164,12 +173,20 @@ function DisbursementSlideOver({
   mode: SlideOverMode;
   onSave?: (data: Partial<Disbursement>) => void;
   fundingSourceOptions: { id: string; nom: string }[];
+  contractOptions: Contract[];
+  budgetLigneOptions: BudgetLigne[];
+  allDisbursements: Disbursement[];
+  canSetDecaisse: boolean;
   isSaving?: boolean;
   error?: string | null;
 }) {
   const [values, setValues] = useState<DisbFormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<DisbFormErrors>({});
   const readOnly = mode === 'view';
+  // budget_ligne_id/funding_source_id sont fixés à la création côté serveur
+  // (disbursements-update ne les accepte pas) — désactivés en édition pour
+  // ne pas laisser croire qu'un changement ici serait pris en compte.
+  const isCreationOnlyFieldsLocked = mode === 'edit';
 
   useEffect(() => {
     if (!open) return;
@@ -183,9 +200,24 @@ function DisbursementSlideOver({
     if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
   }
 
+  const selectedLigne = budgetLigneOptions.find(l => l.id === values.budgetLigneId) ?? null;
+  const selectedContrat = contractOptions.find(c => c.id === values.contractId) ?? null;
+
+  // Reste à liquider du contrat = montant contractuel − somme des décaissements
+  // déjà DECAISSE sur ce même contrat (hors le présent enregistrement, en édition).
+  const contratDejaDecaisse = useMemo(() => {
+    if (!selectedContrat) return 0;
+    return allDisbursements
+      .filter(d => d.contractId === selectedContrat.id && d.statut === 'DECAISSE' && d.id !== record?.id)
+      .reduce((s, d) => s + d.montant, 0);
+  }, [allDisbursements, selectedContrat, record?.id]);
+
   function validate(): boolean {
     const errs: DisbFormErrors = {};
     if (!values.montant || Number(values.montant) <= 0) errs.montant = 'Montant requis (> 0)';
+    if (!values.fundingSourceId && !values.budgetLigneId && !values.contractId) {
+      errs.fundingSourceId = 'Requis si aucune ligne budgétaire ou contrat n\'est sélectionné';
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -194,6 +226,9 @@ function DisbursementSlideOver({
     if (!validate()) return;
     onSave?.({
       fundingSourceId: values.fundingSourceId || null,
+      budgetLigneId: values.budgetLigneId || null,
+      contractId: values.contractId || null,
+      budgetVersionId: selectedLigne?.budget_version_id || null,
       statut: values.statut as DisbursementStatut,
       montant: Number(values.montant),
       datePrevue: values.datePrevue || null,
@@ -229,9 +264,21 @@ function DisbursementSlideOver({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border pt-4">
-                <div className="sm:col-span-2">
+                <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Source de financement</p>
                   <p className="text-[13px] font-semibold text-foreground">{record.fundingSourceNom || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Ligne Budgétaire</p>
+                  <p className="text-[13px] font-semibold text-foreground">
+                    {budgetLigneOptions.find(l => l.id === record.budgetLigneId)?.code_ligne || '—'}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Contrat</p>
+                  <p className="text-[13px] font-semibold text-foreground">
+                    {contractOptions.find(c => c.id === record.contractId)?.reference || '—'}
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
@@ -257,10 +304,44 @@ function DisbursementSlideOver({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FRow id="dis-source" label="Source de financement" full>
-                <Select id="dis-source" value={values.fundingSourceId} onChange={e => set('fundingSourceId', e.target.value)}>
+              <FRow id="dis-source" label="Source de financement" error={errors.fundingSourceId}>
+                <Select
+                  id="dis-source"
+                  value={values.fundingSourceId}
+                  onChange={e => set('fundingSourceId', e.target.value)}
+                  disabled={isCreationOnlyFieldsLocked}
+                >
                   <option value="">Aucune</option>
                   {fundingSourceOptions.map(fs => <option key={fs.id} value={fs.id}>{fs.nom}</option>)}
+                </Select>
+                {isCreationOnlyFieldsLocked && (
+                  <span className="text-[10px] text-muted-foreground">Non modifiable après création.</span>
+                )}
+              </FRow>
+
+              <FRow id="dis-budget-ligne" label="Ligne Budgétaire">
+                <Select
+                  id="dis-budget-ligne"
+                  value={values.budgetLigneId}
+                  onChange={e => set('budgetLigneId', e.target.value)}
+                  disabled={isCreationOnlyFieldsLocked}
+                >
+                  <option value="">Aucune</option>
+                  {budgetLigneOptions.map(l => (
+                    <option key={l.id} value={l.id}>{l.code_ligne} — {l.libelle}</option>
+                  ))}
+                </Select>
+                {isCreationOnlyFieldsLocked && (
+                  <span className="text-[10px] text-muted-foreground">Non modifiable après création.</span>
+                )}
+              </FRow>
+
+              <FRow id="dis-contrat" label="Contrat" full>
+                <Select id="dis-contrat" value={values.contractId} onChange={e => set('contractId', e.target.value)}>
+                  <option value="">Aucun</option>
+                  {contractOptions.map(c => (
+                    <option key={c.id} value={c.id}>{c.reference} — {c.intitule}</option>
+                  ))}
                 </Select>
               </FRow>
 
@@ -270,12 +351,15 @@ function DisbursementSlideOver({
 
               <FRow id="dis-statut" label="Statut">
                 <Select id="dis-statut" value={values.statut} onChange={e => set('statut', e.target.value)}>
-                  <option value="PLANIFIE">Planifié</option>
-                  <option value="DEMANDE">Demandé</option>
-                  <option value="APPROUVE">Approuvé</option>
-                  <option value="DECAISSE">Décaissé</option>
-                  <option value="REJETE">Rejeté</option>
+                  {Object.entries(STATUT_LABELS)
+                    .filter(([value]) => value !== 'DECAISSE' || canSetDecaisse || values.statut === 'DECAISSE')
+                    .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </Select>
+                {!canSetDecaisse && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Seul un rôle Financier peut marquer un décaissement comme Décaissé.
+                  </span>
+                )}
               </FRow>
 
               <FRow id="dis-montant" label="Montant" error={errors.montant}>
@@ -295,6 +379,23 @@ function DisbursementSlideOver({
               </FRow>
             </div>
           )}
+
+          {!readOnly && (selectedLigne || selectedContrat) && Number(values.montant) >= 0 && (() => {
+            const montant = Number(values.montant) || 0;
+            const solde = selectedLigne
+              ? selectedLigne.solde_disponible
+              : Math.max(0, (selectedContrat?.montant_initial_base ?? 0) - contratDejaDecaisse);
+            const label = selectedLigne ? 'Solde disponible (ligne budgétaire)' : 'Reste à liquider (contrat)';
+            const depasse = montant > solde;
+            return (
+              <div className={`mt-4 p-3 rounded-md text-sm border flex items-center justify-between ${
+                depasse ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-success/10 border-success/20 text-success'
+              }`}>
+                <span className="font-medium">{label} :</span>
+                <span className="font-mono font-bold">{formatMontant(solde)}</span>
+              </div>
+            );
+          })()}
 
           {error && (
             <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
@@ -417,16 +518,32 @@ export default function ProjectDisbursementTab() {
   const { data: fundingSources = [] } = useFundingSources(projectId);
   const fundingSourceIds = useMemo(() => fundingSources.map(s => s.id), [fundingSources]);
 
-  const { data: records = [] } = useDisbursements(projectId, fundingSourceIds);
-  const createMutation = useCreateDisbursement(projectId, fundingSourceIds);
-  const updateMutation = useUpdateDisbursement(projectId, fundingSourceIds);
-  const deleteMutation = useDeleteDisbursement(projectId, fundingSourceIds);
+  // Contrats et lignes budgétaires réels du projet — pour le rattachement
+  // (disbursements.contract_id/budget_ligne_id) qui déclenche réellement
+  // recalc_budget_ligne_montants côté montant_paye (cf. audit Décaissements).
+  const { data: contracts = [] } = useContracts(projectId);
+  const contractIds = useMemo(() => contracts.map(c => c.id), [contracts]);
+
+  const { data: budget } = useBudget(projectId);
+  const { data: budgetVersion } = useBudgetVersion(projectId, budget?.version_active_id);
+  const budgetLignes = useMemo(() => budgetVersion?.lignes ?? [], [budgetVersion]);
+  const budgetLigneIds = useMemo(() => budgetLignes.map(l => l.id), [budgetLignes]);
+
+  const { data: records = [] } = useDisbursements(projectId, fundingSourceIds, budgetLigneIds, contractIds);
+  const createMutation = useCreateDisbursement(projectId, fundingSourceIds, budgetLigneIds, contractIds);
+  const updateMutation = useUpdateDisbursement(projectId, fundingSourceIds, budgetLigneIds, contractIds);
+  const deleteMutation = useDeleteDisbursement(projectId, fundingSourceIds, budgetLigneIds, contractIds);
 
   // Miroir des rôles serveur (requireRole) sur disbursements-create/update
   // (COORDINATEUR/CHARGE_PROGRAMME/FINANCIER/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
   const currentRole = useAuthStore(s => s.user?.role);
   const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
   const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+  // Séparation des tâches : seul un rôle Financier (ou Admin) peut marquer un
+  // décaissement comme réellement Décaissé — les autres rôles autorisés à
+  // gérer les décaissements (COORDINATEUR/CHARGE_PROGRAMME) peuvent créer/
+  // planifier/demander, mais pas exécuter l'acte de paiement final.
+  const canSetDecaisse = currentRole === 'FINANCIER' || currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   const [slideOverOpen, setSlideOverOpen]   = useState(false);
   const [slideOverMode, setSlideOverMode]   = useState<SlideOverMode>('new');
@@ -620,6 +737,10 @@ export default function ProjectDisbursementTab() {
         mode={slideOverMode}
         onSave={handleSave}
         fundingSourceOptions={fundingSources}
+        contractOptions={contracts}
+        budgetLigneOptions={budgetLignes}
+        allDisbursements={records}
+        canSetDecaisse={canSetDecaisse}
         isSaving={createMutation.isPending || updateMutation.isPending}
         error={saveError}
       />
