@@ -5,7 +5,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Wallet, TrendingUp, Clock, AlertTriangle, AlertCircle, Plus, Eye, Edit, Trash2, X, Download } from 'lucide-react';
+import { Wallet, TrendingUp, Clock, AlertTriangle, AlertCircle, Plus, Eye, Edit, Trash2, Download } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
@@ -13,10 +13,6 @@ import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
-import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
   ModalFooter, ModalClose,
@@ -157,7 +153,7 @@ function FRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SlideOver — Voir / Ajouter / Modifier
+// Modal — Voir / Ajouter / Modifier
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SlideOverMode = 'view' | 'edit' | 'new';
@@ -196,7 +192,16 @@ function DisbursementSlideOver({
   }, [open, mode, record?.id]);
 
   function set(k: keyof DisbFormValues, v: string) {
-    setValues(prev => ({ ...prev, [k]: v }));
+    setValues(prev => {
+      // Un décaissement marqué Décaissé sans date réelle est une incohérence
+      // de saisie (l'acte de paiement a forcément une date) — auto-remplie
+      // avec aujourd'hui si absente, reste modifiable ensuite.
+      const next = { ...prev, [k]: v };
+      if (k === 'statut' && v === 'DECAISSE' && !prev.dateReelle) {
+        next.dateReelle = new Date().toISOString().slice(0, 10);
+      }
+      return next;
+    });
     if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
   }
 
@@ -243,16 +248,13 @@ function DisbursementSlideOver({
   };
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer"><X className="h-4 w-4" /></Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+        </ModalHeader>
 
-        <SlideOverBody>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {readOnly && record ? (
             <div className="flex flex-col gap-5">
               <div className="flex items-center justify-between">
@@ -403,20 +405,20 @@ function DisbursementSlideOver({
               <span>{error}</span>
             </div>
           )}
-        </SlideOverBody>
+        </div>
 
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+          <ModalClose asChild>
             <Button variant="outline" type="button">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button variant="default" onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Enregistrement...' : mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </div>
+      </ModalContent>
+    </Modal>
   );
 }
 
@@ -729,7 +731,7 @@ export default function ProjectDisbursementTab() {
         </CardContent>
       </Card>
 
-      {/* ── SlideOver ────────────────────────────────────────────────────── */}
+      {/* ── Modal ────────────────────────────────────────────────────────── */}
       <DisbursementSlideOver
         open={slideOverOpen}
         onOpenChange={open => { setSlideOverOpen(open); if (!open) setSaveError(null); }}

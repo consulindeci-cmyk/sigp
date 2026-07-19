@@ -117,7 +117,11 @@ export function useCreateDisbursement(
     mutationFn: async (dto: Partial<Disbursement>) => {
       const { data } = await invokeEdgeFunction<{ data: DisbursementRow }>('disbursements-create', {
         fundingSourceId: dto.fundingSourceId || undefined,
-        budgetLigneId: dto.budgetLigneId || undefined,
+        // disbursements-create attend `budgetLineId` (anglais) et non
+        // `budgetLigneId` — sans ce mapping, le rattachement à la ligne
+        // budgétaire échouait silencieusement à chaque création (aucune
+        // erreur renvoyée, budget_ligne_id restait null en base).
+        budgetLineId: dto.budgetLigneId || undefined,
         contractId: dto.contractId || undefined,
         budgetVersionId: dto.budgetVersionId || undefined,
         statut: dto.statut,
