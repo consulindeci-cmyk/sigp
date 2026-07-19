@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { usePPM } from '@/hooks/usePPM';
 import { usePPMVersions } from '@/hooks/usePPMVersions';
 import { formatMoney } from '@/utils/format';
@@ -52,6 +53,12 @@ export default function PPMPage() {
   const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions(resolvedProjectId);
   const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(resolvedProjectId, activeVersionId);
 
+  // Miroir des rôles serveur (requireRole) sur ppm-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et ppm-delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const [activeTab, setActiveTab] = useState<Tab>('MATRIX');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedLigneId, setSelectedLigneId] = useState<string | null>(null);
@@ -77,7 +84,7 @@ export default function PPMPage() {
     setIsFormOpen(true);
   };
 
-  const handleSaveForm = async (data: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => {
+  const handleSaveForm = async (data: Omit<PPMLigne, 'id' | 'version_hash' | 'ppm_version_id'>) => {
     if (selectedLigneId) {
       await updateLigne(selectedLigneId, data);
     } else {
@@ -134,9 +141,11 @@ export default function PPMPage() {
             <Button variant="outline" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={handleExportXlsx}>
               Exporter Excel
             </Button>
-            <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => handleOpenForm()}>
-              Nouveau Marché
-            </Button>
+            {canManage && (
+              <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => handleOpenForm()}>
+                Nouveau Marché
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -183,6 +192,9 @@ export default function PPMPage() {
             >
               <Icon size={14} />
               {tab.label}
+              {tab.key === 'WORKFLOW' && (
+                <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">Démo</Badge>
+              )}
             </button>
           )
         })}
@@ -223,6 +235,7 @@ export default function PPMPage() {
         onSave={handleSaveForm}
         onDelete={deleteLigne}
         projectId={resolvedProjectId}
+        canDelete={canDelete}
       />
     </div>
   );

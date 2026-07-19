@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   Banknote, Users, TrendingUp, Plus, Eye, Edit, Trash2,
-  X, Download, CheckCircle2, AlertCircle, CalendarDays,
+  Download, CheckCircle2, AlertCircle, CalendarDays,
 } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -18,10 +18,10 @@ import { StatCard } from '@/components/ui/data-display/StatCard';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import {
   useFundingSources, useCreateFundingSource, useUpdateFundingSource, useDeleteFundingSource,
   type FundingSource, type FundingSourceType,
@@ -149,19 +149,21 @@ function FundingTooltip({ active, payload }: { active?: boolean; payload?: Array
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SlideOver (view / edit / new)
+// Modal (view / edit / new) — centrée, remplace l'ancien SlideOver latéral
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SlideOverMode = 'view' | 'edit' | 'new';
 
-function FundingSourceSlideOver({
-  open, onOpenChange, source, mode, onSave,
+function FundingSourceModal({
+  open, onOpenChange, source, mode, onSave, isSaving, error,
 }: {
   open:         boolean;
   onOpenChange: (open: boolean) => void;
   source:       FundingSource | null;
   mode:         SlideOverMode;
   onSave:       (data: Partial<FundingSource>) => void;
+  isSaving?:    boolean;
+  error?:       string | null;
 }) {
   const titles: Record<SlideOverMode, string> = {
     view: 'Détails de la source de financement',
@@ -215,16 +217,13 @@ function FundingSourceSlideOver({
   }
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer"><X className="h-4 w-4" /></Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+        </ModalHeader>
 
-        <SlideOverBody>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && source ? (
             <div className="flex flex-col gap-5">
               <div className="flex items-center gap-2 flex-wrap">
@@ -345,18 +344,27 @@ function FundingSourceSlideOver({
               </div>
             </div>
           )}
-        </SlideOverBody>
 
-        <SlideOverFooter>
-          <SlideOverClose asChild>
-            <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
-          {!readOnly && (
-            <Button variant="default" onClick={handleSave}>{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </div>
+
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
+            <Button variant="outline" type="button">{readOnly ? 'Fermer' : 'Annuler'}</Button>
+          </ModalClose>
+          {!readOnly && (
+            <Button variant="default" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
+            </Button>
+          )}
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
 
@@ -365,11 +373,13 @@ function FundingSourceSlideOver({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DeleteConfirmModal({
-  source, onConfirm, onCancel,
+  source, onConfirm, onCancel, isDeleting, error,
 }: {
-  source:    FundingSource | null;
-  onConfirm: () => void;
-  onCancel:  () => void;
+  source:     FundingSource | null;
+  onConfirm:  () => void;
+  onCancel:   () => void;
+  isDeleting?: boolean;
+  error?:      string | null;
 }) {
   if (!source) return null;
   return (
@@ -384,9 +394,17 @@ function DeleteConfirmModal({
             </p>
           </div>
         </div>
+        {error && (
+          <p className="text-sm text-destructive flex items-start gap-1.5" role="alert">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onCancel}>Annuler</Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm}>Supprimer</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={isDeleting}>
+            {isDeleting ? 'Suppression...' : 'Supprimer'}
+          </Button>
         </div>
       </div>
     </div>
@@ -398,9 +416,11 @@ function DeleteConfirmModal({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildFundingColumns(
-  onView:   (s: FundingSource) => void,
-  onEdit:   (s: FundingSource) => void,
-  onDelete: (id: string) => void,
+  onView:     (s: FundingSource) => void,
+  onEdit:     (s: FundingSource) => void,
+  onDelete:   (id: string) => void,
+  canManage:  boolean,
+  canDelete:  boolean,
 ): ColumnDef<FundingSource, unknown>[] {
   return [
     {
@@ -472,8 +492,12 @@ function buildFundingColumns(
       cell: ({ row }) => (
         <div className="flex items-center gap-1 justify-end">
           <Button variant="ghost" size="sm" aria-label="Voir" onClick={() => onView(row.original)}><Eye className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}><Edit className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" aria-label="Supprimer" className="text-destructive hover:text-destructive" onClick={() => onDelete(row.original.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+          {canManage && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}><Edit className="h-3.5 w-3.5" /></Button>
+          )}
+          {canDelete && (
+            <Button variant="ghost" size="sm" aria-label="Supprimer" className="text-destructive hover:text-destructive" onClick={() => onDelete(row.original.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+          )}
         </div>
       ),
     },
@@ -494,11 +518,23 @@ export default function ProjectFundingTab() {
   const updateMutation = useUpdateFundingSource(projectId);
   const deleteMutation = useDeleteFundingSource(projectId);
 
+  // Miroir des rôles serveur (requireRole) sur funding-sources-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/FINANCIER/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const [slideOverOpen,  setSlideOverOpen]  = useState(false);
   const [slideOverMode,  setSlideOverMode]  = useState<SlideOverMode>('new');
   const [selected,       setSelected]       = useState<FundingSource | null>(null);
+  const [saveError,      setSaveError]      = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteError,    setDeleteError]    = useState<string | null>(null);
   const [exported,       setExported]       = useState(false);
+
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
 
   const kpis = useMemo(() => {
     const total     = sources.length;
@@ -523,23 +559,28 @@ export default function ProjectFundingTab() {
   );
 
   function handleSave(data: Partial<FundingSource>) {
+    setSaveError(null);
+    const onError = (err: unknown) => setSaveError(extractErrorMessage(err));
     if (slideOverMode === 'new') {
-      createMutation.mutate(data);
+      createMutation.mutate(data, { onSuccess: () => setSlideOverOpen(false), onError });
     } else if (slideOverMode === 'edit' && selected) {
-      updateMutation.mutate({ id: selected.id, ...data });
+      updateMutation.mutate({ id: selected.id, ...data }, { onSuccess: () => setSlideOverOpen(false), onError });
     }
-    setSlideOverOpen(false);
   }
 
   function handleDeleteConfirm() {
-    if (deleteTargetId) {
-      deleteMutation.mutate(deleteTargetId);
-      if (selected?.id === deleteTargetId) {
-        setSlideOverOpen(false);
-        setSelected(null);
-      }
-    }
-    setDeleteTargetId(null);
+    if (!deleteTargetId) return;
+    setDeleteError(null);
+    deleteMutation.mutate(deleteTargetId, {
+      onSuccess: () => {
+        if (selected?.id === deleteTargetId) {
+          setSlideOverOpen(false);
+          setSelected(null);
+        }
+        setDeleteTargetId(null);
+      },
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
   }
 
   function handleExportCsv() {
@@ -551,7 +592,9 @@ export default function ProjectFundingTab() {
   const columns = buildFundingColumns(
     (s) => { setSelected(s); setSlideOverMode('view'); setSlideOverOpen(true); },
     (s) => { setSelected(s); setSlideOverMode('edit'); setSlideOverOpen(true); },
-    (id) => setDeleteTargetId(id),
+    (id) => { setDeleteTargetId(id); setDeleteError(null); },
+    canManage,
+    canDelete,
   );
 
   return (
@@ -567,10 +610,12 @@ export default function ProjectFundingTab() {
             <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             Exporter CSV
           </Button>
-          <Button variant="default" size="sm" className="h-8 text-xs" onClick={() => { setSelected(null); setSlideOverMode('new'); setSlideOverOpen(true); }}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Nouvelle source
-          </Button>
+          {canManage && (
+            <Button variant="default" size="sm" className="h-8 text-xs" onClick={() => { setSelected(null); setSlideOverMode('new'); setSaveError(null); setSlideOverOpen(true); }}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              Nouvelle source
+            </Button>
+          )}
         </div>
       </div>
 
@@ -643,12 +688,8 @@ export default function ProjectFundingTab() {
       </div>
 
       <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">Sources de financement</CardTitle>
-          <Button variant="default" size="sm" onClick={() => { setSelected(null); setSlideOverMode('new'); setSlideOverOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-            Ajouter
-          </Button>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -669,18 +710,22 @@ export default function ProjectFundingTab() {
         </CardContent>
       </Card>
 
-      <FundingSourceSlideOver
+      <FundingSourceModal
         open={slideOverOpen}
-        onOpenChange={setSlideOverOpen}
+        onOpenChange={open => { setSlideOverOpen(open); if (!open) setSaveError(null); }}
         source={selected}
         mode={slideOverMode}
         onSave={handleSave}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        error={saveError}
       />
 
       <DeleteConfirmModal
         source={deleteTarget}
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteTargetId(null)}
+        onCancel={() => { setDeleteTargetId(null); setDeleteError(null); }}
+        isDeleting={deleteMutation.isPending}
+        error={deleteError}
       />
 
     </section>

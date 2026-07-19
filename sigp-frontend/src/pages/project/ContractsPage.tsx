@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Button } from '@/components/ui/forms/Button';
@@ -78,11 +79,13 @@ export default function ContractsPage() {
   const updateMutation = useUpdateContract(resolvedProjectId);
   const deleteMutation = useDeleteContract(resolvedProjectId);
 
-  const [contracts, setContracts] = useState<Contract[]>([]);
+  const contracts = useMemo(() => contractsData ?? [], [contractsData]);
 
-  useEffect(() => {
-    if (contractsData) setContracts(contractsData);
-  }, [contractsData]);
+  // Miroir des rôles serveur (requireRole) sur contracts-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'view' | 'edit' | 'new'>('view');
@@ -106,30 +109,19 @@ export default function ContractsPage() {
     setSlideOpen(true);
   }, []);
 
-  const handleSave = (data: Omit<Contract, 'id' | 'version_hash' | 'projet_id'>) => {
+  // Persistance réelle : la modale (ContractSlideOver) attend la résolution de
+  // ces promesses avant de se fermer et affiche l'erreur elle-même en cas
+  // d'échec — plus d'état local optimiste ni de fire-and-forget ici.
+  const handleSave = async (data: Omit<Contract, 'id' | 'version_hash' | 'projet_id'>) => {
     if (slideMode === 'new') {
-      const newC: Contract = {
-        ...data,
-        id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        projet_id: resolvedProjectId,
-        version_hash: `hash-${Date.now()}`,
-      };
-      setContracts(prev => [newC, ...prev]);
-      createMutation.mutate(data);
+      await createMutation.mutateAsync(data);
     } else if (selected) {
-      setContracts(prev =>
-        prev.map(c => c.id === selected.id
-          ? { ...c, ...data, version_hash: `hash-${Date.now()}` }
-          : c
-        )
-      );
-      updateMutation.mutate({ id: selected.id, data });
+      await updateMutation.mutateAsync({ id: selected.id, data });
     }
   };
 
-  const handleDelete = (id: string) => {
-    setContracts(prev => prev.filter(c => c.id !== id));
-    deleteMutation.mutate(id);
+  const handleDelete = async (id: string) => {
+    await deleteMutation.mutateAsync(id);
   };
 
   const kpis = useMemo(() => {
@@ -148,8 +140,8 @@ export default function ContractsPage() {
   }, [contracts]);
 
   const columns = useMemo(
-    () => getContractColumns({ onEdit: handleEdit, onView: handleView }),
-    [handleEdit, handleView]
+    () => getContractColumns({ onEdit: handleEdit, onView: handleView, canManage }),
+    [handleEdit, handleView, canManage]
   );
 
   if (!resolvedProjectId) {
@@ -179,9 +171,11 @@ export default function ContractsPage() {
           <Button variant="ghost" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={() => exportCsv(contracts)}>
             CSV
           </Button>
-          <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={handleNew}>
-            Nouveau Contrat
-          </Button>
+          {canManage && (
+            <Button variant="default" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} className="h-8 text-xs" onClick={handleNew}>
+              Nouveau Contrat
+            </Button>
+          )}
         </div>
       </div>
 
@@ -240,6 +234,8 @@ export default function ContractsPage() {
         onDelete={handleDelete}
         onSwitchToEdit={() => setSlideMode('edit')}
         projectId={resolvedProjectId}
+        canManage={canManage}
+        canDelete={canDelete}
       />
     </div>
   );

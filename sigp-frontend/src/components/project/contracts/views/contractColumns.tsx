@@ -70,9 +70,10 @@ function isOverdue(dateStr?: string | null): boolean {
 interface GetContractColumnsOptions {
   onEdit?: (contract: Contract) => void;
   onView?: (contract: Contract) => void;
+  canManage?: boolean;
 }
 
-export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions = {}): ColumnDef<Contract, unknown>[] {
+export function getContractColumns({ onEdit, onView, canManage }: GetContractColumnsOptions = {}): ColumnDef<Contract, unknown>[] {
   return [
     // ── Sélection ────────────────────────────────────────────────────────
     {
@@ -321,11 +322,15 @@ export function getContractColumns({ onEdit, onView }: GetContractColumnsOptions
                 <Eye className="mr-2 h-4 w-4" />
                 Voir détails
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onEdit?.(contract)}>
-                <Edit className="mr-2 h-4 w-4" />
-                Modifier
-              </DropdownMenuItem>
+              {canManage && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => onEdit?.(contract)}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Modifier
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );

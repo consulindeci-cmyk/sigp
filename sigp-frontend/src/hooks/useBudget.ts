@@ -179,7 +179,7 @@ export function useBudgetWorkflow(projetId: string) {
 export function useCreateBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { versionId: string; codeLigne: string; libelle: string; categorie?: string; montantPrevu?: number; ordre?: number }) =>
+    mutationFn: async (payload: { versionId: string; codeLigne: string; libelle: string; categorie?: string; montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number }) =>
       invokeEdgeFunction<{ data: BudgetLineRow }>('budget-lines-create', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });

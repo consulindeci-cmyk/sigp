@@ -3,9 +3,10 @@ import * as XLSX from 'xlsx';
 import type { BudgetLigne } from '@/types/budget';
 import { BudgetMatrixRow } from './BudgetMatrixRow';
 import {
-  BudgetLigneSlideOver, BAILLEURS_REF, CATEGORIES_REF,
+  BudgetLigneSlideOver, CATEGORIES_REF,
   type LigneSlideOverMode,
 } from './BudgetLigneSlideOver';
+import { useFundingSources, type FundingSource } from '@/hooks/useFundingSources';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
   ModalFooter, ModalClose,
@@ -67,12 +68,11 @@ function parseNum(v: unknown): number {
   return isNaN(n) ? 0 : n;
 }
 
-function findBailleur(raw: string) {
+function findBailleur(raw: string, fundingSources: FundingSource[]) {
   const r = raw.trim().toUpperCase();
-  return BAILLEURS_REF.find(b =>
+  return fundingSources.find(b =>
     b.id === r
     || b.nom.toUpperCase().includes(r)
-    || r.includes(b.id)
     || r.includes(b.nom.toUpperCase())
   );
 }
@@ -94,7 +94,7 @@ function colVal(row: Record<string, unknown>, ...keys: string[]): unknown {
   return '';
 }
 
-async function parseImportFile(file: File): Promise<ImportRow[]> {
+async function parseImportFile(file: File, fundingSources: FundingSource[]): Promise<ImportRow[]> {
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array' });
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -111,7 +111,7 @@ async function parseImportFile(file: File): Promise<ImportRow[]> {
       const sourceRaw    = String(colVal(row, 'source')).trim();
       const compteRaw    = String(colVal(row, 'compte', 'pcg')).trim();
 
-      const bailleur  = findBailleur(bailleurRaw);
+      const bailleur  = findBailleur(bailleurRaw, fundingSources);
       const categorie = findCategorie(categorieRaw);
 
       const montant_initial    = parseNum(colVal(row, 'initial'));
@@ -319,14 +319,22 @@ const ACTION_LABELS: Record<LigneHistoryEntry['action'], string> = {
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface ImportResult {
+  succeeded: number;
+  failed:    { libelle: string; error: string }[];
+}
+
 interface BudgetMatrixProps {
   lignes:           BudgetLigne[];
   lineHistory:      LigneHistoryEntry[];
-  onAddLigne:       (data: Partial<BudgetLigne>) => void;
-  onEditLigne:      (id: string, data: Partial<BudgetLigne>) => void;
-  onDeleteLigne:    (id: string) => void;
-  onDuplicateLigne: (id: string) => void;
-  onImportLignes:   (lignes: Partial<BudgetLigne>[]) => void;
+  projectId:        string;
+  canManage:        boolean;
+  canDelete:        boolean;
+  onAddLigne:       (data: Partial<BudgetLigne>) => Promise<void>;
+  onEditLigne:      (id: string, data: Partial<BudgetLigne>) => Promise<void>;
+  onDeleteLigne:    (id: string) => Promise<void>;
+  onDuplicateLigne: (id: string) => Promise<void>;
+  onImportLignes:   (lignes: Partial<BudgetLigne>[]) => Promise<ImportResult>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -334,8 +342,10 @@ interface BudgetMatrixProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function BudgetMatrix({
-  lignes, lineHistory, onAddLigne, onEditLigne, onDeleteLigne, onDuplicateLigne, onImportLignes,
+  lignes, lineHistory, projectId, canManage, canDelete, onAddLigne, onEditLigne, onDeleteLigne, onDuplicateLigne, onImportLignes,
 }: BudgetMatrixProps) {
+
+  const { data: fundingSources = [] } = useFundingSources(projectId);
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const [filterBailleur,  setFilterBailleur]  = useState('');
@@ -346,10 +356,17 @@ export function BudgetMatrix({
   const [slideOverOpen,  setSlideOverOpen]  = useState(false);
   const [slideOverMode,  setSlideOverMode]  = useState<LigneSlideOverMode>('new');
   const [selectedLigne,  setSelectedLigne]  = useState<BudgetLigne | null>(null);
+  const [saveError,      setSaveError]      = useState<string | null>(null);
+  const [isSaving,       setIsSaving]       = useState(false);
 
   // ── Delete modal ───────────────────────────────────────────────────────────
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [ligneToDelete,   setLigneToDelete]   = useState<string | null>(null);
+  const [deleteError,     setDeleteError]     = useState<string | null>(null);
+  const [isDeleting,      setIsDeleting]      = useState(false);
+
+  // ── Duplicate feedback (pas de modal dédié) ───────────────────────────────
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
   // ── Global historique modal ───────────────────────────────────────────────
   const [historiqueOpen, setHistoriqueOpen] = useState(false);
@@ -364,6 +381,8 @@ export function BudgetMatrix({
   const [importRows,           setImportRows]           = useState<ImportRow[]>([]);
   const [importLoading,        setImportLoading]        = useState(false);
   const [importFileName,       setImportFileName]       = useState('');
+  const [importSaving,         setImportSaving]         = useState(false);
+  const [importResultError,    setImportResultError]    = useState<string | null>(null);
 
   // ── Export feedback ────────────────────────────────────────────────────────
   const [exportDone, setExportDone] = useState<'csv' | 'excel' | null>(null);
@@ -373,11 +392,11 @@ export function BudgetMatrix({
     const ids = [...new Set(lignes.map(l => l.bailleur_id))];
     return ids.map(id => ({
       id,
-      nom: BAILLEURS_REF.find(b => b.id === id)?.nom
+      nom: fundingSources.find(b => b.id === id)?.nom
         || lignes.find(l => l.bailleur_id === id)?.bailleur_nom
         || id,
     }));
-  }, [lignes]);
+  }, [lignes, fundingSources]);
 
   const categorieOptions = useMemo(() => {
     const ids = [...new Set(lignes.map(l => l.categorie_id))];
@@ -455,32 +474,66 @@ export function BudgetMatrix({
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
+
   function openAddNew() {
     setSelectedLigne(null);
     setSlideOverMode('new');
+    setSaveError(null);
     setSlideOverOpen(true);
   }
 
   function openEdit(ligne: BudgetLigne) {
     setSelectedLigne(ligne);
     setSlideOverMode('edit');
+    setSaveError(null);
     setSlideOverOpen(true);
   }
 
-  function handleSave(data: Partial<BudgetLigne>) {
-    if (slideOverMode === 'new')       onAddLigne(data);
-    else if (selectedLigne)            onEditLigne(selectedLigne.id, data);
-    setSlideOverOpen(false);
+  async function handleSave(data: Partial<BudgetLigne>) {
+    setSaveError(null);
+    setIsSaving(true);
+    try {
+      if (slideOverMode === 'new') await onAddLigne(data);
+      else if (selectedLigne)      await onEditLigne(selectedLigne.id, data);
+      setSlideOverOpen(false);
+    } catch (err) {
+      setSaveError(extractErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function openDeleteModal(id: string) {
     setLigneToDelete(id);
+    setDeleteError(null);
     setDeleteModalOpen(true);
   }
 
-  function confirmDelete() {
-    if (ligneToDelete) { onDeleteLigne(ligneToDelete); setLigneToDelete(null); }
-    setDeleteModalOpen(false);
+  async function confirmDelete() {
+    if (!ligneToDelete) return;
+    setDeleteError(null);
+    setIsDeleting(true);
+    try {
+      await onDeleteLigne(ligneToDelete);
+      setLigneToDelete(null);
+      setDeleteModalOpen(false);
+    } catch (err) {
+      setDeleteError(extractErrorMessage(err));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  async function handleDuplicate(id: string) {
+    setDuplicateError(null);
+    try {
+      await onDuplicateLigne(id);
+    } catch (err) {
+      setDuplicateError(extractErrorMessage(err));
+    }
   }
 
   function openLigneHistorique(id: string) {
@@ -508,7 +561,7 @@ export function BudgetMatrix({
     setImportFileName(file.name);
     setImportLoading(true);
     try {
-      const rows = await parseImportFile(file);
+      const rows = await parseImportFile(file, fundingSources);
       setImportRows(rows);
       setImportModalOpen(true);
     } catch {
@@ -522,7 +575,7 @@ export function BudgetMatrix({
   const validImportRows     = importRows.filter(r => r.isValid);
   const invalidImportRows   = importRows.filter(r => !r.isValid);
 
-  function confirmImport() {
+  async function confirmImport() {
     const toAdd: Partial<BudgetLigne>[] = validImportRows.map(r => {
       const solde = Math.max(0, r.montant_revise - r.montant_pre_engage - r.montant_engage);
       const rap   = Math.max(0, r.montant_engage - r.montant_decaisse);
@@ -544,10 +597,25 @@ export function BudgetMatrix({
         reste_a_payer:         rap,
       };
     });
-    onImportLignes(toAdd);
-    setImportModalOpen(false);
-    setImportRows([]);
-    setImportFileName('');
+    setImportSaving(true);
+    setImportResultError(null);
+    try {
+      const result = await onImportLignes(toAdd);
+      if (result.failed.length > 0) {
+        const preview = result.failed.slice(0, 3).map(f => `${f.libelle || '—'} (${f.error})`).join(' · ');
+        setImportResultError(
+          `${result.succeeded} ligne(s) importée(s), ${result.failed.length} échec(s) : ${preview}${result.failed.length > 3 ? '…' : ''}`
+        );
+      } else {
+        setImportModalOpen(false);
+        setImportRows([]);
+        setImportFileName('');
+      }
+    } catch (err) {
+      setImportResultError(extractErrorMessage(err));
+    } finally {
+      setImportSaving(false);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -618,25 +686,39 @@ export function BudgetMatrix({
             <span className="hidden sm:inline">Imprimer</span>
           </Button>
 
-          {/* Hidden file input for import */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={importLoading}>
-            <Upload className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{importLoading ? 'Lecture…' : 'Importer Excel'}</span>
-          </Button>
+          {canManage && (
+            <>
+              {/* Hidden file input for import */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={importLoading}>
+                <Upload className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{importLoading ? 'Lecture…' : 'Importer Excel'}</span>
+              </Button>
 
-          <Button variant="default" size="sm" className="h-8 text-xs gap-1.5" onClick={openAddNew}>
-            <Plus className="h-3.5 w-3.5" />
-            Ajouter ligne
-          </Button>
+              <Button variant="default" size="sm" className="h-8 text-xs gap-1.5" onClick={openAddNew}>
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter ligne
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {duplicateError && (
+        <div className="shrink-0 mx-4 mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+          <span className="flex-1">{duplicateError}</span>
+          <button onClick={() => setDuplicateError(null)} aria-label="Fermer" className="shrink-0">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* ── Scrollable table ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-x-auto scrollbar-thin relative">
@@ -686,9 +768,11 @@ export function BudgetMatrix({
                   key={ligne.id}
                   ligne={ligne}
                   hasHistory={lignesWithHistory.has(ligne.id)}
+                  canManage={canManage}
+                  canDelete={canDelete}
                   onEdit={openEdit}
                   onDelete={openDeleteModal}
-                  onDuplicate={onDuplicateLigne}
+                  onDuplicate={handleDuplicate}
                   onViewHistory={openLigneHistorique}
                 />
               ))
@@ -719,22 +803,33 @@ export function BudgetMatrix({
       {/* ── BudgetLigneSlideOver ─────────────────────────────────────────────── */}
       <BudgetLigneSlideOver
         open={slideOverOpen}
-        onOpenChange={setSlideOverOpen}
+        onOpenChange={open => { setSlideOverOpen(open); if (!open) setSaveError(null); }}
         ligne={selectedLigne}
         mode={slideOverMode}
+        projectId={projectId}
         onSave={handleSave}
+        isSaving={isSaving}
+        error={saveError}
       />
 
       {/* ── Delete confirmation ──────────────────────────────────────────────── */}
-      <Modal open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+      <Modal open={deleteModalOpen} onOpenChange={open => { setDeleteModalOpen(open); if (!open) { setLigneToDelete(null); setDeleteError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Supprimer la ligne budgétaire</ModalTitle>
             <ModalDescription>Cette action est irréversible. La ligne sera définitivement supprimée.</ModalDescription>
           </ModalHeader>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
           <ModalFooter>
             <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
-            <Button variant="destructive" leftIcon={<Trash2 className="h-4 w-4" />} onClick={confirmDelete}>Supprimer</Button>
+            <Button variant="destructive" leftIcon={<Trash2 className="h-4 w-4" />} onClick={confirmDelete} disabled={isDeleting}>
+              {isDeleting ? 'Suppression...' : 'Supprimer'}
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -832,7 +927,7 @@ export function BudgetMatrix({
       </Modal>
 
       {/* ── Import preview modal ─────────────────────────────────────────────── */}
-      <Modal open={importModalOpen} onOpenChange={open => { if (!open) { setImportModalOpen(false); setImportRows([]); } }}>
+      <Modal open={importModalOpen} onOpenChange={open => { if (!open) { setImportModalOpen(false); setImportRows([]); setImportResultError(null); } }}>
         <ModalContent className="max-w-3xl">
           <ModalHeader>
             <ModalTitle className="flex items-center gap-2">
@@ -885,15 +980,22 @@ export function BudgetMatrix({
             </table>
           </div>
 
+          {importResultError && (
+            <p className="px-6 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {importResultError}
+            </p>
+          )}
+
           <ModalFooter>
             <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
             <Button
               variant="default"
               onClick={confirmImport}
-              disabled={validImportRows.length === 0}
+              disabled={validImportRows.length === 0 || importSaving}
             >
               <Upload className="h-4 w-4 mr-1.5" />
-              Importer {validImportRows.length} ligne{validImportRows.length !== 1 ? 's' : ''}
+              {importSaving ? 'Import en cours...' : `Importer ${validImportRows.length} ligne${validImportRows.length !== 1 ? 's' : ''}`}
             </Button>
           </ModalFooter>
         </ModalContent>

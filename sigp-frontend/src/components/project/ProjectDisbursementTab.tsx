@@ -5,7 +5,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Wallet, TrendingUp, Clock, AlertTriangle, Plus, Eye, Edit, Trash2, X, Download } from 'lucide-react';
+import { Wallet, TrendingUp, Clock, AlertTriangle, AlertCircle, Plus, Eye, Edit, Trash2, X, Download } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
@@ -22,6 +22,7 @@ import {
   ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useFundingSources } from '@/hooks/useFundingSources';
 import {
   useDisbursements, useCreateDisbursement, useUpdateDisbursement, useDeleteDisbursement,
@@ -155,7 +156,7 @@ function FRow({
 type SlideOverMode = 'view' | 'edit' | 'new';
 
 function DisbursementSlideOver({
-  open, onOpenChange, record, mode, onSave, fundingSourceOptions,
+  open, onOpenChange, record, mode, onSave, fundingSourceOptions, isSaving, error,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -163,6 +164,8 @@ function DisbursementSlideOver({
   mode: SlideOverMode;
   onSave?: (data: Partial<Disbursement>) => void;
   fundingSourceOptions: { id: string; nom: string }[];
+  isSaving?: boolean;
+  error?: string | null;
 }) {
   const [values, setValues] = useState<DisbFormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<DisbFormErrors>({});
@@ -292,14 +295,23 @@ function DisbursementSlideOver({
               </FRow>
             </div>
           )}
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
         </SlideOverBody>
 
         <SlideOverFooter>
           <SlideOverClose asChild>
-            <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
+            <Button variant="outline" type="button">{readOnly ? 'Fermer' : 'Annuler'}</Button>
           </SlideOverClose>
           {!readOnly && (
-            <Button variant="default" onClick={handleSave}>{mode === 'edit' ? 'Enregistrer' : 'Ajouter'}</Button>
+            <Button variant="default" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
+            </Button>
           )}
         </SlideOverFooter>
       </SlideOverContent>
@@ -312,9 +324,11 @@ function DisbursementSlideOver({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildDisbursementColumns(
-  onView:   (r: Disbursement) => void,
-  onEdit:   (r: Disbursement) => void,
-  onDelete: (id: string) => void,
+  onView:     (r: Disbursement) => void,
+  onEdit:     (r: Disbursement) => void,
+  onDelete:   (id: string) => void,
+  canManage:  boolean,
+  canDelete:  boolean,
 ): ColumnDef<Disbursement, unknown>[] {
   return [
     {
@@ -379,8 +393,12 @@ function buildDisbursementColumns(
       cell: ({ row }) => (
         <div className="flex items-center gap-1 justify-end">
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}><Eye className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}><Edit className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="sm" aria-label="Supprimer" className="text-destructive hover:text-destructive" onClick={() => onDelete(row.original.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+          {canManage && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}><Edit className="h-3.5 w-3.5" /></Button>
+          )}
+          {canDelete && (
+            <Button variant="ghost" size="sm" aria-label="Supprimer" className="text-destructive hover:text-destructive" onClick={() => onDelete(row.original.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+          )}
         </div>
       ),
     },
@@ -404,30 +422,46 @@ export default function ProjectDisbursementTab() {
   const updateMutation = useUpdateDisbursement(projectId, fundingSourceIds);
   const deleteMutation = useDeleteDisbursement(projectId, fundingSourceIds);
 
+  // Miroir des rôles serveur (requireRole) sur disbursements-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/FINANCIER/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const [slideOverOpen, setSlideOverOpen]   = useState(false);
   const [slideOverMode, setSlideOverMode]   = useState<SlideOverMode>('new');
   const [selectedRecord, setSelectedRecord] = useState<Disbursement | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [deleteModalOpen,  setDeleteModalOpen]  = useState(false);
   const [recordToDelete,   setRecordToDelete]   = useState<string | null>(null);
+  const [deleteError,      setDeleteError]      = useState<string | null>(null);
+
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
 
   function openView(r: Disbursement) { setSelectedRecord(r); setSlideOverMode('view'); setSlideOverOpen(true); }
-  function openEdit(r: Disbursement) { setSelectedRecord(r); setSlideOverMode('edit'); setSlideOverOpen(true); }
-  function openDeleteModal(id: string) { setRecordToDelete(id); setDeleteModalOpen(true); }
+  function openEdit(r: Disbursement) { setSelectedRecord(r); setSlideOverMode('edit'); setSaveError(null); setSlideOverOpen(true); }
+  function openDeleteModal(id: string) { setRecordToDelete(id); setDeleteError(null); setDeleteModalOpen(true); }
 
   function handleDeleteConfirm() {
-    if (recordToDelete) deleteMutation.mutate(recordToDelete);
-    setDeleteModalOpen(false);
-    setRecordToDelete(null);
+    if (!recordToDelete) return;
+    setDeleteError(null);
+    deleteMutation.mutate(recordToDelete, {
+      onSuccess: () => { setDeleteModalOpen(false); setRecordToDelete(null); },
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
   }
 
   function handleSave(data: Partial<Disbursement>) {
+    setSaveError(null);
+    const onError = (err: unknown) => setSaveError(extractErrorMessage(err));
     if (slideOverMode === 'new') {
-      createMutation.mutate(data);
+      createMutation.mutate(data, { onSuccess: () => setSlideOverOpen(false), onError });
     } else if (selectedRecord) {
-      updateMutation.mutate({ id: selectedRecord.id, ...data });
+      updateMutation.mutate({ id: selectedRecord.id, ...data }, { onSuccess: () => setSlideOverOpen(false), onError });
     }
-    setSlideOverOpen(false);
   }
 
   const { montantTotal, montantDecaisse, enAttente, enRetard, decaisseCount } = useMemo(() => {
@@ -461,8 +495,8 @@ export default function ProjectDisbursementTab() {
   }, [records]);
 
   const columns = useMemo(
-    () => buildDisbursementColumns(openView, openEdit, openDeleteModal),
-    []
+    () => buildDisbursementColumns(openView, openEdit, openDeleteModal, canManage, canDelete),
+    [canManage, canDelete]
   );
 
   return (
@@ -545,13 +579,15 @@ export default function ProjectDisbursementTab() {
               <Download className="h-4 w-4 mr-1.5" aria-hidden="true" />
               CSV
             </Button>
-            <Button
-              variant="default" size="sm" aria-label="Ajouter un décaissement"
-              onClick={() => { setSelectedRecord(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-            >
-              <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              Ajouter
-            </Button>
+            {canManage && (
+              <Button
+                variant="default" size="sm" aria-label="Ajouter un décaissement"
+                onClick={() => { setSelectedRecord(null); setSlideOverMode('new'); setSaveError(null); setSlideOverOpen(true); }}
+              >
+                <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                Ajouter
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -579,15 +615,17 @@ export default function ProjectDisbursementTab() {
       {/* ── SlideOver ────────────────────────────────────────────────────── */}
       <DisbursementSlideOver
         open={slideOverOpen}
-        onOpenChange={setSlideOverOpen}
+        onOpenChange={open => { setSlideOverOpen(open); if (!open) setSaveError(null); }}
         record={selectedRecord}
         mode={slideOverMode}
         onSave={handleSave}
         fundingSourceOptions={fundingSources}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        error={saveError}
       />
 
       {/* ── Delete Confirmation Modal ──────────────────────────────────── */}
-      <Modal open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+      <Modal open={deleteModalOpen} onOpenChange={open => { setDeleteModalOpen(open); if (!open) { setRecordToDelete(null); setDeleteError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Confirmer la suppression</ModalTitle>
@@ -595,13 +633,19 @@ export default function ProjectDisbursementTab() {
               Êtes-vous sûr de vouloir supprimer ce décaissement ? Cette action est irréversible.
             </ModalDescription>
           </ModalHeader>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
               <Trash2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              Supprimer
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </ModalFooter>
         </ModalContent>

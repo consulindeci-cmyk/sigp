@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Trash2 } from 'lucide-react';
+import { Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal, ModalContent, ModalHeader, ModalTitle,
+} from '@/components/ui/overlays/Modal';
 import type { Contract, ContractStatus } from '@/types/contract';
 import { usePPM } from '@/hooks/usePPM';
 import { useBudget, useBudgetVersion } from '@/hooks/useBudget';
+import { useFundingSources } from '@/hooks/useFundingSources';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -99,20 +99,25 @@ interface ContractSlideOverProps {
   onClose: () => void;
   mode: 'view' | 'edit' | 'new';
   contract?: Contract | null;
-  onSave: (data: Omit<Contract, 'id' | 'version_hash' | 'projet_id'>) => void;
-  onDelete?: (id: string) => void;
+  onSave: (data: Omit<Contract, 'id' | 'version_hash' | 'projet_id'>) => Promise<void>;
+  onDelete?: (id: string) => Promise<void>;
   onSwitchToEdit?: () => void;
   projectId: string;
+  canManage: boolean;
+  canDelete: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDelete, onSwitchToEdit, projectId }: ContractSlideOverProps) {
+export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDelete, onSwitchToEdit, projectId, canManage, canDelete }: ContractSlideOverProps) {
   const [form, setForm] = useState<ContractFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof ContractFormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Marchés du plan de passation (PPM) du projet — pour rattacher ce contrat
   // à un ou plusieurs lots (ppm_marches.id → contracts.marche_id).
@@ -124,6 +129,10 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
   const { data: budgetVersion } = useBudgetVersion(projectId, budget?.version_active_id);
   const budgetLignes = budgetVersion?.lignes ?? [];
 
+  // Sources de financement réelles du projet — remplace la saisie libre du
+  // bailleur (cf. audit Marchés & Contrats).
+  const { data: fundingSources = [] } = useFundingSources(projectId);
+
   const isReadOnly = mode === 'view';
 
   useEffect(() => {
@@ -131,6 +140,7 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
       setForm(contract ? formFromContract(contract) : EMPTY_FORM);
       setErrors({});
       setConfirmDelete(false);
+      setError(null);
     }
   }, [open, contract, mode]);
 
@@ -153,41 +163,56 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
     return Object.keys(e).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
-    onSave({
-      wbs_id: form.wbs_id,
-      budget_ligne_id: form.budget_ligne_id,
-      ppm_ligne_id: form.ppm_ligne_id,
-      marche_id: form.marche_id,
-      bailleur_id: form.bailleur_id,
-      fournisseur_id: form.fournisseur_id,
-      reference: form.reference.trim(),
-      intitule: form.intitule.trim(),
-      statut: form.statut as ContractStatus,
-      devise_code: form.devise_code,
-      taux_change_contractuel: parseFloat(form.taux_change_contractuel) || 1,
-      montant_initial_devise: parseFloat(form.montant_initial_devise) || 0,
-      montant_initial_base: autoMontantBase,
-      date_signature: form.date_signature || undefined,
-      date_ordre_service: form.date_ordre_service || undefined,
-      debut_prevu: form.debut_prevu || undefined,
-      fin_prevue: form.fin_prevue || undefined,
-      fin_reelle: form.fin_reelle || undefined,
-      reception_provisoire: form.reception_provisoire || undefined,
-      reception_definitive: form.reception_definitive || undefined,
-      garantie_bonne_execution_taux: form.garantie_bonne_execution_taux ? parseFloat(form.garantie_bonne_execution_taux) : undefined,
-      garantie_avance_taux: form.garantie_avance_taux ? parseFloat(form.garantie_avance_taux) : undefined,
-      retenue_garantie_taux: form.retenue_garantie_taux ? parseFloat(form.retenue_garantie_taux) : undefined,
-      date_expiration_garantie: form.date_expiration_garantie || undefined,
-    });
-    onClose();
+    setError(null);
+    setIsSaving(true);
+    try {
+      await onSave({
+        wbs_id: form.wbs_id,
+        budget_ligne_id: form.budget_ligne_id,
+        ppm_ligne_id: form.ppm_ligne_id,
+        marche_id: form.marche_id,
+        bailleur_id: form.bailleur_id,
+        fournisseur_id: form.fournisseur_id,
+        reference: form.reference.trim(),
+        intitule: form.intitule.trim(),
+        statut: form.statut as ContractStatus,
+        devise_code: form.devise_code,
+        taux_change_contractuel: parseFloat(form.taux_change_contractuel) || 1,
+        montant_initial_devise: parseFloat(form.montant_initial_devise) || 0,
+        montant_initial_base: autoMontantBase,
+        date_signature: form.date_signature || undefined,
+        date_ordre_service: form.date_ordre_service || undefined,
+        debut_prevu: form.debut_prevu || undefined,
+        fin_prevue: form.fin_prevue || undefined,
+        fin_reelle: form.fin_reelle || undefined,
+        reception_provisoire: form.reception_provisoire || undefined,
+        reception_definitive: form.reception_definitive || undefined,
+        garantie_bonne_execution_taux: form.garantie_bonne_execution_taux ? parseFloat(form.garantie_bonne_execution_taux) : undefined,
+        garantie_avance_taux: form.garantie_avance_taux ? parseFloat(form.garantie_avance_taux) : undefined,
+        retenue_garantie_taux: form.retenue_garantie_taux ? parseFloat(form.retenue_garantie_taux) : undefined,
+        date_expiration_garantie: form.date_expiration_garantie || undefined,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    if (contract && onDelete) {
-      onDelete(contract.id);
+  const handleDelete = async () => {
+    if (!contract || !onDelete) return;
+    setError(null);
+    setIsDeleting(true);
+    try {
+      await onDelete(contract.id);
       onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -197,18 +222,20 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
     'Détails du Contrat';
 
   return (
-    <SlideOver open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <SlideOverContent className="w-full max-w-2xl">
-        <SlideOverHeader className="flex items-center justify-between gap-2 px-6 py-4 border-b border-border bg-card">
-          <SlideOverTitle className="text-base font-bold text-foreground">{title}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <button className="rounded-md p-1 hover:bg-muted text-muted-foreground" aria-label="Fermer">
-              <X size={16} />
-            </button>
-          </SlideOverClose>
-        </SlideOverHeader>
+    <Modal open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{title}</ModalTitle>
+        </ModalHeader>
 
-        <SlideOverBody className="flex-1 overflow-y-auto px-6 py-5 space-y-1">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-1">
+
+          {error && (
+            <div className="mb-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
 
           {/* ── Identification ─────────────────────────────────────── */}
           <p className={SECTION_TITLE}>Identification</p>
@@ -253,12 +280,12 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
             <div className={GRID2}>
               <div>
                 <label className={LABEL}>Bailleur</label>
-                <Input
-                  value={form.bailleur_id}
-                  onChange={e => set('bailleur_id', e.target.value)}
-                  placeholder="ex. b-ida"
-                  disabled={isReadOnly}
-                />
+                <Select value={form.bailleur_id} onChange={e => set('bailleur_id', e.target.value)} disabled={isReadOnly}>
+                  <option value="">Sélectionner…</option>
+                  {fundingSources.map(f => (
+                    <option key={f.id} value={f.id}>{f.nom}</option>
+                  ))}
+                </Select>
               </div>
               <div>
                 <label className={LABEL}>Titulaire / Fournisseur</label>
@@ -400,24 +427,26 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
             </div>
           </div>
 
-        </SlideOverBody>
+        </div>
 
-        <SlideOverFooter className="flex items-center justify-between gap-2 px-6 py-4 border-t border-border bg-card">
+        <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-border bg-card shrink-0">
           {/* Delete zone */}
           <div>
-            {!isReadOnly && mode === 'edit' && contract && onDelete && (
+            {!isReadOnly && mode === 'edit' && contract && onDelete && canDelete && (
               confirmDelete ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-destructive font-medium">Supprimer ce contrat ?</span>
                   <button
-                    className="text-xs font-semibold text-destructive underline underline-offset-2 hover:opacity-80"
+                    className="text-xs font-semibold text-destructive underline underline-offset-2 hover:opacity-80 disabled:opacity-50"
                     onClick={handleDelete}
+                    disabled={isDeleting}
                   >
-                    Oui
+                    {isDeleting ? 'Suppression...' : 'Oui'}
                   </button>
                   <button
                     className="text-xs text-muted-foreground underline underline-offset-2 hover:opacity-80"
                     onClick={() => setConfirmDelete(false)}
+                    disabled={isDeleting}
                   >
                     Non
                   </button>
@@ -434,24 +463,22 @@ export function ContractSlideOver({ open, onClose, mode, contract, onSave, onDel
 
           {/* Right actions */}
           <div className="flex items-center gap-2">
-            <SlideOverClose asChild>
-              <Button variant="outline" size="sm" className="h-8 text-xs">
-                {isReadOnly ? 'Fermer' : 'Annuler'}
-              </Button>
-            </SlideOverClose>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>
+              {isReadOnly ? 'Fermer' : 'Annuler'}
+            </Button>
             {!isReadOnly && (
-              <Button variant="default" size="sm" className="h-8 text-xs" onClick={handleSave}>
-                Enregistrer
+              <Button variant="default" size="sm" className="h-8 text-xs" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? 'Enregistrement...' : 'Enregistrer'}
               </Button>
             )}
-            {isReadOnly && onSwitchToEdit && (
+            {isReadOnly && onSwitchToEdit && canManage && (
               <Button variant="default" size="sm" className="h-8 text-xs" onClick={onSwitchToEdit}>
                 Modifier
               </Button>
             )}
           </div>
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </div>
+      </ModalContent>
+    </Modal>
   );
 }

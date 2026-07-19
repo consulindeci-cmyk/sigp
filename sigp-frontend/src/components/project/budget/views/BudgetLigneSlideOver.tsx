@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { BudgetLigne } from '@/types/budget';
-import { X } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
@@ -9,19 +9,11 @@ import {
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import { formatMoney } from '@/utils/format';
+import { useFundingSources } from '@/hooks/useFundingSources';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Référentiels
 // ─────────────────────────────────────────────────────────────────────────────
-
-export const BAILLEURS_REF = [
-  { id: 'BM',   nom: 'Banque Mondiale'                 },
-  { id: 'AFD',  nom: 'AFD'                              },
-  { id: 'ETAT', nom: 'État'                             },
-  { id: 'UE',   nom: 'Union Européenne'                 },
-  { id: 'BAD',  nom: 'Banque Africaine de Développement'},
-  { id: 'BERD', nom: 'BERD'                             },
-];
 
 export const SOURCES_REF = [
   { id: 'PRET',         nom: 'Prêt'                   },
@@ -120,14 +112,21 @@ interface BudgetLigneSlideOverProps {
   onOpenChange:  (open: boolean) => void;
   ligne:         BudgetLigne | null;
   mode:          LigneSlideOverMode;
+  projectId:     string;
   onSave:        (data: Partial<BudgetLigne>) => void;
+  isSaving?:     boolean;
+  error?:        string | null;
 }
 
 export function BudgetLigneSlideOver({
-  open, onOpenChange, ligne, mode, onSave,
+  open, onOpenChange, ligne, mode, projectId, onSave, isSaving, error,
 }: BudgetLigneSlideOverProps) {
   const [values, setValues] = useState<LigneFormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<LigneFormErrors>({});
+
+  // bailleur_id référence désormais une vraie funding_sources.id du projet —
+  // plus de catalogue statique (cf. audit Budget/Sources de Financement).
+  const { data: fundingSources = [], isLoading: isLoadingFunding } = useFundingSources(projectId);
 
   useEffect(() => {
     if (!open) return;
@@ -202,7 +201,7 @@ export function BudgetLigneSlideOver({
     const montant_engage     = Number(values.montant_engage)     || 0;
     const montant_liquide    = Number(values.montant_liquide)    || 0;
     const montant_decaisse   = Number(values.montant_decaisse)   || 0;
-    const bailleur = BAILLEURS_REF.find(b => b.id === values.bailleur_id);
+    const bailleur = fundingSources.find(b => b.id === values.bailleur_id);
 
     onSave({
       libelle:               values.libelle.trim(),
@@ -269,12 +268,18 @@ export function BudgetLigneSlideOver({
                     id="bailleur"
                     value={values.bailleur_id}
                     onChange={e => set('bailleur_id', e.target.value)}
+                    disabled={isLoadingFunding}
                   >
-                    <option value="">Sélectionner…</option>
-                    {BAILLEURS_REF.map(b => (
+                    <option value="">{isLoadingFunding ? 'Chargement…' : 'Sélectionner…'}</option>
+                    {fundingSources.map(b => (
                       <option key={b.id} value={b.id}>{b.nom}</option>
                     ))}
                   </Select>
+                  {!isLoadingFunding && fundingSources.length === 0 && (
+                    <span className="text-[11px] text-muted-foreground mt-0.5">
+                      Aucune source de financement pour ce projet — ajoutez-en une depuis l'onglet Sources de Financement.
+                    </span>
+                  )}
                 </FRow>
 
                 <FRow id="source" label="Source de financement">
@@ -417,14 +422,21 @@ export function BudgetLigneSlideOver({
             </div>
 
           </div>
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
         </SlideOverBody>
 
         <SlideOverFooter>
           <SlideOverClose asChild>
-            <Button variant="outline">Annuler</Button>
+            <Button variant="outline" type="button">Annuler</Button>
           </SlideOverClose>
-          <Button variant="default" onClick={handleSave}>
-            {mode === 'edit' ? 'Enregistrer les modifications' : 'Ajouter la ligne'}
+          <Button variant="default" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? 'Enregistrement...' : mode === 'edit' ? 'Enregistrer les modifications' : 'Ajouter la ligne'}
           </Button>
         </SlideOverFooter>
       </SlideOverContent>

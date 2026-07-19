@@ -5,7 +5,7 @@ import { WorkflowLogTable, type WorkflowLogEntry } from '@/components/common/wor
 import { formatMoney } from '@/utils/format';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Card, CardContent } from '@/components/ui/data-display/Card';
-import { GitCommit, ArrowRightLeft, PlusCircle, MinusCircle, RefreshCw } from 'lucide-react';
+import { GitCommit, ArrowRightLeft, PlusCircle, MinusCircle, RefreshCw, Info } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -253,6 +253,16 @@ export function BudgetRevisionsView({ budgetVersion }: BudgetRevisionsViewProps)
             </div>
           </CardContent>
         </Card>
+
+        {/* ── Avertissement démo ────────────────────────────────────────────── */}
+        <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-4 py-3">
+          <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            <span className="font-semibold text-foreground">Démo — </span>
+            la frise et le journal ci-dessous sont reconstruits à partir du seul statut de la version, pas d'événements réellement horodatés.
+            Le workflow de révisions budgétaires (ajout de fonds, transferts, verrouillage) n'est pas encore implémenté : la liste ci-dessous restera toujours vide.
+          </p>
+        </div>
 
         {/* ── Lifecycle timeline + Audit log ───────────────────────────────── */}
         <div className="flex gap-6 items-start flex-wrap">

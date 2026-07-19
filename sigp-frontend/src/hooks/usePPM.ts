@@ -210,6 +210,9 @@ function adaptMarche(dto: PpmMarcheDto, versionId: string): PPMLigne {
     taux_change_estime:   x.taux_change_estime,
     montant_estime_base:  base,
     est_lot_unique:       x.est_lot_unique,
+    montant_signe:        dto.montantSigne ?? undefined,
+    titulaire:            dto.titulaire ?? undefined,
+    date_fin_effective:   d(dto.dateFinEffective) || undefined,
     dates_cles: {
       preparation_dao_prevue:       x.d_prep_dao_p,
       preparation_dao_reelle:       x.d_prep_dao_r || undefined,
@@ -265,6 +268,9 @@ function ligneToCreatePayload(projectId: string, l: LigneInput) {
     type:                 categorieToType(l.categorie),
     statut:               l.statut ? feStatutToBe(l.statut as StatutLignePPM) : undefined,
     montantEstime:        l.montant_estime_base || undefined,
+    montantSigne:         l.montant_signe || undefined,
+    titulaire:            l.titulaire || undefined,
+    dateFinEffective:     l.date_fin_effective || undefined,
     dateLancementPrevu:   l.dates_cles.lancement_dao_prevue    || undefined,
     dateSoumissionPrevu:  l.dates_cles.remise_offres_prevue    || undefined,
     dateAttribution:      l.dates_cles.attribution_prevue      || undefined,
@@ -304,6 +310,9 @@ function ligneToUpdatePayload(l: Partial<PPMLigne>, existing: PPMLigne) {
     type:                 categorieToType(merged.categorie),
     statut:               merged.statut ? feStatutToBe(merged.statut as StatutLignePPM) : undefined,
     montantEstime:        merged.montant_estime_base || undefined,
+    montantSigne:         merged.montant_signe || undefined,
+    titulaire:            merged.titulaire || undefined,
+    dateFinEffective:     merged.date_fin_effective || undefined,
     dateLancementPrevu:   merged.dates_cles.lancement_dao_prevue    || undefined,
     dateSoumissionPrevu:  merged.dates_cles.remise_offres_prevue    || undefined,
     dateAttribution:      merged.dates_cles.attribution_prevue      || undefined,
@@ -360,7 +369,7 @@ export function usePPM(projectId: string, versionId?: string) {
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const addMutation = useMutation({
-    mutationFn: async (payload: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => {
+    mutationFn: async (payload: Omit<PPMLigne, 'id' | 'version_hash' | 'ppm_version_id'>) => {
       const body = ligneToCreatePayload(projectId, payload as LigneInput);
       const { data } = await invokeEdgeFunction<{ data: PpmMarcheRow }>('ppm-create', body);
       return rowToDto(data);
@@ -392,7 +401,7 @@ export function usePPM(projectId: string, versionId?: string) {
   // ── Stable async wrappers (same interface as the old hook) ────────────────
 
   const addLigne = async (
-    payload: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>,
+    payload: Omit<PPMLigne, 'id' | 'version_hash' | 'ppm_version_id'>,
   ) => addMutation.mutateAsync(payload);
 
   const updateLigne = async (id: string, updates: Partial<PPMLigne>) =>

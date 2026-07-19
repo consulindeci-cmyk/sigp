@@ -10,7 +10,8 @@ import { BurnRateChart } from '@/components/common/analytics/charts/BurnRateChar
 import { HeatmapChart } from '@/components/common/analytics/charts/HeatmapChart';
 import { SunburstChart } from '@/components/common/analytics/charts/SunburstChart';
 import { formatMoney } from '@/utils/format';
-import { AlertCircle, Check, TrendingUp, PieChart, LayoutGrid } from 'lucide-react';
+import { AlertCircle, Check, TrendingUp, PieChart, LayoutGrid, Info } from 'lucide-react';
+import { Badge } from '@/components/ui/data-display/Badge';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CSV export helper
@@ -231,6 +232,14 @@ export function BudgetAnalyticsDashboard({ budgetVersion, lignes }: BudgetAnalyt
         onRefresh={handleRefresh}
         onExport={handleExport}
       />
+
+      <div className="shrink-0 mx-6 mt-3 flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
+        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>
+          <Badge variant="outline" className="mr-1.5 text-[10px] align-middle">Démo</Badge>
+          Les graphiques ci-dessous (Courbe en S, Burn Rate, Heatmap, Sunburst) utilisent des données de démonstration, pas encore les vraies transactions du projet. Seule la bande de KPI ci-dessus reflète les montants réels.
+        </span>
+      </div>
 
       <AnalyticsFilters
         groups={filterGroups}

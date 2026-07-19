@@ -35,15 +35,31 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const now = new Date().toISOString();
+
     const { error: deleteError } = await admin
       .from('budget_versions')
       .update({
-        deleted_at: new Date().toISOString(),
+        deleted_at: now,
         updated_by: profile.id,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq('id', body.id);
     if (deleteError) throw deleteError;
+
+    // Cascade : sans ce soft-delete, les lignes restaient actives
+    // (deleted_at IS NULL) sous une version elle-même supprimée — orphelines
+    // au sens applicatif, invisibles dans l'UI (qui ne charge que la version
+    // active) mais toujours en base, potentiellement réinjectées si la
+    // version était un jour restaurée. Même patron que
+    // logframe-objectives-delete / ptba-delete / wbs-delete.
+    const { data: cascadedLignes, error: cascadeError } = await admin
+      .from('budget_lignes')
+      .update({ deleted_at: now, updated_by: profile.id, updated_at: now })
+      .eq('version_id', body.id)
+      .is('deleted_at', null)
+      .select('id');
+    if (cascadeError) throw cascadeError;
 
     await admin.from('historique').insert({
       id: crypto.randomUUID(),
@@ -55,7 +71,12 @@ Deno.serve(async (req: Request) => {
       avant: existing,
     });
 
-    return json({ message: 'Version budgétaire supprimée' });
+    const cascadedCount = cascadedLignes?.length ?? 0;
+    return json({
+      message: cascadedCount > 0
+        ? `Version budgétaire et ${cascadedCount} ligne(s) associée(s) supprimées`
+        : 'Version budgétaire supprimée',
+    });
   } catch (err) {
     const status = (err as { status?: number }).status ?? 500;
     console.error('[budget-versions-delete]', err);

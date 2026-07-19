@@ -2,21 +2,23 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
-import { useBudget, useBudgetVersion, useBudgetWorkflow } from '@/hooks/useBudget';
+import { useAuthStore } from '@/stores/authStore';
+import {
+  useBudget, useBudgetVersion, useBudgetWorkflow,
+  useCreateBudgetLine, useUpdateBudgetLine, useDeleteBudgetLine,
+} from '@/hooks/useBudget';
 import { formatMoney } from '@/utils/format';
 import { StatutBudget } from '@/types/budget';
 import type { BudgetLigne, BudgetVersion } from '@/types/budget';
-import type { LigneHistoryEntry } from '@/components/project/budget/views/BudgetMatrix';
+import type { LigneHistoryEntry, ImportResult } from '@/components/project/budget/views/BudgetMatrix';
 import type { VersionItem } from '@/components/common/workflow/VersionSelector';
 import {
   GitCommit, CheckCircle2, AlertCircle, LayoutGrid,
-  TrendingUp, Banknote, Loader2, PieChart, Wallet,
-  BarChart2, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, Users,
+  TrendingUp, Banknote, Loader2, PieChart, Wallet, BarChart2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Button } from '@/components/ui/forms/Button';
-import { Input } from '@/components/ui/forms/Input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/navigation/Tabs';
 import { BudgetMatrix } from '@/components/project/budget/views/BudgetMatrix';
 import { BudgetRevisionsView } from '@/components/project/budget/views/BudgetRevisionsView';
@@ -76,16 +78,19 @@ interface MatrixContentProps {
   budgetVersion?:   BudgetVersion;
   lignes:           BudgetLigne[];
   lineHistory:      LigneHistoryEntry[];
-  onAddLigne:       (data: Partial<BudgetLigne>) => void;
-  onEditLigne:      (id: string, data: Partial<BudgetLigne>) => void;
-  onDeleteLigne:    (id: string) => void;
-  onDuplicateLigne: (id: string) => void;
-  onImportLignes:   (lignes: Partial<BudgetLigne>[]) => void;
+  projectId:        string;
+  canManage:        boolean;
+  canDelete:        boolean;
+  onAddLigne:       (data: Partial<BudgetLigne>) => Promise<void>;
+  onEditLigne:      (id: string, data: Partial<BudgetLigne>) => Promise<void>;
+  onDeleteLigne:    (id: string) => Promise<void>;
+  onDuplicateLigne: (id: string) => Promise<void>;
+  onImportLignes:   (lignes: Partial<BudgetLigne>[]) => Promise<ImportResult>;
 }
 
 function MatrixContent({
   isLoading, error, budgetVersion,
-  lignes, lineHistory,
+  lignes, lineHistory, projectId, canManage, canDelete,
   onAddLigne, onEditLigne, onDeleteLigne, onDuplicateLigne, onImportLignes,
 }: MatrixContentProps) {
   if (isLoading)      return <LoadingView />;
@@ -95,6 +100,9 @@ function MatrixContent({
     <BudgetMatrix
       lignes={lignes}
       lineHistory={lineHistory}
+      projectId={projectId}
+      canManage={canManage}
+      canDelete={canDelete}
       onAddLigne={onAddLigne}
       onEditLigne={onEditLigne}
       onDeleteLigne={onDeleteLigne}
@@ -105,263 +113,29 @@ function MatrixContent({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FinancementsView — tableau complet avec recherche, tri, indicateurs
+// FundingRedirectView — l'ancien onglet "Financements" agrégeait les lignes
+// budgétaires locales par bailleur_id sans jamais lire ni écrire dans la
+// vraie table funding_sources (cf. audit Budget / Sources de Financement) —
+// un troisième concept de "bailleur" totalement déconnecté des deux autres
+// (BudgetLigneSlideOver + le vrai écran ProjectFundingTab). Remplacé par un
+// simple renvoi vers l'écran réel, seule source de vérité pour les bailleurs.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SortKey = 'nom' | 'revise' | 'engage' | 'decaisse' | 'disponible' | 'taux';
-
-interface BailleurStats {
-  id:         string;
-  nom:        string;
-  revise:     number;
-  engage:     number;
-  decaisse:   number;
-  disponible: number;
-  taux:       number;
-  pctPart:    number;
-}
-
-function SortIcon({ col, current, asc }: { col: SortKey; current: SortKey; asc: boolean }) {
-  if (col !== current) return <ChevronsUpDown className="h-3 w-3 opacity-40 inline-block ml-1" />;
-  return asc
-    ? <ChevronUp   className="h-3 w-3 text-primary inline-block ml-1" />
-    : <ChevronDown className="h-3 w-3 text-primary inline-block ml-1" />;
-}
-
-function FinancementsView({ lignes }: { lignes: BudgetLigne[] }) {
-  const [search,  setSearch]  = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('revise');
-  const [sortAsc, setSortAsc] = useState(false);
-
-  const byBailleur = useMemo((): BailleurStats[] => {
-    const map: Record<string, Omit<BailleurStats, 'taux' | 'pctPart'>> = {};
-    for (const l of lignes) {
-      const k = l.bailleur_id;
-      if (!map[k]) {
-        map[k] = { id: k, nom: l.bailleur_nom || l.bailleur_id, revise: 0, engage: 0, decaisse: 0, disponible: 0 };
-      }
-      map[k].revise     += l.montant_revise;
-      map[k].engage     += l.montant_engage;
-      map[k].decaisse   += l.montant_decaisse;
-      map[k].disponible += l.solde_disponible;
-    }
-    const totalRevise = Object.values(map).reduce((s, b) => s + b.revise, 0);
-    return Object.values(map).map(b => ({
-      ...b,
-      taux:    b.revise > 0 ? (b.decaisse / b.revise * 100) : 0,
-      pctPart: totalRevise > 0 ? (b.revise / totalRevise * 100) : 0,
-    }));
-  }, [lignes]);
-
-  const totalRevise   = useMemo(() => byBailleur.reduce((s, b) => s + b.revise,   0), [byBailleur]);
-  const totalEngage   = useMemo(() => byBailleur.reduce((s, b) => s + b.engage,   0), [byBailleur]);
-  const totalDecaisse = useMemo(() => byBailleur.reduce((s, b) => s + b.decaisse, 0), [byBailleur]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return byBailleur
-      .filter(b => !q || b.nom.toLowerCase().includes(q))
-      .sort((a, b) => {
-        if (sortKey === 'nom') {
-          return sortAsc ? a.nom.localeCompare(b.nom) : b.nom.localeCompare(a.nom);
-        }
-        const va = a[sortKey];
-        const vb = b[sortKey];
-        return sortAsc ? va - vb : vb - va;
-      });
-  }, [byBailleur, search, sortKey, sortAsc]);
-
-  // Totaux calculés uniquement sur les bailleurs visibles (après filtre de recherche)
-  const ftRevise     = useMemo(() => filtered.reduce((s, b) => s + b.revise,     0), [filtered]);
-  const ftEngage     = useMemo(() => filtered.reduce((s, b) => s + b.engage,     0), [filtered]);
-  const ftDecaisse   = useMemo(() => filtered.reduce((s, b) => s + b.decaisse,   0), [filtered]);
-  const ftDisponible = useMemo(() => filtered.reduce((s, b) => s + b.disponible, 0), [filtered]);
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortAsc(prev => !prev);
-    else { setSortKey(key); setSortAsc(false); }
-  }
-
-  const tauxGlobalEngagement  = totalRevise > 0 ? (totalEngage   / totalRevise * 100) : 0;
-  const tauxGlobalDecaissement = totalRevise > 0 ? (totalDecaisse / totalRevise * 100) : 0;
-
-  if (lignes.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-        <Users className="h-10 w-10 opacity-40" />
-        <p className="text-base font-semibold text-foreground">Aucun financement</p>
-        <p className="text-sm text-center max-w-sm">
-          Ajoutez des lignes budgétaires pour voir la répartition par bailleur.
+function FundingRedirectView({ onNavigate }: { onNavigate: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-8">
+      <BarChart2 className="h-10 w-10 text-muted-foreground opacity-40" aria-hidden="true" />
+      <div>
+        <p className="text-base font-semibold text-foreground mb-1">Gestion des Sources de Financement</p>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Les bailleurs, contreparties et leur répartition se gèrent désormais depuis l'écran dédié
+          « Sources de Financement », connecté aux vraies données du projet.
         </p>
       </div>
-    );
-  }
-
-  return (
-    <div className="h-full overflow-auto bg-background">
-      <div className="max-w-5xl mx-auto w-full p-6 flex flex-col gap-6">
-
-        {/* ── KPI summary ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-card border border-border rounded-lg p-4 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Budget total</p>
-            <p className="font-mono text-base font-bold text-foreground">{formatMoney(totalRevise)}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Engagé</p>
-            <p className="font-mono text-base font-bold text-warning">{formatMoney(totalEngage)}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{tauxGlobalEngagement.toFixed(1)} %</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Décaissé</p>
-            <p className="font-mono text-base font-bold text-success">{formatMoney(totalDecaisse)}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{tauxGlobalDecaissement.toFixed(1)} %</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Bailleurs</p>
-            <p className="font-mono text-base font-bold text-primary">{byBailleur.length}</p>
-          </div>
-        </div>
-
-        {/* ── Search ──────────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-bold text-foreground">Répartition par Bailleur</h2>
-          <div className="relative ml-auto">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher un bailleur…"
-              className="h-8 text-xs pl-8 pr-7 w-52"
-            />
-            {search && (
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearch('')} aria-label="Effacer">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Table ───────────────────────────────────────────────────────── */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-muted/50 border-b border-border">
-                  {(
-                    [
-                      { key: 'nom',        label: 'Bailleur',      align: 'left'  },
-                      { key: 'revise',     label: 'Budget révisé', align: 'right' },
-                      { key: 'engage',     label: 'Engagé',        align: 'right' },
-                      { key: 'decaisse',   label: 'Décaissé',      align: 'right' },
-                      { key: 'disponible', label: 'Disponible',    align: 'right' },
-                      { key: 'taux',       label: 'Taux décais.',  align: 'right' },
-                    ] as { key: SortKey; label: string; align: string }[]
-                  ).map(col => (
-                    <th
-                      key={col.key}
-                      className={`px-4 py-3 text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground select-none whitespace-nowrap text-${col.align}`}
-                      onClick={() => toggleSort(col.key)}
-                    >
-                      {col.label}
-                      <SortIcon col={col.key} current={sortKey} asc={sortAsc} />
-                    </th>
-                  ))}
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-left">Part / Progression</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      Aucun bailleur ne correspond à la recherche.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map(b => {
-                    const pctEng = b.revise > 0 ? (b.engage   / b.revise * 100) : 0;
-                    const pctDec = b.revise > 0 ? (b.decaisse / b.revise * 100) : 0;
-
-                    return (
-                      <tr key={b.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-sm text-foreground">{b.nom}</div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">
-                            Part du budget : <span className="font-medium">{b.pctPart.toFixed(1)} %</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-sm font-semibold text-foreground">{formatMoney(b.revise)}</td>
-                        <td className="px-4 py-3 text-right font-mono text-sm text-warning">
-                          {formatMoney(b.engage)}
-                          <div className="text-[10px] text-muted-foreground">{pctEng.toFixed(1)} %</div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-sm text-success">
-                          {formatMoney(b.decaisse)}
-                          <div className="text-[10px] text-muted-foreground">{pctDec.toFixed(1)} %</div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-sm text-primary">{formatMoney(b.disponible)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`text-sm font-bold ${b.taux >= 50 ? 'text-success' : b.taux >= 25 ? 'text-warning' : 'text-muted-foreground'}`}>
-                            {b.taux.toFixed(1)} %
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 min-w-[160px]">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex justify-between text-[9px] text-muted-foreground">
-                              <span>Engagé</span><span>{pctEng.toFixed(0)} %</span>
-                            </div>
-                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-warning/60 rounded-full relative"
-                                style={{ width: `${Math.min(pctEng, 100)}%` }}
-                              >
-                                <div
-                                  className="absolute inset-y-0 left-0 bg-success rounded-full"
-                                  style={{ width: pctEng > 0 ? `${Math.min(pctDec / pctEng * 100, 100)}%` : '0%' }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-
-              {/* Totals row — calculés sur les bailleurs filtrés uniquement */}
-              {filtered.length > 0 && (() => {
-                const ftTauxEng = ftRevise > 0 ? (ftEngage   / ftRevise * 100) : 0;
-                const ftTauxDec = ftRevise > 0 ? (ftDecaisse / ftRevise * 100) : 0;
-                return (
-                  <tfoot>
-                    <tr className="bg-muted/30 border-t-2 border-border font-bold">
-                      <td className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide">
-                        TOTAL ({filtered.length} bailleur{filtered.length > 1 ? 's' : ''})
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-sm text-foreground">{formatMoney(ftRevise)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-sm text-warning">{formatMoney(ftEngage)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-sm text-success">{formatMoney(ftDecaisse)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-sm text-primary">{formatMoney(ftDisponible)}</td>
-                      <td className="px-4 py-3 text-right text-sm font-bold text-foreground">
-                        {ftTauxDec.toFixed(1)} %
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-warning/60 rounded-full relative" style={{ width: `${Math.min(ftTauxEng, 100)}%` }}>
-                            <div className="absolute inset-y-0 left-0 bg-success rounded-full" style={{ width: ftTauxEng > 0 ? `${Math.min(ftTauxDec / ftTauxEng * 100, 100)}%` : '0%' }} />
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </tfoot>
-                );
-              })()}
-            </table>
-          </div>
-        </div>
-
-      </div>
+      <Button variant="default" size="sm" onClick={onNavigate}>
+        <BarChart2 className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+        Aller aux Sources de Financement
+      </Button>
     </div>
   );
 }
@@ -380,7 +154,7 @@ function uid(prefix = 'id'): string {
 
 export default function BudgetPage() {
   const { id: urlProjectId } = useParams();
-  const { activeProjectId }  = useUIStore();
+  const { activeProjectId, setActiveProjectTab } = useUIStore();
   const resolvedProjectId    = urlProjectId || activeProjectId || '';
 
   // Empty string → hook returns active version (v2.0 in mock)
@@ -389,22 +163,31 @@ export default function BudgetPage() {
   const { data: budget, isLoading: isLoadingBudget, error: errorBudget } = useBudget(resolvedProjectId);
   const { data: budgetVersion, isLoading: isLoadingVersion } = useBudgetVersion(resolvedProjectId, versionSelectionnee);
   const workflowMutation = useBudgetWorkflow(resolvedProjectId);
+  const createLineMutation = useCreateBudgetLine(versionSelectionnee);
+  const updateLineMutation = useUpdateBudgetLine(versionSelectionnee);
+  const deleteLineMutation = useDeleteBudgetLine(versionSelectionnee);
 
   const isLoading = isLoadingBudget || isLoadingVersion;
   const error     = errorBudget;
 
-  // ── Local state for CRUD ──────────────────────────────────────────────────
-  const [localLignes,  setLocalLignes]  = useState<BudgetLigne[]>([]);
-  const [localStatut,  setLocalStatut]  = useState<StatutBudget>(StatutBudget.BROUILLON);
-  const [lineHistory,  setLineHistory]  = useState<LigneHistoryEntry[]>([]);
+  // Miroir des rôles serveur (requireRole) sur budget-lines-*/budget-versions-update
+  // (COORDINATEUR/CHARGE_PROGRAMME/FINANCIER/ADMIN/SUPER_ADMIN) et *-delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
-  // Sync from hook when version changes
-  useEffect(() => {
-    if (budgetVersion) {
-      setLocalLignes(budgetVersion.lignes ?? []);
-      setLocalStatut(budgetVersion.statut);
-    }
-  }, [budgetVersion?.id]);
+  // ── Champs sans colonne DB (bailleur_id, compte_comptable_id, montant_pre_
+  // engage, montant_liquide, etc. — cf. audit Budget, aucune refonte du modèle
+  // ici) : conservés en overlay client, fusionnés sur les lignes réelles pour
+  // ne pas perdre la saisie affichée pendant la session, sans jamais prétendre
+  // qu'ils sont persistés côté serveur.
+  const [decorations, setDecorations] = useState<Record<string, Partial<BudgetLigne>>>({});
+  const [lineHistory, setLineHistory] = useState<LigneHistoryEntry[]>([]);
+
+  const displayLignes = useMemo((): BudgetLigne[] => {
+    const base = budgetVersion?.lignes ?? [];
+    return base.map(l => ({ ...l, ...decorations[l.id] }));
+  }, [budgetVersion?.lignes, decorations]);
 
   // Set active version once budget loads
   useEffect(() => {
@@ -413,10 +196,15 @@ export default function BudgetPage() {
     }
   }, [budget?.version_active_id, versionSelectionnee]);
 
-  // Clear history when version changes
+  // Purge décorations + historique de session au changement de version
   useEffect(() => {
+    setDecorations({});
     setLineHistory([]);
   }, [budgetVersion?.id]);
+
+  // ── Bannières workflow (Soumettre/Approuver/Rejeter) ──────────────────────
+  const [workflowError,   setWorkflowError]   = useState<string | null>(null);
+  const [workflowSuccess, setWorkflowSuccess] = useState<string | null>(null);
 
   if (!resolvedProjectId) {
     return (
@@ -450,163 +238,162 @@ export default function BudgetPage() {
   }, [budget]);
 
   // ── Workflow ──────────────────────────────────────────────────────────────
+  // Plus de mise à jour optimiste aveugle : le badge de statut affiché vient
+  // toujours de budgetVersion.statut (refetch serveur déclenché par
+  // useBudgetWorkflow.onSuccess) — jamais dupliqué en état local.
   function handleActionWorkflow(action: 'SOUMETTRE' | 'APPROUVER' | 'REJETER') {
-    let newStatut = localStatut;
+    if (!budget || !budgetVersion) return;
+    let newStatut = budgetVersion.statut;
     if (action === 'SOUMETTRE') newStatut = StatutBudget.SOUMIS;
     if (action === 'APPROUVER') newStatut = StatutBudget.APPROUVE;
     if (action === 'REJETER')   newStatut = StatutBudget.BROUILLON;
-    setLocalStatut(newStatut);
-    if (budget) {
-      workflowMutation.mutate({
+
+    setWorkflowError(null);
+    setWorkflowSuccess(null);
+    workflowMutation.mutate(
+      {
         budgetId:      budget.id,
         versionId:     versionSelectionnee,
         nouveauStatut: newStatut,
         commentaire:   `Action : ${action}`,
-      });
+      },
+      {
+        onSuccess: () => {
+          setWorkflowSuccess('Statut du budget mis à jour avec succès.');
+          setTimeout(() => setWorkflowSuccess(null), 3000);
+        },
+        onError: (err) => setWorkflowError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.'),
+      }
+    );
+  }
+
+  // ── CRUD réel (Edge Functions) + décorations client + historique de session ─
+  // Seuls libelle/code_ligne/categorie/montant_prevu/montant_engage/
+  // montant_paye ont une colonne réelle en base (cf. audit Budget) ;
+  // bailleur_id/bailleur_nom/source_financement_id/compte_comptable_id/
+  // montant_pre_engage/montant_liquide n'existent nulle part côté serveur et
+  // restent de purs artefacts d'affichage (overlay `decorations`).
+
+  function extractDecoration(data: Partial<BudgetLigne>): Partial<BudgetLigne> {
+    const dec: Partial<BudgetLigne> = {};
+    if (data.bailleur_id           !== undefined) dec.bailleur_id           = data.bailleur_id;
+    if (data.bailleur_nom          !== undefined) dec.bailleur_nom          = data.bailleur_nom;
+    if (data.source_financement_id !== undefined) dec.source_financement_id = data.source_financement_id;
+    if (data.compte_comptable_id   !== undefined) dec.compte_comptable_id   = data.compte_comptable_id;
+    if (data.montant_pre_engage    !== undefined) dec.montant_pre_engage    = data.montant_pre_engage;
+    if (data.montant_liquide       !== undefined) dec.montant_liquide       = data.montant_liquide;
+    return dec;
+  }
+
+  async function handleAddLigne(data: Partial<BudgetLigne>) {
+    const { data: created } = await createLineMutation.mutateAsync({
+      versionId:     versionSelectionnee,
+      codeLigne:     data.code_ligne || uid('wbs'),
+      libelle:       data.libelle || '',
+      categorie:     data.categorie_id || undefined,
+      montantPrevu:  data.montant_revise ?? data.montant_initial ?? 0,
+      montantEngage: data.montant_engage ?? 0,
+      montantPaye:   data.montant_decaisse ?? 0,
+    });
+    if (created?.id) {
+      setDecorations(prev => ({ ...prev, [created.id]: extractDecoration(data) }));
+      setLineHistory(prev => [...prev, {
+        id: uid('h'), ligneId: created.id, action: 'CREATION',
+        date: new Date().toISOString(), user: 'Utilisateur', after: data,
+      }]);
     }
   }
 
-  // ── CRUD + history tracking ───────────────────────────────────────────────
-
-  function handleAddLigne(data: Partial<BudgetLigne>) {
-    const id = uid('l');
-    const newLigne: BudgetLigne = {
+  async function handleEditLigne(id: string, data: Partial<BudgetLigne>) {
+    const before = displayLignes.find(l => l.id === id);
+    await updateLineMutation.mutateAsync({
       id,
-      budget_version_id:     budgetVersion?.id ?? 'local',
-      version:               1,
-      code_ligne:                data.code_ligne                || uid('wbs'),
-      libelle:               data.libelle,
-      bailleur_id:           data.bailleur_id           || '',
-      bailleur_nom:          data.bailleur_nom,
-      source_financement_id: data.source_financement_id || 'PRET',
-      categorie_id:          data.categorie_id          || '',
-      compte_comptable_id:   data.compte_comptable_id,
-      montant_initial:       data.montant_initial       ?? 0,
-      montant_revise:        data.montant_revise        ?? 0,
-      montant_pre_engage:    data.montant_pre_engage    ?? 0,
-      montant_engage:        data.montant_engage        ?? 0,
-      montant_liquide:       data.montant_liquide       ?? 0,
-      montant_decaisse:      data.montant_decaisse      ?? 0,
-      solde_disponible:      data.solde_disponible      ?? 0,
-      reste_a_payer:         data.reste_a_payer         ?? 0,
-    };
-    setLocalLignes(prev => [...prev, newLigne]);
+      libelle:       data.libelle,
+      categorie:     data.categorie_id,
+      montantPrevu:  data.montant_revise,
+      montantEngage: data.montant_engage,
+      montantPaye:   data.montant_decaisse,
+    });
+    setDecorations(prev => ({ ...prev, [id]: { ...prev[id], ...extractDecoration(data) } }));
     setLineHistory(prev => [...prev, {
-      id:      uid('h'),
-      ligneId: id,
-      action:  'CREATION',
-      date:    new Date().toISOString(),
-      user:    'Utilisateur',
-      after:   newLigne,
+      id: uid('h'), ligneId: id, action: 'MODIFICATION',
+      date: new Date().toISOString(), user: 'Utilisateur', before, after: data,
     }]);
   }
 
-  function handleEditLigne(id: string, data: Partial<BudgetLigne>) {
-    const before = localLignes.find(l => l.id === id);
-    setLocalLignes(prev => prev.map(l => {
-      if (l.id !== id) return l;
-      const updated: BudgetLigne = { ...l, ...data };
-      updated.solde_disponible = Math.max(0, updated.montant_revise - updated.montant_pre_engage - updated.montant_engage);
-      updated.reste_a_payer    = Math.max(0, updated.montant_engage - updated.montant_decaisse);
-      return updated;
-    }));
+  async function handleDeleteLigne(id: string) {
+    const deleted = displayLignes.find(l => l.id === id);
+    await deleteLineMutation.mutateAsync(id);
+    setDecorations(prev => { const next = { ...prev }; delete next[id]; return next; });
     setLineHistory(prev => [...prev, {
-      id:      uid('h'),
-      ligneId: id,
-      action:  'MODIFICATION',
-      date:    new Date().toISOString(),
-      user:    'Utilisateur',
-      before,
-      after:   data,
-    }]);
-  }
-
-  function handleDeleteLigne(id: string) {
-    const deleted = localLignes.find(l => l.id === id);
-    setLocalLignes(prev => prev.filter(l => l.id !== id));
-    setLineHistory(prev => [...prev, {
-      id:      uid('h'),
-      ligneId: id,
-      action:  'SUPPRESSION',
-      date:    new Date().toISOString(),
-      user:    'Utilisateur',
+      id: uid('h'), ligneId: id, action: 'SUPPRESSION',
+      date: new Date().toISOString(), user: 'Utilisateur',
       comment: deleted ? `Ligne "${deleted.libelle || deleted.code_ligne}" supprimée` : undefined,
-      before:  deleted,
+      before: deleted,
     }]);
   }
 
-  function handleDuplicateLigne(id: string) {
-    const source = localLignes.find(l => l.id === id);
+  async function handleDuplicateLigne(id: string) {
+    const source = displayLignes.find(l => l.id === id);
     if (!source) return;
-    const newId = uid('l');
-    const duplicate: BudgetLigne = {
-      ...source,
-      id:      newId,
-      libelle: source.libelle ? `${source.libelle} (copie)` : undefined,
-      code_ligne:  `${source.code_ligne}-copy`,
-    };
-    setLocalLignes(prev => {
-      const idx  = prev.findIndex(l => l.id === id);
-      const next = [...prev];
-      next.splice(idx + 1, 0, duplicate);
-      return next;
+    const { data: created } = await createLineMutation.mutateAsync({
+      versionId:     versionSelectionnee,
+      codeLigne:     `${source.code_ligne}-copy`,
+      libelle:       source.libelle ? `${source.libelle} (copie)` : '',
+      categorie:     source.categorie_id || undefined,
+      montantPrevu:  source.montant_revise,
+      montantEngage: source.montant_engage,
+      montantPaye:   source.montant_decaisse,
     });
-    setLineHistory(prev => [...prev, {
-      id:      uid('h'),
-      ligneId: newId,
-      action:  'DUPLICATION',
-      date:    new Date().toISOString(),
-      user:    'Utilisateur',
-      comment: `Dupliqué depuis "${source.libelle || source.code_ligne}"`,
-      after:   duplicate,
-    }]);
+    if (created?.id) {
+      setDecorations(prev => ({ ...prev, [created.id]: extractDecoration(source) }));
+      setLineHistory(prev => [...prev, {
+        id: uid('h'), ligneId: created.id, action: 'DUPLICATION',
+        date: new Date().toISOString(), user: 'Utilisateur',
+        comment: `Dupliqué depuis "${source.libelle || source.code_ligne}"`, after: source,
+      }]);
+    }
   }
 
-  function handleImportLignes(newLignes: Partial<BudgetLigne>[]) {
-    const created: BudgetLigne[] = newLignes.map((data, i) => {
-      const id = uid(`l-imp-${i}`);
-      return {
-        id,
-        budget_version_id:     budgetVersion?.id ?? 'local',
-        version:               1,
-        code_ligne:                data.code_ligne                || uid('wbs'),
-        libelle:               data.libelle,
-        bailleur_id:           data.bailleur_id           || '',
-        bailleur_nom:          data.bailleur_nom,
-        source_financement_id: data.source_financement_id || 'PRET',
-        categorie_id:          data.categorie_id          || '',
-        compte_comptable_id:   data.compte_comptable_id,
-        montant_initial:       data.montant_initial       ?? 0,
-        montant_revise:        data.montant_revise        ?? 0,
-        montant_pre_engage:    data.montant_pre_engage    ?? 0,
-        montant_engage:        data.montant_engage        ?? 0,
-        montant_liquide:       data.montant_liquide       ?? 0,
-        montant_decaisse:      data.montant_decaisse      ?? 0,
-        solde_disponible:      data.solde_disponible      ?? 0,
-        reste_a_payer:         data.reste_a_payer         ?? 0,
-      };
-    });
-    setLocalLignes(prev => [...prev, ...created]);
-    setLineHistory(prev => [
-      ...prev,
-      ...created.map(l => ({
-        id:      uid('h'),
-        ligneId: l.id,
-        action:  'CREATION' as const,
-        date:    new Date().toISOString(),
-        user:    'Import Excel',
-        comment: `Importé depuis fichier Excel`,
-        after:   l,
-      })),
-    ]);
+  async function handleImportLignes(newLignes: Partial<BudgetLigne>[]): Promise<ImportResult> {
+    let succeeded = 0;
+    const failed: ImportResult['failed'] = [];
+    for (const data of newLignes) {
+      try {
+        const { data: created } = await createLineMutation.mutateAsync({
+          versionId:     versionSelectionnee,
+          codeLigne:     data.code_ligne || uid('wbs-import'),
+          libelle:       data.libelle || '',
+          categorie:     data.categorie_id || undefined,
+          montantPrevu:  data.montant_revise ?? data.montant_initial ?? 0,
+          montantEngage: data.montant_engage ?? 0,
+          montantPaye:   data.montant_decaisse ?? 0,
+        });
+        succeeded += 1;
+        if (created?.id) {
+          setDecorations(prev => ({ ...prev, [created.id]: extractDecoration(data) }));
+          setLineHistory(prev => [...prev, {
+            id: uid('h'), ligneId: created.id, action: 'CREATION',
+            date: new Date().toISOString(), user: 'Import Excel',
+            comment: 'Importé depuis fichier Excel', after: data,
+          }]);
+        }
+      } catch (err) {
+        failed.push({
+          libelle: data.libelle || data.code_ligne || '—',
+          error:   err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
+    }
+    return { succeeded, failed };
   }
 
-  // ── KPIs from local state ─────────────────────────────────────────────────
-  const totalBAC        = useMemo(() => localLignes.reduce((s, l) => s + l.montant_revise,     0), [localLignes]);
-  const totalPreEngage  = useMemo(() => localLignes.reduce((s, l) => s + l.montant_pre_engage, 0), [localLignes]);
-  const totalEngage     = useMemo(() => localLignes.reduce((s, l) => s + l.montant_engage,     0), [localLignes]);
-  const totalDecaisse   = useMemo(() => localLignes.reduce((s, l) => s + l.montant_decaisse,   0), [localLignes]);
-  const totalDisponible = useMemo(() => localLignes.reduce((s, l) => s + l.solde_disponible,   0), [localLignes]);
+  // ── KPIs (source serveur + décorations) ───────────────────────────────────
+  const totalBAC        = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_revise,     0), [displayLignes]);
+  const totalPreEngage  = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_pre_engage, 0), [displayLignes]);
+  const totalEngage     = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_engage,     0), [displayLignes]);
+  const totalDecaisse   = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_decaisse,   0), [displayLignes]);
+  const totalDisponible = useMemo(() => displayLignes.reduce((s, l) => s + l.solde_disponible,   0), [displayLignes]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
@@ -616,7 +403,7 @@ export default function BudgetPage() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3 flex-wrap">
             <PageHeader title="Budget &amp; Suivi Financier" />
-            {renderStatusBadge(localStatut)}
+            {renderStatusBadge(budgetVersion?.statut)}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Suivi de l'exécution financière · version {budgetVersion?.numero_version || '—'}
@@ -632,18 +419,18 @@ export default function BudgetPage() {
             />
           )}
 
-          {localStatut === StatutBudget.BROUILLON && (
+          {canManage && budgetVersion?.statut === StatutBudget.BROUILLON && (
             <Button
               size="sm" variant="default"
               leftIcon={<CheckCircle2 className="h-4 w-4" />}
               onClick={() => handleActionWorkflow('SOUMETTRE')}
               disabled={workflowMutation.isPending}
             >
-              Soumettre
+              {workflowMutation.isPending ? 'Envoi...' : 'Soumettre'}
             </Button>
           )}
 
-          {localStatut === StatutBudget.SOUMIS && (
+          {canManage && budgetVersion?.statut === StatutBudget.SOUMIS && (
             <>
               <Button
                 size="sm" variant="outline"
@@ -660,12 +447,26 @@ export default function BudgetPage() {
                 onClick={() => handleActionWorkflow('APPROUVER')}
                 disabled={workflowMutation.isPending}
               >
-                Approuver
+                {workflowMutation.isPending ? 'Envoi...' : 'Approuver'}
               </Button>
             </>
           )}
         </div>
       </div>
+
+      {(workflowError || workflowSuccess) && (
+        <div
+          className={`shrink-0 mx-6 mt-3 flex items-center gap-2 text-xs rounded-md px-3 py-2 border ${
+            workflowError
+              ? 'text-destructive bg-destructive/10 border-destructive/20'
+              : 'text-success bg-success/10 border-success/20'
+          }`}
+          role="alert"
+        >
+          {workflowError ? <AlertCircle className="h-3.5 w-3.5 shrink-0" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+          {workflowError || workflowSuccess}
+        </div>
+      )}
 
       {/* ── KPI STRIP ───────────────────────────────────────────────────── */}
       <div className="shrink-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 px-6 py-4 border-b border-border bg-muted/10">
@@ -715,10 +516,12 @@ export default function BudgetPage() {
           <TabsTrigger value="revisions" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <GitCommit className="h-3.5 w-3.5" />
             Révisions
+            <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">Démo</Badge>
           </TabsTrigger>
           <TabsTrigger value="bi" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <PieChart className="h-3.5 w-3.5" />
             Dashboard BI
+            <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">Démo</Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -727,8 +530,11 @@ export default function BudgetPage() {
             isLoading={isLoading}
             error={error}
             budgetVersion={budgetVersion}
-            lignes={localLignes}
+            lignes={displayLignes}
             lineHistory={lineHistory}
+            projectId={resolvedProjectId}
+            canManage={canManage}
+            canDelete={canDelete}
             onAddLigne={handleAddLigne}
             onEditLigne={handleEditLigne}
             onDeleteLigne={handleDeleteLigne}
@@ -738,10 +544,7 @@ export default function BudgetPage() {
         </TabsContent>
 
         <TabsContent value="finances" className="flex-1 min-h-0 overflow-hidden mt-0">
-          {isLoading
-            ? <LoadingView />
-            : <FinancementsView lignes={localLignes} />
-          }
+          <FundingRedirectView onNavigate={() => setActiveProjectTab('funding')} />
         </TabsContent>
 
         <TabsContent value="revisions" className="flex-1 min-h-0 overflow-hidden mt-0">
@@ -753,7 +556,7 @@ export default function BudgetPage() {
 
         <TabsContent value="bi" className="flex-1 min-h-0 overflow-hidden mt-0">
           {budgetVersion
-            ? <BudgetAnalyticsDashboard budgetVersion={budgetVersion} lignes={localLignes} />
+            ? <BudgetAnalyticsDashboard budgetVersion={budgetVersion} lignes={displayLignes} />
             : <EmptyBudgetView />
           }
         </TabsContent>

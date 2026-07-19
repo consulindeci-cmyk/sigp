@@ -1,11 +1,10 @@
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
 import {
   CheckCircle2, Circle, Send, User, CalendarDays,
-  FileCheck, Building2, CheckCheck, ShieldCheck, CheckSquare,
+  FileCheck, Building2, CheckCheck, ShieldCheck, CheckSquare, Info,
 } from 'lucide-react';
 import type { PPMVersion } from '@/types';
 
@@ -84,29 +83,29 @@ function fmtDate(iso?: string) {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function WorkflowTab({ versions, activeVersion }: WorkflowTabProps) {
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted,  setSubmitted]  = useState(false);
-
   const currentIdx = STAGE_ORDER.indexOf(activeVersion?.statut ?? 'BROUILLON');
   const events      = getEvents(activeVersion?.id);
-
-  function handleSubmit() {
-    setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
-      setSubmitted(true);
-      setTimeout(() => setSubmitted(false), 4000);
-    }, 1500);
-  }
 
   return (
     <div className="flex flex-col gap-5 max-w-4xl mx-auto">
 
+      {/* ── Avertissement démo ────────────────────────────────────────────── */}
+      <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-4 py-3">
+        <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          <span className="font-semibold text-foreground">Démo — </span>
+          ce circuit d'approbation (étapes, journal, historique des versions) n'est pas encore relié au backend :
+          il n'existe aujourd'hui qu'une seule version par projet, dérivée du statut des marchés. Aucune action
+          effectuée ici n'est persistée.
+        </p>
+      </div>
+
       {/* ── Stepper ────────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base">
+          <CardTitle className="text-base flex items-center gap-2">
             Workflow — Version {activeVersion?.numero_version ?? '—'}
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">Démo</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -234,24 +233,20 @@ export function WorkflowTab({ versions, activeVersion }: WorkflowTabProps) {
             </div>
           )}
 
-          {/* Action button */}
+          {/* Action button — désactivé : aucun backend de workflow n'existe */}
           {activeVersion?.statut === 'BROUILLON' && (
             <div className="flex flex-wrap items-center gap-3 pt-1">
-              {submitted && (
-                <span className="flex items-center gap-1.5 text-sm text-success" aria-live="polite">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  Soumis pour validation (simulation)
-                </span>
-              )}
               <Button
                 variant="default"
-                onClick={handleSubmit}
-                disabled={submitting}
+                disabled
                 leftIcon={<Send className="h-4 w-4" />}
+                title="Simulation visuelle — le circuit d'approbation réel n'est pas connecté au backend"
               >
-                {submitting ? 'Soumission...' : "Soumettre pour approbation"}
+                Soumettre pour approbation
               </Button>
-              <p className="text-[11px] text-muted-foreground">⚠️ Simulation — nécessite le backend</p>
+              <p className="text-[11px] text-muted-foreground">
+                Bouton désactivé — simulation visuelle uniquement, aucun circuit d'approbation réel n'est connecté.
+              </p>
             </div>
           )}
         </CardContent>

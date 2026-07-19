@@ -35,6 +35,25 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Garde-fou : disbursements.funding_source_id est un lien applicatif sans
+    // FK — sans ce contrôle, la suppression laissait des décaissements actifs
+    // pointer silencieusement vers une source "supprimée" (cf. audit Sources
+    // de Financement, même patron que wbs-delete/ptba_activites).
+    const { data: linkedDisbursements, error: disbursementsCheckError } = await admin
+      .from('disbursements')
+      .select('id, reference, montant')
+      .eq('funding_source_id', body.id)
+      .is('deleted_at', null);
+    if (disbursementsCheckError) throw disbursementsCheckError;
+
+    if ((linkedDisbursements?.length ?? 0) > 0) {
+      const disbursements = linkedDisbursements ?? [];
+      return json({
+        error: `Suppression impossible : cette source de financement est encore référencée par ${disbursements.length} décaissement(s) (${disbursements.map(d => d.reference || d.id).join(', ')}). Détachez ou supprimez d'abord ces décaissements.`,
+        dependencies: { disbursements },
+      }, 409);
+    }
+
     const { error: deleteError } = await admin
       .from('funding_sources')
       .update({

@@ -1,23 +1,44 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
+import { Save, AlertCircle, Trash2 } from 'lucide-react';
 import { PPMLigne } from '@/types';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/forms/Button';
+import {
+  Modal, ModalContent, ModalHeader, ModalTitle,
+} from '@/components/ui/overlays/Modal';
 import { useTasks } from '@/hooks/useTasks';
 import { usePpmMarcheActivites, useSetPpmMarcheActivites } from '@/hooks/usePPM';
 import { useBudget, useBudgetVersion } from '@/hooks/useBudget';
 import { useFundingSources } from '@/hooks/useFundingSources';
+import { useWBS } from '@/hooks/useWBS';
+
+// Le backend (ppm_marches.statut) ne connaît que 8 valeurs, quand le type FE
+// StatutLignePPM en modélise 12 (cf. feStatutToBe/beStatutToFe dans usePPM.ts).
+// On ne propose ici que le sous-ensemble qui fait un aller-retour fidèle avec
+// le backend, pour éviter qu'une valeur choisie (ex: CONTRAT_SIGNE) ne se
+// retrouve silencieusement réétiquetée (EXECUTION) après enregistrement.
+const STATUT_OPTIONS: { value: PPMLigne['statut']; label: string }[] = [
+  { value: 'PLANIFIE',      label: 'Planifié' },
+  { value: 'DAO_LANCE',     label: 'DAO lancé' },
+  { value: 'OFFRES_RECUES', label: 'Offres reçues' },
+  { value: 'EVALUATION',    label: 'Évaluation / ANO' },
+  { value: 'ATTRIBUE',      label: 'Attribué' },
+  { value: 'EXECUTION',     label: 'Contrat signé / En exécution' },
+  { value: 'CLOTURE',       label: 'Clôturé' },
+  { value: 'ANNULE',        label: 'Annulé' },
+];
 
 interface PPMFormSlideOverProps {
   isOpen: boolean;
   onClose: () => void;
   ligne?: PPMLigne | null;
-  onSave: (data: Omit<PPMLigne, 'id' | 'version_hash' | 'statut' | 'ppm_version_id'>) => Promise<void>;
+  onSave: (data: Omit<PPMLigne, 'id' | 'version_hash' | 'ppm_version_id'>) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
   projectId: string;
+  canDelete?: boolean;
 }
 
-export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, projectId }: PPMFormSlideOverProps) {
+export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, projectId, canDelete }: PPMFormSlideOverProps) {
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [error,           setError]           = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -45,6 +66,15 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
   const budgetLignes = budgetVersion?.lignes ?? [];
   const { data: fundingSources } = useFundingSources(projectId);
 
+  // Nœuds WBS terminaux réels du projet — remplacent la saisie libre
+  // précédente (wbs_id n'a pas de colonne dédiée côté ppm_marches, mais doit
+  // désormais référencer un vrai nœud existant, cf. audit Marchés & Contrats).
+  const { data: wbsData } = useWBS(projectId);
+  const terminalWbsNodes = useMemo(() => {
+    const all = wbsData?.data ?? [];
+    return all.filter(n => !all.some(other => other.parent_id === n.id));
+  }, [wbsData]);
+
   // Local form state
   const [reference,     setReference]     = useState('');
   const [wbsId,         setWbsId]         = useState('');
@@ -55,16 +85,24 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
   const [methode,    setMethode]    = useState<PPMLigne['methode']>('AOI');
   const [typeRevue,  setTypeRevue]  = useState<PPMLigne['type_revue']>('POST');
   const [bailleurId, setBailleurId] = useState('');
+  const [statut,     setStatut]     = useState<PPMLigne['statut']>('PLANIFIE');
 
   const [montantDevise, setMontantDevise] = useState(0);
   const [deviseCode,    setDeviseCode]    = useState('XOF');
   const [tauxChange,    setTauxChange]    = useState(1);
+
+  // Attribution — renseignés une fois le marché attribué/signé (colonnes
+  // réelles ppm_marches.montant_signe/titulaire/date_fin_effective)
+  const [montantSigne,     setMontantSigne]     = useState('');
+  const [titulaire,        setTitulaire]        = useState('');
+  const [dateFinEffective, setDateFinEffective] = useState('');
 
   const [dates, setDates] = useState({
     preparation_dao_prevue:       '',
     lancement_dao_prevue:         '',
     remise_offres_prevue:         '',
     ouverture_evaluation_prevue:  '',
+    avis_non_objection_prevue:    '',
     attribution_prevue:           '',
     signature_contrat_prevue:     '',
     demarrage_prevue:             '',
@@ -83,14 +121,19 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
       setMethode(ligne.methode);
       setTypeRevue(ligne.type_revue);
       setBailleurId(ligne.bailleur_id);
+      setStatut(ligne.statut);
       setMontantDevise(ligne.montant_estime_devise);
       setDeviseCode(ligne.devise_code);
       setTauxChange(ligne.taux_change_estime);
+      setMontantSigne(ligne.montant_signe != null ? String(ligne.montant_signe) : '');
+      setTitulaire(ligne.titulaire ?? '');
+      setDateFinEffective(ligne.date_fin_effective ?? '');
       setDates({
         preparation_dao_prevue:      ligne.dates_cles.preparation_dao_prevue      || '',
         lancement_dao_prevue:        ligne.dates_cles.lancement_dao_prevue        || '',
         remise_offres_prevue:        ligne.dates_cles.remise_offres_prevue        || '',
         ouverture_evaluation_prevue: ligne.dates_cles.ouverture_evaluation_prevue || '',
+        avis_non_objection_prevue:   ligne.dates_cles.avis_non_objection_prevue   || '',
         attribution_prevue:          ligne.dates_cles.attribution_prevue          || '',
         signature_contrat_prevue:    ligne.dates_cles.signature_contrat_prevue    || '',
         demarrage_prevue:            ligne.dates_cles.demarrage_prevue            || '',
@@ -104,12 +147,16 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
       setMethode('AOI');
       setTypeRevue('POST');
       setBailleurId('');
+      setStatut('PLANIFIE');
       setMontantDevise(0);
       setDeviseCode('XOF');
       setTauxChange(1);
+      setMontantSigne('');
+      setTitulaire('');
+      setDateFinEffective('');
       setDates({
         preparation_dao_prevue: '', lancement_dao_prevue: '', remise_offres_prevue: '',
-        ouverture_evaluation_prevue: '', attribution_prevue: '',
+        ouverture_evaluation_prevue: '', avis_non_objection_prevue: '', attribution_prevue: '',
         signature_contrat_prevue: '', demarrage_prevue: '',
       });
     }
@@ -153,10 +200,14 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
         methode,
         type_revue:           typeRevue,
         bailleur_id:          bailleurId,
+        statut,
         montant_estime_devise: montantDevise,
         devise_code:          deviseCode,
         taux_change_estime:   tauxChange,
         montant_estime_base:  montantBase,
+        montant_signe:        montantSigne ? Number(montantSigne) : undefined,
+        titulaire:            titulaire.trim() || undefined,
+        date_fin_effective:   dateFinEffective || undefined,
         est_lot_unique:       true,
         dates_cles:           dates,
       });
@@ -185,41 +236,18 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
     }
   };
 
-  if (!isOpen) return null;
-
   const INPUT_CLASS = 'w-full h-9 px-3 text-sm border border-border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50';
   const LABEL_CLASS = 'block text-sm font-medium text-foreground mb-1';
   const SECTION_CLASS = 'text-xs font-bold text-foreground uppercase tracking-wider mb-4 border-b border-border pb-2';
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Panel */}
-      <div
-        className="fixed inset-y-0 right-0 w-full sm:w-[600px] bg-card border-l border-border shadow-xl z-50 flex flex-col"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ppm-form-title"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-          <h2 id="ppm-form-title" className="text-base font-bold text-foreground">
+    <Modal open={isOpen} onOpenChange={open => { if (!open) onClose(); }}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>
             {ligne ? 'Modifier la ligne de marché' : 'Nouvelle ligne de marché'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Fermer"
-          >
-            <X size={18} />
-          </button>
-        </div>
+          </ModalTitle>
+        </ModalHeader>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6">
@@ -250,15 +278,18 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                 </div>
                 <div>
                   <label className={LABEL_CLASS} htmlFor="ppm-wbs">WBS *</label>
-                  <input
+                  <select
                     id="ppm-wbs"
                     required
-                    type="text"
                     className={INPUT_CLASS}
                     value={wbsId}
                     onChange={e => setWbsId(e.target.value)}
-                    placeholder="wbs-1-1"
-                  />
+                  >
+                    <option value="">-- Sélectionner --</option>
+                    {terminalWbsNodes.map(n => (
+                      <option key={n.id} value={n.id}>{n.code_wbs} — {n.titre}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="col-span-2">
                   <label className={LABEL_CLASS} htmlFor="ppm-desc">Description *</label>
@@ -377,6 +408,20 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className={LABEL_CLASS} htmlFor="ppm-statut">Statut *</label>
+                  <select
+                    id="ppm-statut"
+                    required
+                    className={INPUT_CLASS}
+                    value={statut}
+                    onChange={e => setStatut(e.target.value as PPMLigne['statut'])}
+                  >
+                    {STATUT_OPTIONS.map(s => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </section>
 
@@ -441,7 +486,9 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                     ? 'bg-destructive/10 border-destructive/20 text-destructive'
                     : 'bg-success/10 border-success/20 text-success'
                 }`}>
-                  <span className="font-medium">Solde disponible ({budgetLigneId}) :</span>
+                  <span className="font-medium">
+                    Solde disponible ({budgetLignes.find(l => l.id === budgetLigneId)?.code_ligne ?? budgetLigneId}) :
+                  </span>
                   <span className="font-mono font-bold">
                     {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(soldeDisponible)}
                   </span>
@@ -449,7 +496,47 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
               )}
             </section>
 
-            {/* Section 4: Chronogramme */}
+            {/* Section 4: Attribution (post-attribution, optionnel) */}
+            <section>
+              <h3 className={SECTION_CLASS}>Attribution</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className={LABEL_CLASS} htmlFor="ppm-titulaire">Titulaire (attributaire)</label>
+                  <input
+                    id="ppm-titulaire"
+                    type="text"
+                    className={INPUT_CLASS}
+                    value={titulaire}
+                    onChange={e => setTitulaire(e.target.value)}
+                    placeholder="Entreprise attributaire du marché"
+                  />
+                </div>
+                <div>
+                  <label className={LABEL_CLASS} htmlFor="ppm-montant-signe">Montant Signé (XOF)</label>
+                  <input
+                    id="ppm-montant-signe"
+                    type="number"
+                    min="0"
+                    className={INPUT_CLASS}
+                    value={montantSigne}
+                    onChange={e => setMontantSigne(e.target.value)}
+                    placeholder="Montant réellement contracté"
+                  />
+                </div>
+                <div>
+                  <label className={LABEL_CLASS} htmlFor="ppm-date-fin-eff">Date de fin effective</label>
+                  <input
+                    id="ppm-date-fin-eff"
+                    type="date"
+                    className={INPUT_CLASS}
+                    value={dateFinEffective}
+                    onChange={e => setDateFinEffective(e.target.value)}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Section 5: Chronogramme */}
             <section>
               <h3 className={SECTION_CLASS}>Chronogramme Prévisionnel</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -458,6 +545,10 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                   lancement_dao_prevue:        'Lancement DAO',
                   remise_offres_prevue:        'Remise des Offres',
                   ouverture_evaluation_prevue: 'Évaluation',
+                  // ANO (avis de non-objection) uniquement pertinent en revue
+                  // préalable — c'est en POST qu'il n'y a justement pas d'ANO
+                  // avant attribution.
+                  ...(typeRevue === 'PRIOR' ? { avis_non_objection_prevue: 'ANO Bailleur' } : {}),
                   attribution_prevue:          'Attribution',
                   signature_contrat_prevue:    'Signature Contrat',
                   demarrage_prevue:            'Démarrage',
@@ -480,8 +571,8 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-border bg-muted/5 flex justify-between items-center gap-3">
-          {ligne && onDelete ? (
+        <div className="px-6 py-4 border-t border-border bg-muted/5 flex justify-between items-center gap-3 shrink-0">
+          {ligne && onDelete && canDelete ? (
             confirmingDelete ? (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-destructive font-semibold">Confirmer la suppression ?</span>
@@ -540,7 +631,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
             </Button>
           </div>
         </div>
-      </div>
-    </>
+      </ModalContent>
+    </Modal>
   );
 }

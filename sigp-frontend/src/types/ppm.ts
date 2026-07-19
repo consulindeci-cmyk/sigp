@@ -45,9 +45,15 @@ export interface PPMLigne {
   
   // Gestion des Lots et Contrats (Relation 1..N)
   est_lot_unique: boolean;
-  lots_enfants_ids?: string[]; 
+  lots_enfants_ids?: string[];
   contrats_generes_ids?: string[]; // 1 Ligne PPM -> N Contrats
-  
+
+  // Attribution — renseignés une fois le marché attribué/signé (colonnes
+  // réelles ppm_marches.montant_signe/titulaire/date_fin_effective)
+  montant_signe?: number;
+  titulaire?: string;
+  date_fin_effective?: string;
+
   // Timeline détaillée
   dates_cles: {
     preparation_dao_prevue: string;
