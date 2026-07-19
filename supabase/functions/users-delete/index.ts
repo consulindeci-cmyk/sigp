@@ -48,6 +48,7 @@ Deno.serve(async (req: Request) => {
     await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,
+      organisation_id: existing.organisation_id,
       user_id: profile.id,
       action: 'DELETE',
       table_cible: 'users',

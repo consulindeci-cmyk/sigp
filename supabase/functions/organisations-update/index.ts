@@ -88,6 +88,7 @@ Deno.serve(async (req: Request) => {
     await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,
+      organisation_id: targetOrganisationId,
       user_id: profile.id,
       action: 'UPDATE',
       table_cible: 'organisations',

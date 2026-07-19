@@ -393,8 +393,14 @@ export interface HistoriqueProjet {
   action: TypeActionHistorique;
   description: string;
   niveau: NiveauHistorique;
-  ip: string;             // IP simulée
-  navigateur: string;     // UA simulé
+  // Aucune Edge Function ne renseigne jamais ip_address/user_agent en base —
+  // toujours vides en pratique, jamais "simulées" malgré l'ancien commentaire.
+  ip: string;
+  navigateur: string;
+  // Snapshots bruts capturés par les Edge Functions (historique.avant/apres) —
+  // utilisés par HistorySlideOver pour afficher ce qui a réellement changé.
+  avant: Record<string, unknown> | null;
+  apres: Record<string, unknown> | null;
   createdAt: string;      // ISO datetime
 }
 

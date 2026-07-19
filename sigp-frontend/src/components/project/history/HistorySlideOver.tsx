@@ -51,6 +51,42 @@ function fmtDate(date: string, heure: string): string {
   } catch { return `${date} ${heure}`; }
 }
 
+// ─── Diff avant/apres ───────────────────────────────────────────────────────
+// historique.avant/apres sont capturés par les Edge Functions mais n'étaient
+// affichés nulle part — on ne montrait qu'une description générique ("Modif.
+// — ptba_activites") sans jamais dire ce qui avait réellement changé.
+
+type JsonRecord = Record<string, unknown>;
+
+function formatFieldName(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Oui' : 'Non';
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value); } catch { return String(value); }
+  }
+  return String(value);
+}
+
+interface DiffRow { key: string; before?: string; after?: string }
+
+function computeDiffRows(avant: JsonRecord | null, apres: JsonRecord | null): DiffRow[] {
+  // UPDATE (avant + apres) : ne montre que les champs réellement modifiés.
+  if (avant && apres) {
+    const keys = [...new Set([...Object.keys(avant), ...Object.keys(apres)])];
+    return keys
+      .filter(key => JSON.stringify(avant[key]) !== JSON.stringify(apres[key]))
+      .map(key => ({ key, before: formatValue(avant[key]), after: formatValue(apres[key]) }));
+  }
+  // CREATE (apres seul) ou DELETE (avant seul) : instantané complet.
+  const snapshot = apres ?? avant;
+  if (!snapshot) return [];
+  return Object.entries(snapshot).map(([key, value]) => ({ key, after: formatValue(value) }));
+}
+
 // ─── Row helper ───────────────────────────────────────────────────────────────
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -70,6 +106,7 @@ export function HistorySlideOver({ open, onOpenChange, evenement: evt }: History
   if (!evt) return null;
 
   const initials = evt.utilisateur.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+  const diffRows = computeDiffRows(evt.avant, evt.apres);
 
   return (
     <SlideOver open={open} onOpenChange={onOpenChange}>
@@ -156,19 +193,49 @@ export function HistorySlideOver({ open, onOpenChange, evenement: evt }: History
             </div>
           </div>
 
-          {/* Section: Horodatage & Technique */}
+          {/* Section: Horodatage */}
+          {/* Adresse IP / Navigateur volontairement masqués : aucune Edge
+              Function ne renseigne jamais ces colonnes, elles seraient donc
+              toujours vides et donneraient une fausse impression de suivi
+              technique (cf. audit du Journal des Opérations). */}
           <div className="space-y-1">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Horodatage & Technique
+              Horodatage
             </p>
             <div className="rounded-lg border border-border bg-card p-3 divide-y divide-border">
               <Row label="Date" value={new Date(evt.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} />
               <Row label="Heure" value={<span className="font-mono">{evt.heure}</span>} />
-              <Row label="Adresse IP" value={<span className="font-mono text-[12px]">{evt.ip}</span>} />
-              <Row label="Navigateur" value={<span className="text-[12px]">{evt.navigateur}</span>} />
               <Row label="ID événement" value={<span className="font-mono text-[11px] text-muted-foreground">{evt.id}</span>} />
             </div>
           </div>
+
+          {/* Section: Modifications (diff avant/apres) */}
+          {diffRows.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                {evt.action === 'MODIFICATION' ? 'Champs modifiés' : 'Détail'}
+              </p>
+              <div className="rounded-lg border border-border bg-card p-3 divide-y divide-border">
+                {diffRows.map(row => (
+                  <Row
+                    key={row.key}
+                    label={formatFieldName(row.key)}
+                    value={
+                      row.before !== undefined ? (
+                        <span className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-muted-foreground line-through decoration-destructive/50">{row.before}</span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="text-foreground font-semibold">{row.after}</span>
+                        </span>
+                      ) : (
+                        <span className="break-all">{row.after}</span>
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Description complète */}
           <div className="rounded-lg border border-border bg-muted/30 p-4">

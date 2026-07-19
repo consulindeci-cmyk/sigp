@@ -299,15 +299,26 @@ export default function TabHistory() {
             Traçabilité complète de toutes les opérations effectuées sur le projet
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportCSV}>
-            <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            CSV
-          </Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportXLSX}>
-            <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Excel
-          </Button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline" size="sm" className="h-8 text-xs" onClick={exportCSV}
+              title="L'export est actuellement limité aux 200 derniers événements affichés."
+            >
+              <Download className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              CSV
+            </Button>
+            <Button
+              variant="outline" size="sm" className="h-8 text-xs" onClick={exportXLSX}
+              title="L'export est actuellement limité aux 200 derniers événements affichés."
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              Excel
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Limité aux 200 derniers événements affichés
+          </p>
         </div>
       </div>
 

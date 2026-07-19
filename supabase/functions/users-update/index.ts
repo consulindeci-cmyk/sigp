@@ -118,6 +118,10 @@ Deno.serve(async (req: Request) => {
     await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,
+      // organisation_id : celle après la mise à jour (pertinent notamment pour
+      // le rattachement d'un profil orphelin — organisation_id passe de null
+      // à une valeur réelle dans ce même appel).
+      organisation_id: updated.organisation_id,
       user_id: profile.id,
       action: 'UPDATE',
       table_cible: 'users',

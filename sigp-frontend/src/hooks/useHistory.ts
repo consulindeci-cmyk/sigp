@@ -111,6 +111,8 @@ function adaptRow(row: HistoriqueRow): HistoriqueProjet {
     niveau: deriveNiveau(row.action),
     ip: row.ip_address ?? '',
     navigateur: row.user_agent ?? '',
+    avant: row.avant,
+    apres: row.apres,
     createdAt: row.created_at,
   };
 }
