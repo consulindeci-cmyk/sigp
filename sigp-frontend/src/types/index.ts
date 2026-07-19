@@ -69,7 +69,11 @@ export interface Tache {
   wbs_id?: string | null;
   code_tache: string;
   description: string;
+  // responsable : nom affiché, résolu côté serveur depuis users (lecture
+  // seule) ; responsableId : le véritable UUID (ptba_activites.responsable_id),
+  // à renvoyer pour créer/modifier — cf. useTasks.ts.
   responsable?: string | null;
+  responsableId?: string | null;
   date_debut?: string | null;
   date_fin?: string | null;
   cout_prevu: string;

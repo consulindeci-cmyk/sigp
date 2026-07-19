@@ -38,6 +38,18 @@ Deno.serve(async (req: Request) => {
     if (body.trimestre < 1 || body.trimestre > 4) {
       return json({ error: 'trimestre doit être compris entre 1 et 4' }, 400);
     }
+    // taux_realisation alimente directement calculate_project_evm() (EV du
+    // projet entier) — une valeur hors [0,100] fausse silencieusement tout
+    // l'EVM/SPI/CPI affichés sur le dashboard et l'onglet EVM.
+    if (body.tauxRealisation !== undefined && (body.tauxRealisation < 0 || body.tauxRealisation > 100)) {
+      return json({ error: 'tauxRealisation doit être compris entre 0 et 100' }, 400);
+    }
+    if (body.montantPrevu !== undefined && body.montantPrevu < 0) {
+      return json({ error: 'montantPrevu doit être supérieur ou égal à 0' }, 400);
+    }
+    if (body.montantRealise !== undefined && body.montantRealise < 0) {
+      return json({ error: 'montantRealise doit être supérieur ou égal à 0' }, 400);
+    }
 
     const { data: project, error: projectError } = await admin
       .from('projects')

@@ -6,7 +6,7 @@ import {
   LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet, ListChecks,
 } from 'lucide-react';
 import ProjectActivitiesTab from '@/components/project/ProjectActivitiesTab';
-import { usePTBA, useWorkflowPTBA } from '@/hooks/usePTBA';
+import { usePTBA } from '@/hooks/usePTBA';
 import { useTasks } from '@/hooks/useTasks';
 import { useUIStore } from '@/stores/uiStore';
 import { type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
@@ -24,10 +24,10 @@ function adaptTache(t: Tache): Activity {
     : (t.responsable ?? '??').slice(0, 2).toUpperCase();
   return {
     id: t.id, code: t.code_tache, libelle: t.description, description: t.description,
-    responsable: t.responsable ?? '—', initialesResponsable: initiales,
+    responsable: t.responsable ?? '—', responsableId: t.responsableId ?? null, initialesResponsable: initiales,
     dateDebut: t.date_debut ?? '', dateFin: t.date_fin ?? '', avancement: t.avancement,
     priorite: 'Moyenne', statut: STATUT_TO_ACTIVITY[t.statut] ?? 'Non démarré',
-    composante: '', budgetAlloue: parseFloat(t.cout_prevu) || 0,
+    composante: '', budgetAlloue: parseFloat(t.cout_prevu) || 0, budgetRealise: parseFloat(t.cout_reel) || 0,
   };
 }
 import { formatMoney } from '@/utils/format';
@@ -251,7 +251,6 @@ export default function PTBAPage() {
   const [versionSelectionnee, setVersionSelectionnee] = useState<string>('latest');
 
   const { data: ptbaResponse, isLoading, error } = usePTBA(resolvedProjectId, annee);
-  const workflowMutation = useWorkflowPTBA(resolvedProjectId);
 
   const { data: tasksData } = useTasks(resolvedProjectId, { annee });
   const activities: Activity[] = ((tasksData as { data?: Tache[] })?.data
@@ -277,21 +276,6 @@ export default function PTBAPage() {
       </div>
     );
   }
-
-  const handleActionWorkflow = (action: 'SOUMETTRE' | 'APPROUVER' | 'REJETER') => {
-    if (!ptba) return;
-    let targetStatus = ptba.statut;
-    if (action === 'SOUMETTRE') targetStatus = 'SOUMIS';
-    if (action === 'APPROUVER') targetStatus = 'APPROUVE';
-    if (action === 'REJETER') targetStatus = 'REJETE';
-    setLocalPtba(prev => prev ? { ...prev, statut: targetStatus } : prev);
-    workflowMutation.mutate({
-      ptbaId:       ptba.id,
-      nouveauStatut: targetStatus,
-      activityIds:  ptba.lignes?.map(l => l.id) ?? [],
-      commentaire:  `Action : ${action}`,
-    });
-  };
 
   // KPIs (réel-time via localPtba)
   const totalBudget = ptba?.budget_total || 0;
@@ -346,42 +330,25 @@ export default function PTBAPage() {
             <option value="2026">Ex 2026</option>
           </Select>
 
+          {/* Désactivés (audit d'intégrité) : il n'existe aucune entité PTBA
+              versionnée ni statut de validation réel en base — cliquer
+              Soumettre/Approuver/Rejeter écrasait le statut individuel de
+              TOUTES les activités de l'année avec une seule valeur dérivée de
+              l'action, sans confirmation ni notification. Réactiver une fois
+              un vrai modèle de workflow PTBA conçu. */}
           {ptba?.statut === 'BROUILLON' && (
             <Button
               size="sm"
               variant="default"
               leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
-              onClick={() => handleActionWorkflow('SOUMETTRE')}
-              disabled={workflowMutation.isPending}
+              disabled
+              title="Workflow de validation PTBA pas encore implémenté"
               className="h-8 text-xs"
             >
               Soumettre
             </Button>
           )}
 
-          {ptba?.statut === 'SOUMIS' && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
-                onClick={() => handleActionWorkflow('REJETER')}
-                disabled={workflowMutation.isPending}
-              >
-                Rejeter
-              </Button>
-              <Button
-                size="sm"
-                variant="default"
-                className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground"
-                leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
-                onClick={() => handleActionWorkflow('APPROUVER')}
-                disabled={workflowMutation.isPending}
-              >
-                Approuver
-              </Button>
-            </>
-          )}
         </div>
       </div>
 

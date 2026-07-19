@@ -85,19 +85,6 @@ function rowToDto(row: PtbaActiviteRow): PtbaActiviteDto {
 
 // ─── Statut mapping (inchangé) ────────────────────────────────────────────────
 
-function frontendStatutToBackend(statut: StatutPTBA): string {
-  switch (statut) {
-    case 'APPROUVE':      return 'TERMINE';
-    case 'EN_PREPARATION':
-    case 'SOUMIS':        return 'EN_COURS';
-    case 'EN_REVISION':
-    case 'SUSPENDU':      return 'EN_RETARD';
-    case 'ARCHIVE':
-    case 'CLOTURE':       return 'ANNULE';
-    default:              return 'NON_DEMARRE'; // BROUILLON, REJETE
-  }
-}
-
 function deriveContainerStatut(activites: PtbaActiviteDto[]): StatutPTBA {
   if (!activites.length) return 'BROUILLON';
   if (activites.every(a => a.statut === 'TERMINE'))   return 'APPROUVE';
@@ -236,35 +223,6 @@ export function usePTBA(projectId: string, annee: number) {
   });
 }
 
-export function useWorkflowPTBA(projectId: string) {
-  const qc = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      ptbaId,
-      nouveauStatut,
-      activityIds,
-    }: {
-      ptbaId:        string;
-      nouveauStatut: StatutPTBA;
-      activityIds?:  string[];
-      commentaire?:  string;
-    }) => {
-      const backendStatut = frontendStatutToBackend(nouveauStatut);
-      if (activityIds?.length) {
-        await Promise.all(
-          activityIds.map(id => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', { id, statut: backendStatut }))
-        );
-      }
-      return { success: true, ptbaId };
-    },
-    onSuccess: (_, vars) => {
-      const match = vars.ptbaId.match(/-ptba-(\d{4})$/);
-      const annee = match ? Number(match[1]) : 0;
-      qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
-    },
-  });
-}
 
 // ─── Activity CRUD ────────────────────────────────────────────────────────────
 

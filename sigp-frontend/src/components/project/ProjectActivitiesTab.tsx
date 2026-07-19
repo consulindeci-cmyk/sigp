@@ -2,12 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from '@/hooks/useTasks';
 import { useWBS } from '@/hooks/useWBS';
+import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import type { Tache } from '@/types';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   Activity as ActivityIcon, CheckCircle2, Clock, AlertTriangle,
-  Plus, Eye, Edit, Trash2, X, CalendarDays, AlertCircle,
+  Plus, Eye, Edit, Trash2, CalendarDays, AlertCircle,
 } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -19,13 +21,11 @@ import { StatCard } from '@/components/ui/data-display/StatCard';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
 import {
   type Activity,
   type ActivityStatus,
-  type ActivityPriority,
 } from '@/mocks/activitiesMocks';
 
 // ─── Adapters Tache ↔ Activity ─────────────────────────────────────────────────
@@ -53,6 +53,7 @@ function adaptTache(t: Tache): Activity {
     libelle: t.description,
     description: t.description,
     responsable: t.responsable ?? '—',
+    responsableId: t.responsableId ?? null,
     initialesResponsable: getInitiales(t.responsable ?? ''),
     dateDebut: t.date_debut ?? '',
     dateFin: t.date_fin ?? '',
@@ -61,23 +62,24 @@ function adaptTache(t: Tache): Activity {
     statut: STATUT_TO_ACTIVITY[t.statut] ?? 'Non démarré',
     composante: '',
     budgetAlloue: parseFloat(t.cout_prevu) || 0,
+    budgetRealise: parseFloat(t.cout_reel) || 0,
     wbsNodeId: t.wbs_id ?? null,
   };
 }
 
 function activityToDto(data: Omit<Activity, 'id'>, projectId: string): Partial<Tache> {
   return {
-    projet_id:   projectId,
-    code_tache:  data.code,
-    description: data.libelle || data.description,
-    responsable: data.responsable || undefined,
-    date_debut:  data.dateDebut || undefined,
-    date_fin:    data.dateFin   || undefined,
-    avancement:  data.avancement,
-    statut:      ACTIVITY_TO_STATUT[data.statut] as Tache['statut'],
-    cout_prevu:  String(data.budgetAlloue || 0),
-    cout_reel:   '0',
-    wbs_id:      data.wbsNodeId || undefined,
+    projet_id:    projectId,
+    code_tache:   data.code,
+    description:  data.libelle || data.description,
+    responsableId: data.responsableId || undefined,
+    date_debut:   data.dateDebut || undefined,
+    date_fin:     data.dateFin   || undefined,
+    avancement:   data.avancement,
+    statut:       ACTIVITY_TO_STATUT[data.statut] as Tache['statut'],
+    cout_prevu:   String(data.budgetAlloue || 0),
+    cout_reel:    String(data.budgetRealise || 0),
+    wbs_id:       data.wbsNodeId || undefined,
   };
 }
 
@@ -92,8 +94,10 @@ function formatDate(dateStr: string | null): string {
   } catch { return '—'; }
 }
 
+// XOF (FCFA) — devise utilisée partout ailleurs dans l'app (Contrats, PPM,
+// WBS, Dashboard, EVM) ; "USD" était une erreur isolée à ce fichier.
 function formatBudget(n: number): string {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' USD';
+  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' XOF';
 }
 
 function statutVariant(s: ActivityStatus): 'success' | 'warning' | 'secondary' | 'destructive' | 'default' {
@@ -103,15 +107,6 @@ function statutVariant(s: ActivityStatus): 'success' | 'warning' | 'secondary' |
     case 'Non démarré':  return 'secondary';
     case 'En retard':    return 'destructive';
     case 'Suspendu':     return 'default';
-  }
-}
-
-function prioriteVariant(p: ActivityPriority): 'destructive' | 'default' | 'warning' | 'secondary' {
-  switch (p) {
-    case 'Critique': return 'destructive';
-    case 'Haute':    return 'default';
-    case 'Moyenne':  return 'warning';
-    case 'Faible':   return 'secondary';
   }
 }
 
@@ -136,62 +131,64 @@ function getInitiales(nom: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ActivityFormState = {
-  code:         string;
-  responsable:  string;
-  libelle:      string;
-  description:  string;
-  statut:       string; // cast to ActivityStatus on save
-  priorite:     string; // cast to ActivityPriority on save
-  avancement:   string;
-  budgetAlloue: string;
-  dateDebut:    string;
-  dateFin:      string;
-  composante:   string;
-  wbsNodeId:    string;
+  code:          string;
+  // UUID choisi dans le vivier de l'organisation (ptba_activites.responsable_id
+  // est une vraie FK vers users) — plus de saisie libre d'un nom.
+  responsableId: string;
+  libelle:       string;
+  description:   string;
+  statut:        string; // cast to ActivityStatus on save
+  avancement:    string;
+  budgetAlloue:  string;
+  budgetRealise: string;
+  dateDebut:     string;
+  dateFin:       string;
+  wbsNodeId:     string;
 };
 
 const EMPTY_FORM: ActivityFormState = {
-  code: '', responsable: '', libelle: '', description: '',
-  statut: 'Non démarré', priorite: 'Moyenne',
-  avancement: '0', budgetAlloue: '',
-  dateDebut: '', dateFin: '', composante: '',
+  code: '', responsableId: '', libelle: '', description: '',
+  statut: 'Non démarré',
+  avancement: '0', budgetAlloue: '', budgetRealise: '',
+  dateDebut: '', dateFin: '',
   wbsNodeId: '',
 };
 
 function formFromActivity(a: Activity): ActivityFormState {
   return {
-    code:         a.code,
-    responsable:  a.responsable,
-    libelle:      a.libelle,
-    description:  a.description,
-    statut:       a.statut,
-    priorite:     a.priorite,
-    avancement:   String(a.avancement),
-    budgetAlloue: String(a.budgetAlloue),
-    dateDebut:    a.dateDebut,
-    dateFin:      a.dateFin,
-    composante:   a.composante,
-    wbsNodeId:    a.wbsNodeId ?? '',
+    code:          a.code,
+    responsableId: a.responsableId ?? '',
+    libelle:       a.libelle,
+    description:   a.description,
+    statut:        a.statut,
+    avancement:    String(a.avancement),
+    budgetAlloue:  String(a.budgetAlloue),
+    budgetRealise: String(a.budgetRealise),
+    dateDebut:     a.dateDebut,
+    dateFin:       a.dateFin,
+    wbsNodeId:     a.wbsNodeId ?? '',
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SlideOver (view / edit / new) — formulaire contrôlé avec validation
+// Modal (view / edit / new) — formulaire contrôlé avec validation
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SlideOverMode = 'view' | 'edit' | 'new';
+type FormMode = 'view' | 'edit' | 'new';
 
-function ActivitySlideOver({
-  open, onOpenChange, activity, mode, onSave, projectId,
+function ActivityFormModal({
+  open, onOpenChange, activity, mode, onSave, projectId, isSaving, error,
 }: {
   open:          boolean;
   onOpenChange:  (open: boolean) => void;
   activity:      Activity | null;
-  mode:          SlideOverMode;
+  mode:          FormMode;
   onSave:        (data: Omit<Activity, 'id'>) => void;
   projectId:     string;
+  isSaving?:     boolean;
+  error?:        string | null;
 }) {
-  const titles: Record<SlideOverMode, string> = {
+  const titles: Record<FormMode, string> = {
     view: "Détails de l'activité",
     edit: "Modifier l'activité",
     new:  'Nouvelle activité',
@@ -208,6 +205,10 @@ function ActivitySlideOver({
     return all.filter(n => !all.some(other => other.parent_id === n.id));
   }, [wbsNodes]);
 
+  // Vivier de l'organisation pour le sélecteur Responsable — ptba_activites.
+  // responsable_id est une vraie FK vers users(id), plus de saisie libre.
+  const { data: orgMembers = [], isLoading: isLoadingMembers } = useOrganisationMembersForPicker(projectId);
+
   // Réinitialisation à chaque ouverture
   useEffect(() => {
     if (open) {
@@ -223,9 +224,9 @@ function ActivitySlideOver({
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
-    if (!form.libelle.trim())     errs.libelle     = 'Requis';
-    if (!form.code.trim())        errs.code        = 'Requis';
-    if (!form.responsable.trim()) errs.responsable = 'Requis';
+    if (!form.libelle.trim())      errs.libelle       = 'Requis';
+    if (!form.code.trim())         errs.code          = 'Requis';
+    if (!form.responsableId.trim()) errs.responsableId = 'Requis';
     const av = Number(form.avancement);
     if (isNaN(av) || av < 0 || av > 100) errs.avancement = 'Entre 0 et 100';
     if (form.dateDebut && form.dateFin && form.dateFin < form.dateDebut)
@@ -236,34 +237,34 @@ function ActivitySlideOver({
 
   function handleSave() {
     if (!validate()) return;
+    const selectedMember = orgMembers.find(m => m.id === form.responsableId);
     onSave({
       code:                 form.code.trim(),
+      responsableId:        form.responsableId || null,
+      responsable:          selectedMember?.displayName ?? '',
+      initialesResponsable: getInitiales(selectedMember?.displayName ?? ''),
       libelle:              form.libelle.trim(),
-      responsable:          form.responsable.trim(),
-      initialesResponsable: getInitiales(form.responsable),
       description:          form.description.trim(),
       statut:               form.statut as ActivityStatus,
-      priorite:             form.priorite as ActivityPriority,
+      priorite:             'Moyenne',
       avancement:           Math.min(100, Math.max(0, Number(form.avancement) || 0)),
       budgetAlloue:         Math.max(0, Number(form.budgetAlloue) || 0),
+      budgetRealise:        Math.max(0, Number(form.budgetRealise) || 0),
       dateDebut:            form.dateDebut,
       dateFin:              form.dateFin,
-      composante:           form.composante.trim(),
+      composante:           '',
       wbsNodeId:            form.wbsNodeId || null,
     });
   }
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
-        <SlideOverHeader>
-          <SlideOverTitle>{titles[mode]}</SlideOverTitle>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="sm" aria-label="Fermer"><X className="h-4 w-4" /></Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{titles[mode]}</ModalTitle>
+        </ModalHeader>
 
-        <SlideOverBody>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {readOnly && activity ? (
             /* ── Mode lecture ── */
             <div className="flex flex-col gap-5">
@@ -271,7 +272,6 @@ function ActivitySlideOver({
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <Badge variant="outline" className="text-[11px] font-mono">{activity.code}</Badge>
                   <Badge variant={statutVariant(activity.statut)} className="text-[11px]">{activity.statut}</Badge>
-                  <Badge variant={prioriteVariant(activity.priorite)} className="text-[11px]">{activity.priorite}</Badge>
                 </div>
                 <h3 className="text-[15px] font-semibold text-foreground leading-snug">{activity.libelle}</h3>
                 <p className="text-[12px] text-muted-foreground leading-relaxed">{activity.description}</p>
@@ -292,10 +292,6 @@ function ActivitySlideOver({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border pt-4">
                 <div className="sm:col-span-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Composante</p>
-                  <p className="text-[12px] text-muted-foreground">{activity.composante}</p>
-                </div>
-                <div className="sm:col-span-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Nœud WBS lié</p>
                   <p className="text-[12px] text-muted-foreground">
                     {(wbsNodes?.data ?? []).find(n => n.id === activity.wbsNodeId)?.titre ?? '—'}
@@ -313,6 +309,10 @@ function ActivitySlideOver({
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Budget alloué</p>
                   <p className="font-mono text-[13px] font-semibold text-foreground">{formatBudget(activity.budgetAlloue)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Montant réalisé</p>
+                  <p className="font-mono text-[13px] font-semibold text-foreground">{formatBudget(activity.budgetRealise)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date début</p>
@@ -342,14 +342,19 @@ function ActivitySlideOver({
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-foreground" htmlFor="act-resp">Responsable *</label>
-                <Input
+                <Select
                   id="act-resp"
-                  value={form.responsable}
-                  onChange={e => set('responsable', e.target.value)}
-                  placeholder="Prénom Nom"
-                  className={errors.responsable ? 'border-destructive' : ''}
-                />
-                {errors.responsable && <p className="text-[11px] text-destructive">{errors.responsable}</p>}
+                  value={form.responsableId}
+                  onChange={e => set('responsableId', e.target.value)}
+                  disabled={isLoadingMembers}
+                  className={errors.responsableId ? 'border-destructive' : ''}
+                >
+                  <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
+                  {orgMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.displayName}</option>
+                  ))}
+                </Select>
+                {errors.responsableId && <p className="text-[11px] text-destructive">{errors.responsableId}</p>}
               </div>
 
               <div className="flex flex-col gap-1.5 sm:col-span-2">
@@ -391,20 +396,6 @@ function ActivitySlideOver({
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="act-priorite">Priorité</label>
-                <Select
-                  id="act-priorite"
-                  value={form.priorite}
-                  onChange={e => set('priorite', e.target.value)}
-                >
-                  <option value="Critique">Critique</option>
-                  <option value="Haute">Haute</option>
-                  <option value="Moyenne">Moyenne</option>
-                  <option value="Faible">Faible</option>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-foreground" htmlFor="act-avancement">Avancement (%)</label>
                 <Input
                   id="act-avancement"
@@ -419,13 +410,25 @@ function ActivitySlideOver({
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="act-budget">Budget alloué (USD)</label>
+                <label className="text-sm font-medium text-foreground" htmlFor="act-budget">Budget alloué (XOF)</label>
                 <Input
                   id="act-budget"
                   type="number"
                   min={0}
                   value={form.budgetAlloue}
                   onChange={e => set('budgetAlloue', e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-foreground" htmlFor="act-realise">Montant réalisé (XOF)</label>
+                <Input
+                  id="act-realise"
+                  type="number"
+                  min={0}
+                  value={form.budgetRealise}
+                  onChange={e => set('budgetRealise', e.target.value)}
                   placeholder="0"
                 />
               </div>
@@ -453,16 +456,6 @@ function ActivitySlideOver({
               </div>
 
               <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="act-composante">Composante</label>
-                <Input
-                  id="act-composante"
-                  value={form.composante}
-                  onChange={e => set('composante', e.target.value)}
-                  placeholder="Composante du projet"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
                 <label className="text-sm font-medium text-foreground" htmlFor="act-wbs">Nœud WBS lié</label>
                 <Select
                   id="act-wbs"
@@ -482,20 +475,27 @@ function ActivitySlideOver({
 
             </div>
           )}
-        </SlideOverBody>
 
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+          {error && (
+            <p className="mt-4 text-xs text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          )}
+        </div>
+
+        <ModalFooter className="px-6 py-4 border-t border-border bg-muted/20 shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
-            <Button variant="default" onClick={handleSave}>
-              {mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
+            <Button variant="default" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }
 
@@ -507,10 +507,14 @@ function DeleteConfirmModal({
   activity,
   onConfirm,
   onCancel,
+  isDeleting,
+  error,
 }: {
   activity:  Activity | null;
   onConfirm: () => void;
   onCancel:  () => void;
+  isDeleting?: boolean;
+  error?: string | null;
 }) {
   if (!activity) return null;
   return (
@@ -532,9 +536,17 @@ function DeleteConfirmModal({
             </p>
           </div>
         </div>
+        {error && (
+          <p className="text-xs text-destructive flex items-center gap-1.5" role="alert">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onCancel}>Annuler</Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm}>Supprimer</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={isDeleting}>
+            {isDeleting ? 'Suppression...' : 'Supprimer'}
+          </Button>
         </div>
       </div>
     </div>
@@ -549,6 +561,8 @@ function buildActivityColumns(
   onView:   (a: Activity) => void,
   onEdit:   (a: Activity) => void,
   onDelete: (id: string) => void,
+  canManage: boolean,
+  canDelete: boolean,
 ): ColumnDef<Activity, unknown>[] {
   return [
     {
@@ -557,14 +571,13 @@ function buildActivityColumns(
       header: 'Code / Libellé',
       meta: { isSticky: true } as Record<string, unknown>,
       cell: ({ row }) => {
-        const { code, libelle, composante } = row.original;
+        const { code, libelle } = row.original;
         return (
           <div className="flex flex-col gap-0.5 min-w-[220px] max-w-[320px]">
             <div className="flex items-center gap-1.5">
               <Badge variant="outline" className="text-[10px] font-mono shrink-0">{code}</Badge>
             </div>
             <span className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2" title={libelle}>{libelle}</span>
-            <span className="text-[10px] text-muted-foreground truncate">{composante}</span>
           </div>
         );
       },
@@ -590,14 +603,6 @@ function buildActivityColumns(
       cell: ({ getValue }) => {
         const s = getValue() as ActivityStatus;
         return <Badge variant={statutVariant(s)} className="text-[11px] w-max">{s}</Badge>;
-      },
-    },
-    {
-      accessorKey: 'priorite',
-      header: 'Priorité',
-      cell: ({ getValue }) => {
-        const p = getValue() as ActivityPriority;
-        return <Badge variant={prioriteVariant(p)} className="text-[11px] w-max">{p}</Badge>;
       },
     },
     {
@@ -641,18 +646,22 @@ function buildActivityColumns(
           <Button variant="ghost" size="sm" aria-label="Voir" onClick={() => onView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Supprimer"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(row.original.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canManage && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}>
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Supprimer"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(row.original.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -673,6 +682,13 @@ export default function ProjectActivitiesTab() {
   const updateMutation = useUpdateTask(projectId);
   const deleteMutation = useDeleteTask(projectId);
 
+  // Miroir des rôles serveur (requireRole) sur ptba-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et ptba-delete
+  // (ADMIN/SUPER_ADMIN) — cet onglet lit/écrit la même table ptba_activites.
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const [activities,    setActivities]    = useState<Activity[]>([]);
 
   useEffect(() => {
@@ -680,9 +696,15 @@ export default function ProjectActivitiesTab() {
     setActivities(list.map(adaptTache));
   }, [apiData]);
   const [slideOverOpen, setSlideOverOpen] = useState(false);
-  const [slideOverMode, setSlideOverMode] = useState<SlideOverMode>('new');
+  const [slideOverMode, setSlideOverMode] = useState<FormMode>('new');
   const [selected,      setSelected]      = useState<Activity | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [saveError,   setSaveError]   = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
 
   // ── KPIs calculés depuis l'état local (mis à jour après chaque CRUD) ───────
   const kpis = useMemo(() => {
@@ -703,31 +725,49 @@ export default function ProjectActivitiesTab() {
 
   // ── Sauvegarde (création ou modification) ─────────────────────────────────
   function handleSave(data: Omit<Activity, 'id'>) {
+    setSaveError(null);
     if (slideOverMode === 'new') {
-      const newActivity: Activity = { id: `tmp-${Date.now()}`, ...data };
-      setActivities(prev => [...prev, newActivity]);
-      createMutation.mutate(activityToDto(data, projectId));
+      createMutation.mutate(activityToDto(data, projectId), {
+        onSuccess: (created) => {
+          setActivities(prev => [...prev, adaptTache(created)]);
+          setSlideOverOpen(false);
+        },
+        onError: (err) => setSaveError(extractErrorMessage(err)),
+      });
     } else if (slideOverMode === 'edit' && selected) {
-      setActivities(prev => prev.map(a => a.id === selected.id ? { ...a, ...data } : a));
-      updateMutation.mutate({ id: selected.id, ...activityToDto(data, projectId) });
+      updateMutation.mutate(
+        { id: selected.id, ...activityToDto(data, projectId) },
+        {
+          onSuccess: (updated) => {
+            setActivities(prev => prev.map(a => a.id === selected.id ? adaptTache(updated) : a));
+            setSlideOverOpen(false);
+          },
+          onError: (err) => setSaveError(extractErrorMessage(err)),
+        }
+      );
     }
-    setSlideOverOpen(false);
   }
 
   // ── Suppression confirmée ─────────────────────────────────────────────────
   function handleDeleteConfirm() {
-    if (deleteTargetId) {
-      setActivities(prev => prev.filter(a => a.id !== deleteTargetId));
-      if (selected?.id === deleteTargetId) { setSlideOverOpen(false); setSelected(null); }
-      deleteMutation.mutate(deleteTargetId);
-    }
-    setDeleteTargetId(null);
+    if (!deleteTargetId) return;
+    setDeleteError(null);
+    deleteMutation.mutate(deleteTargetId, {
+      onSuccess: () => {
+        setActivities(prev => prev.filter(a => a.id !== deleteTargetId));
+        if (selected?.id === deleteTargetId) { setSlideOverOpen(false); setSelected(null); }
+        setDeleteTargetId(null);
+      },
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
   }
 
   const columns = buildActivityColumns(
     (a) => { setSelected(a); setSlideOverMode('view'); setSlideOverOpen(true); },
-    (a) => { setSelected(a); setSlideOverMode('edit'); setSlideOverOpen(true); },
-    (id) => setDeleteTargetId(id),
+    (a) => { setSelected(a); setSaveError(null); setSlideOverMode('edit'); setSlideOverOpen(true); },
+    (id) => { setDeleteError(null); setDeleteTargetId(id); },
+    canManage,
+    canDelete,
   );
 
   return (
@@ -741,15 +781,6 @@ export default function ProjectActivitiesTab() {
             Suivi de l'avancement physique et des jalons opérationnels
           </p>
         </div>
-        <Button
-          variant="default"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => { setSelected(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-          Nouvelle activité
-        </Button>
       </div>
 
       {/* ── KPI Strip (calculé depuis l'état local) ─────────────────────────── */}
@@ -788,14 +819,16 @@ export default function ProjectActivitiesTab() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Liste des activités</CardTitle>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => { setSelected(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
-          >
-            <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
-            Ajouter
-          </Button>
+          {canManage && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => { setSelected(null); setSaveError(null); setSlideOverMode('new'); setSlideOverOpen(true); }}
+            >
+              <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              Ajouter
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -816,36 +849,30 @@ export default function ProjectActivitiesTab() {
                   { label: 'Suspendu',    value: 'Suspendu'    },
                 ],
               },
-              {
-                id: 'priorite',
-                title: 'Priorité',
-                options: [
-                  { label: 'Critique', value: 'Critique' },
-                  { label: 'Haute',    value: 'Haute'    },
-                  { label: 'Moyenne',  value: 'Moyenne'  },
-                  { label: 'Faible',   value: 'Faible'   },
-                ],
-              },
             ]}
           />
         </CardContent>
       </Card>
 
       {/* ── SlideOver (vue / édition / création) ──────────────────────────────── */}
-      <ActivitySlideOver
+      <ActivityFormModal
         open={slideOverOpen}
-        onOpenChange={setSlideOverOpen}
+        onOpenChange={(open) => { setSlideOverOpen(open); if (!open) setSaveError(null); }}
         activity={selected}
         mode={slideOverMode}
         onSave={handleSave}
         projectId={projectId}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        error={saveError}
       />
 
       {/* ── Modal de confirmation de suppression ──────────────────────────────── */}
       <DeleteConfirmModal
         activity={deleteTarget}
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteTargetId(null)}
+        onCancel={() => { setDeleteTargetId(null); setDeleteError(null); }}
+        isDeleting={deleteMutation.isPending}
+        error={deleteError}
       />
 
     </section>

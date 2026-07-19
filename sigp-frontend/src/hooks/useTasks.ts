@@ -15,6 +15,12 @@ import type { Tache, StatutTache, PaginatedResponse } from '@/types'
 // apparaîtront aussi dans l'onglet PTBA (même table), et inversement.
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface PtbaResponsableEmbed {
+  id: string;
+  nom: string | null;
+  prenom: string | null;
+}
+
 interface PtbaActiviteRow {
   id: string;
   project_id: string;
@@ -22,6 +28,10 @@ interface PtbaActiviteRow {
   code: string;
   libelle: string;
   responsable_id: string | null;
+  // responsable_id est une vraie FK vers users(id) (même famille que
+  // historique.user_id) — embarqué ici pour résoudre un nom affichable,
+  // plutôt que d'afficher l'UUID brut comme "responsable" (ancien bug).
+  responsable: PtbaResponsableEmbed | PtbaResponsableEmbed[] | null;
   date_debut_prevue: string | null;
   date_fin_prevue: string | null;
   montant_prevu: number | null;
@@ -35,7 +45,8 @@ interface PtbaActiviteRow {
 const PTBA_SELECT = `
   id, project_id, wbs_id, code, libelle, responsable_id, date_debut_prevue,
   date_fin_prevue, montant_prevu, montant_realise, taux_realisation, statut,
-  created_at, updated_at
+  created_at, updated_at,
+  responsable:users(id, nom, prenom)
 `;
 
 // ── Statut mapping (StatutTache ↔ PtbaStatut) ─────────────────────────────────
@@ -73,13 +84,19 @@ function deriveAnneeTrimestre(dateDebut?: string | null): { annee: number; trime
 // ── Adapter: ligne ptba_activites → Tache ─────────────────────────────────────
 
 function adaptRow(row: PtbaActiviteRow): Tache {
+  const responsable = Array.isArray(row.responsable) ? row.responsable[0] : row.responsable;
+  const responsableNom = responsable
+    ? `${responsable.prenom ?? ''} ${responsable.nom ?? ''}`.trim() || null
+    : null;
+
   return {
     id: row.id,
     projet_id: row.project_id,
     wbs_id: row.wbs_id,
     code_tache: row.code,
     description: row.libelle,
-    responsable: row.responsable_id,
+    responsable: responsableNom,
+    responsableId: row.responsable_id,
     date_debut: row.date_debut_prevue,
     date_fin: row.date_fin_prevue,
     cout_prevu: String(row.montant_prevu ?? 0),
@@ -135,7 +152,7 @@ export function useCreateTask(projectId: string) {
         code: dto.code_tache,
         libelle: dto.description,
         wbsId: dto.wbs_id ?? undefined,
-        responsableId: dto.responsable ?? undefined,
+        responsableId: dto.responsableId ?? undefined,
         dateDebutPrevue: dto.date_debut ?? undefined,
         dateFinPrevue: dto.date_fin ?? undefined,
         montantPrevu: dto.cout_prevu ? Number(dto.cout_prevu) : undefined,
@@ -147,6 +164,12 @@ export function useCreateTask(projectId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all(projectId) })
       qc.invalidateQueries({ queryKey: ['evm', projectId] })
+      // usePTBA (Matrice Financière + KPIs de PTBAPage) a sa propre clé de
+      // cache ('ptba', pas 'tasks') bien que les deux hooks lisent la même
+      // table ptba_activites — sans cette invalidation, la Matrice restait
+      // figée sur les anciennes valeurs après une création/modification faite
+      // depuis l'onglet Activités.
+      qc.invalidateQueries({ queryKey: ['ptba', projectId] })
     },
   })
 }
@@ -160,7 +183,7 @@ export function useUpdateTask(projectId: string) {
         id,
         libelle: dto.description,
         wbsId: dto.wbs_id ?? undefined,
-        responsableId: dto.responsable ?? undefined,
+        responsableId: dto.responsableId ?? undefined,
         dateDebutPrevue: dto.date_debut ?? undefined,
         dateFinPrevue: dto.date_fin ?? undefined,
         montantPrevu: dto.cout_prevu !== undefined ? Number(dto.cout_prevu) : undefined,
@@ -187,6 +210,7 @@ export function useUpdateTask(projectId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all(projectId) })
       qc.invalidateQueries({ queryKey: ['evm', projectId] })
+      qc.invalidateQueries({ queryKey: ['ptba', projectId] })
     },
   })
 }
@@ -202,6 +226,7 @@ export function useDeleteTask(projectId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all(projectId) })
       qc.invalidateQueries({ queryKey: ['evm', projectId] })
+      qc.invalidateQueries({ queryKey: ['ptba', projectId] })
     },
   })
 }

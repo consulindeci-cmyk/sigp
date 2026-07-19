@@ -35,6 +35,28 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Garde-fou : ptba_activite_marches a une vraie FK ON DELETE CASCADE vers
+    // ptba_activites, mais cette suppression est un soft-delete (UPDATE
+    // deleted_at) — la CASCADE ne se déclenche jamais. Sans ce contrôle, les
+    // lignes de jonction resteraient vivantes en pointant vers une activité
+    // désormais invisible (même classe de bug que sur logframe-objectives-delete).
+    const { data: linkedMarches, error: marchesCheckError } = await admin
+      .from('ptba_activite_marches')
+      .select('id, marche:ppm_marches(id, code, intitule)')
+      .eq('activite_id', body.id);
+    if (marchesCheckError) throw marchesCheckError;
+
+    if ((linkedMarches?.length ?? 0) > 0) {
+      const marches = (linkedMarches ?? []).map((m: { id: string; marche: { id: string; code: string; intitule: string } | { id: string; code: string; intitule: string }[] | null }) => {
+        const marche = Array.isArray(m.marche) ? m.marche[0] : m.marche;
+        return { junctionId: m.id, marcheId: marche?.id ?? null, code: marche?.code ?? null, intitule: marche?.intitule ?? null };
+      });
+      return json({
+        error: `Suppression impossible : cette activité est encore rattachée à ${marches.length} marché(s) PPM (${marches.map(m => m.code).filter(Boolean).join(', ')}). Détachez d'abord ces liaisons.`,
+        dependencies: { marches },
+      }, 409);
+    }
+
     const { error: deleteError } = await admin
       .from('ptba_activites')
       .update({
