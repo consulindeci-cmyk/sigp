@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Upload, Download, Copy, Archive, RotateCcw } from 'lucide-react';
+import { X, Upload, Download, Copy, Archive, RotateCcw, AlertCircle } from 'lucide-react';
 import type {
   DocumentProjet, DocumentCategorie, TypeFichier,
   StatutDocument, ConfidentialiteDocument,
@@ -17,6 +17,7 @@ import { Input }    from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
 import { Select }   from '@/components/ui/forms/Select';
 import { Badge }    from '@/components/ui/data-display/Badge';
+import { useDownloadDocumentVersion } from '@/hooks/useDocuments';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,11 @@ export interface DocumentSlideOverProps {
   onDelete?:     (id: string) => void;
   onDuplicate?:  (id: string) => void;
   onArchive?:    (id: string) => void;
+  canManage?:    boolean;
+  canDelete?:    boolean;
+  isSaving?:     boolean;
+  isDeleting?:   boolean;
+  error?:        string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -89,13 +95,6 @@ function typeColor(t: TypeFichier): string {
   return 'text-muted-foreground';
 }
 
-function typeToExt(t: TypeFichier): string {
-  const map: Record<TypeFichier, string> = {
-    PDF: 'pdf', Word: 'docx', Excel: 'xlsx', Image: 'png', ZIP: 'zip', Autre: 'dat',
-  };
-  return map[t];
-}
-
 const INIT: FormState = {
   code_document:   '',
   titre:           '',
@@ -118,11 +117,14 @@ const INIT: FormState = {
 export function DocumentSlideOver({
   open, onOpenChange, mode, document: doc, nextCode = 'DOC-001',
   onSave, onDelete, onDuplicate, onArchive,
+  canManage = true, canDelete = true, isSaving = false, isDeleting = false, error = null,
 }: DocumentSlideOverProps) {
   const [form, setForm]           = useState<FormState>(INIT);
   const [errors, setErrors]       = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const downloadMutation = useDownloadDocumentVersion();
 
   const readOnly = mode === 'view';
 
@@ -179,17 +181,15 @@ export function DocumentSlideOver({
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  function handleSimulatedDownload() {
+  // Fichier réel via URL signée (60s) — remplace l'ancien téléchargement
+  // simulé qui générait un .txt fabriqué au lieu du vrai document (cf. audit).
+  function handleDownload() {
     if (!doc) return;
-    const ext = typeToExt(doc.type_fichier);
-    const content = `Document: ${doc.titre}\nCode: ${doc.code_document}\nAuteur: ${doc.auteur}\nStatut: ${doc.statut}`;
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${doc.code_document}_${doc.titre.replace(/\s+/g, '_')}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setDownloadError(null);
+    downloadMutation.mutate(doc.id, {
+      onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
+      onError: (err) => setDownloadError(err instanceof Error ? err.message : 'Échec du téléchargement.'),
+    });
   }
 
   function validate(): boolean {
@@ -203,6 +203,9 @@ export function DocumentSlideOver({
     return Object.keys(e).length === 0;
   }
 
+  // Le SlideOver ne se ferme plus lui-même : le parent possède la mutation et
+  // ne ferme qu'après confirmation serveur (cf. audit — fermeture aveugle
+  // avant réponse du serveur, qui masquait tout échec 403/réseau).
   function handleSave() {
     if (!validate()) return;
     onSave(
@@ -224,13 +227,11 @@ export function DocumentSlideOver({
       },
       doc?.id,
     );
-    onOpenChange(false);
   }
 
   function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     if (doc?.id) onDelete?.(doc.id);
-    onOpenChange(false);
   }
 
   const title =
@@ -282,18 +283,18 @@ export function DocumentSlideOver({
           {/* View mode — actions */}
           {readOnly && doc && (
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={handleSimulatedDownload}>
+              <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloadMutation.isPending}>
                 <Download className="h-3.5 w-3.5 mr-1.5" />
-                Télécharger
+                {downloadMutation.isPending ? 'Préparation...' : 'Télécharger'}
               </Button>
-              {onDuplicate && (
-                <Button variant="outline" size="sm" onClick={() => { onDuplicate(doc.id); onOpenChange(false); }}>
+              {onDuplicate && canManage && (
+                <Button variant="outline" size="sm" onClick={() => onDuplicate(doc.id)}>
                   <Copy className="h-3.5 w-3.5 mr-1.5" />
                   Dupliquer
                 </Button>
               )}
-              {onArchive && (
-                <Button variant="outline" size="sm" onClick={() => { onArchive(doc.id); onOpenChange(false); }}>
+              {onArchive && canManage && (
+                <Button variant="outline" size="sm" onClick={() => onArchive(doc.id)}>
                   {doc.statut === 'ARCHIVE'
                     ? <><RotateCcw className="h-3.5 w-3.5 mr-1.5" />Restaurer</>
                     : <><Archive className="h-3.5 w-3.5 mr-1.5" />Archiver</>
@@ -302,6 +303,12 @@ export function DocumentSlideOver({
               )}
             </div>
           )}
+          {downloadError && (
+            <p className="text-xs text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {downloadError}
+            </p>
+          )}
 
           {/* Section: Identification */}
           <div className="space-y-4">
@@ -309,7 +316,13 @@ export function DocumentSlideOver({
               Identification
             </p>
 
-            {/* Sélecteur de fichier (new / edit uniquement) */}
+            {/* Sélecteur de fichier (new / edit uniquement) — auto-détecte
+                type/taille pour le formulaire, mais n'envoie PAS encore le
+                fichier réel vers documents-upload-version (contrairement à
+                la zone de dépôt globale de TabDocuments.tsx, corrigée cette
+                session). Hors périmètre de ce chantier — signalé, non
+                corrigé : ce sélecteur reste, pour l'instant, un remplissage
+                automatique de champs, pas un vrai téléversement. */}
             {!readOnly && (
               <div className="rounded-lg border-2 border-dashed border-border bg-muted/10 p-3 flex items-center gap-3">
                 <Button variant="outline" size="sm" type="button" onClick={() => fileRef.current?.click()}>
@@ -487,7 +500,7 @@ export function DocumentSlideOver({
           )}
 
           {/* Bouton Supprimer (edit) */}
-          {mode === 'edit' && doc && onDelete && (
+          {mode === 'edit' && doc && onDelete && canDelete && (
             <div className="pt-2 border-t border-border">
               {confirmDelete ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -495,10 +508,10 @@ export function DocumentSlideOver({
                     Confirmer la suppression de {doc.code_document} ?
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="destructive" size="sm" onClick={handleDelete}>
-                      Supprimer définitivement
+                    <Button variant="destructive" size="sm" onClick={handleDelete} disabled={isDeleting}>
+                      {isDeleting ? 'Suppression...' : 'Supprimer définitivement'}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)} disabled={isDeleting}>
                       Annuler
                     </Button>
                   </div>
@@ -514,16 +527,23 @@ export function DocumentSlideOver({
               )}
             </div>
           )}
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
         </SlideOverBody>
 
         {/* ── Footer ── */}
         <SlideOverFooter>
           <SlideOverClose asChild>
-            <Button variant="outline">Fermer</Button>
+            <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
           </SlideOverClose>
           {!readOnly && (
-            <Button onClick={handleSave}>
-              {mode === 'new' ? 'Créer le document' : 'Enregistrer'}
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : mode === 'new' ? 'Créer le document' : 'Enregistrer'}
             </Button>
           )}
         </SlideOverFooter>

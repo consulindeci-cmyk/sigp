@@ -189,6 +189,33 @@ export function useCreateDocument(projectId: string) {
   });
 }
 
+// Téléversement réel (zone de dépôt / bouton "Téléverser" de TabDocuments.tsx)
+// — documents-create (livrableId omis = NULL, document global au projet) +
+// documents-upload-version (fichier réel vers le bucket privé sigp-documents).
+// Remplace l'ancien comportement simulé qui fabriquait une ligne de registre
+// sans jamais stocker le fichier (cf. audit Livrables → Documents).
+export function useUploadDocument(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ file, meta }: { file: File; meta: PDocPayload }) => {
+      const payload = buildCreatePayload(projectId, meta);
+      const { data: created } = await invokeEdgeFunction<{ data: DocumentRow }>('documents-create', payload);
+      const fileBase64 = await fileToBase64(file);
+      await invokeEdgeFunction('documents-upload-version', {
+        documentId: created.id,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileBase64,
+      });
+      return adaptDocument(created);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: documentKeys.project(projectId) });
+      qc.invalidateQueries({ queryKey: documentKeys.all() });
+    },
+  });
+}
+
 export function useUpdateDocument(projectId: string) {
   const qc = useQueryClient();
   return useMutation({

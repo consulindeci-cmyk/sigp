@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
-import { useDocuments, useCreateDocument, useUpdateDocument, useDeleteDocument } from '@/hooks/useDocuments';
+import { useAuthStore } from '@/stores/authStore';
+import {
+  useDocuments, useCreateDocument, useUpdateDocument, useDeleteDocument,
+  useUploadDocument, useDownloadDocumentVersion,
+} from '@/hooks/useDocuments';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, LineChart, Line,
@@ -99,17 +103,37 @@ export default function TabDocuments() {
   const createMutation = useCreateDocument(resolvedProjectId);
   const updateMutation = useUpdateDocument(resolvedProjectId);
   const deleteMutation = useDeleteDocument(resolvedProjectId);
+  const uploadMutation = useUploadDocument(resolvedProjectId);
+  const downloadMutation = useDownloadDocumentVersion();
 
-  const [documents, setDocuments] = useState<DocumentProjet[]>([]);
+  // Dérivé de la réponse serveur, jamais copié dans un state local — plus de
+  // désynchronisation possible entre l'affichage et la réalité serveur
+  // (cf. audit Livrables/Documents : l'ancien useEffect+setState laissait
+  // aussi les mises à jour optimistes "survivre" en cas d'échec serveur).
+  const documents = useMemo(() => documentsData ?? [], [documentsData]);
 
-  useEffect(() => {
-    if (documentsData) setDocuments(documentsData);
-  }, [documentsData]);
+  // Miroir des rôles serveur : requireRole sur documents-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete
+  // (COORDINATEUR/ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const currentUser = useAuthStore(s => s.user);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = !!currentRole && ['COORDINATEUR', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const currentUserName = currentUser ? `${currentUser.prenom ?? ''} ${currentUser.nom ?? ''}`.trim() || currentUser.email : 'Utilisateur';
+
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
   const [slideDoc,  setSlideDoc]  = useState<DocumentProjet | null>(null);
+  const [slideError, setSlideError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentProjet | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
@@ -187,86 +211,87 @@ export default function TabDocuments() {
   ], [auteurOptions]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+  // Le parent possède les mutations et ne ferme le SlideOver qu'après
+  // confirmation serveur (onSuccess) — plus de mise à jour optimiste ni de
+  // fermeture avant réponse (cf. audit). L'erreur reste affichée si la
+  // mutation échoue, l'utilisateur peut corriger et réessayer.
 
   const handleSave = useCallback((payload: DocumentSavePayload, id?: string) => {
-    const now   = new Date().toISOString();
-    const today = now.slice(0, 10);
+    setSlideError(null);
+    const today = new Date().toISOString().slice(0, 10);
+    const onError = (err: unknown) => setSlideError(extractErrorMessage(err));
     if (id) {
-      setDocuments(prev => prev.map(d =>
-        d.id === id ? { ...d, ...payload, date_modification: today, updatedAt: now } : d,
-      ));
-      updateMutation.mutate({ id, ...payload, date_modification: today });
+      updateMutation.mutate(
+        { id, ...payload, date_modification: today },
+        { onSuccess: () => setSlideOpen(false), onError },
+      );
     } else {
-      const newDoc: DocumentProjet = {
-        id: `doc-${Date.now()}`,
-        projet_id: resolvedProjectId,
-        ...payload,
-        date_modification: today,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setDocuments(prev => [newDoc, ...prev]);
-      createMutation.mutate({ ...payload, projet_id: resolvedProjectId, date_modification: today });
+      createMutation.mutate(
+        { ...payload, projet_id: resolvedProjectId, date_modification: today },
+        { onSuccess: () => setSlideOpen(false), onError },
+      );
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedProjectId]);
+  }, [resolvedProjectId, createMutation, updateMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    setDocuments(prev => prev.filter(d => d.id !== deleteTarget.id));
-    deleteMutation.mutate(deleteTarget.id);
-    setDeleteTarget(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deleteTarget]);
+    setDeleteError(null);
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
+  }, [deleteTarget, deleteMutation]);
 
   const handleDuplicate = useCallback((id: string) => {
-    const now      = new Date().toISOString();
-    const today    = now.slice(0, 10);
+    setSlideError(null);
     const original = documents.find(d => d.id === id);
     if (!original) return;
-    const copy: DocumentProjet = {
-      ...original,
-      id: `doc-${Date.now()}`,
-      code_document: nextDocCode(documents),
-      titre: `${original.titre} (copie)`,
-      statut: 'BROUILLON',
-      version: '1.0',
-      date_creation:     today,
-      date_modification: today,
-      createdAt: now,
-      updatedAt: now,
-    };
-    setDocuments(prev => [copy, ...prev]);
-    createMutation.mutate({ ...copy, projet_id: resolvedProjectId });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documents, resolvedProjectId]);
+    const today = new Date().toISOString().slice(0, 10);
+    createMutation.mutate(
+      {
+        ...original,
+        code_document: nextDocCode(documents),
+        titre: `${original.titre} (copie)`,
+        statut: 'BROUILLON',
+        version: '1.0',
+        date_creation: today,
+        date_modification: today,
+        projet_id: resolvedProjectId,
+      },
+      {
+        onSuccess: () => setSlideOpen(false),
+        onError: (err) => setSlideError(extractErrorMessage(err)),
+      },
+    );
+  }, [documents, resolvedProjectId, createMutation]);
 
   const handleArchive = useCallback((id: string) => {
-    const now      = new Date().toISOString();
-    const today    = now.slice(0, 10);
-    const doc      = documents.find(d => d.id === id);
+    setSlideError(null);
+    const doc = documents.find(d => d.id === id);
     const newStatut: StatutDocument = doc?.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE';
-    setDocuments(prev => prev.map(d =>
-      d.id === id ? {
-        ...d,
-        statut: newStatut,
-        date_modification: today,
-        updatedAt: now,
-      } : d,
-    ));
-    updateMutation.mutate({ id, statut: newStatut, date_modification: today });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documents]);
+    updateMutation.mutate(
+      { id, statut: newStatut, date_modification: new Date().toISOString().slice(0, 10) },
+      {
+        onSuccess: () => setSlideOpen(false),
+        onError: (err) => setSlideError(extractErrorMessage(err)),
+      },
+    );
+  }, [documents, updateMutation]);
 
-  const openNew  = useCallback(() => { setSlideDoc(null);  setSlideMode('new');  setSlideOpen(true); }, []);
+  const openNew  = useCallback(() => { setSlideDoc(null);  setSlideMode('new');  setSlideError(null); setSlideOpen(true); }, []);
   const openView = useCallback((d: DocumentProjet) => { setSlideDoc(d); setSlideMode('view'); setSlideOpen(true); }, []);
-  const openEdit = useCallback((d: DocumentProjet) => { setSlideDoc(d); setSlideMode('edit'); setSlideOpen(true); }, []);
+  const openEdit = useCallback((d: DocumentProjet) => { setSlideDoc(d); setSlideMode('edit'); setSlideError(null); setSlideOpen(true); }, []);
 
-  // ── Upload simulé ──────────────────────────────────────────────────────────
+  // ── Téléversement réel ──────────────────────────────────────────────────────
+  // documents-create (livrableId omis = NULL, document global au projet) +
+  // documents-upload-version (fichier réel vers le bucket privé
+  // sigp-documents) — remplace l'ancienne fabrication de ligne de registre
+  // sans jamais stocker le fichier (cf. audit).
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadError(null);
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     const typeMap: Record<string, TypeFichier> = {
       pdf: 'PDF', docx: 'Word', doc: 'Word',
@@ -274,33 +299,39 @@ export default function TabDocuments() {
       png: 'Image', jpg: 'Image', jpeg: 'Image', gif: 'Image', webp: 'Image',
       zip: 'ZIP', rar: 'ZIP',
     };
-    const type: TypeFichier = typeMap[ext] ?? 'Autre';
-    const taille_ko         = Math.max(1, Math.round(file.size / 1024));
-    const now               = new Date().toISOString();
-    const today             = now.slice(0, 10);
-    const code              = nextDocCode(documents);
-    const newDoc: DocumentProjet = {
-      id: `doc-${Date.now()}`,
-      projet_id: resolvedProjectId,
-      code_document: code,
-      titre: file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' '),
-      categorie: 'Autre',
-      version: '1.0',
-      auteur: 'Utilisateur',
-      responsable: 'Utilisateur',
-      date_creation: today,
-      date_modification: today,
-      statut: 'BROUILLON',
-      taille_ko,
-      type_fichier: type,
-      mots_cles: [],
-      confidentialite: 'INTERNE',
-      createdAt: now,
-      updatedAt: now,
-    };
-    setDocuments(prev => [newDoc, ...prev]);
-    createMutation.mutate({ ...newDoc, projet_id: resolvedProjectId });
+    const type_fichier: TypeFichier = typeMap[ext] ?? 'Autre';
+    const today = new Date().toISOString().slice(0, 10);
+    uploadMutation.mutate(
+      {
+        file,
+        meta: {
+          projet_id: resolvedProjectId,
+          code_document: nextDocCode(documents),
+          titre: file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' '),
+          categorie: 'Autre',
+          version: '1.0',
+          auteur: currentUserName,
+          responsable: currentUserName,
+          date_creation: today,
+          date_modification: today,
+          statut: 'BROUILLON',
+          taille_ko: Math.max(1, Math.round(file.size / 1024)),
+          type_fichier,
+          mots_cles: [],
+          confidentialite: 'INTERNE',
+        },
+      },
+      { onError: (err) => setUploadError(extractErrorMessage(err)) },
+    );
     if (uploadRef.current) uploadRef.current.value = '';
+  }
+
+  function handleDownload(doc: DocumentProjet) {
+    setDownloadError(null);
+    downloadMutation.mutate(doc.id, {
+      onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
+      onError: (err) => setDownloadError(extractErrorMessage(err)),
+    });
   }
 
   // ── Exports ────────────────────────────────────────────────────────────────
@@ -448,20 +479,31 @@ export default function TabDocuments() {
           <Button variant="ghost" size="sm" aria-label="Aperçu" onClick={() => openView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
           <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setDeleteTarget(row.original)}
+            variant="ghost" size="sm" aria-label="Télécharger"
+            onClick={() => handleDownload(row.original)}
+            disabled={downloadMutation.isPending}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Download className="h-3.5 w-3.5" />
           </Button>
+          {canManage && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => { setDeleteError(null); setDeleteTarget(row.original); }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
-  ], [openView, openEdit]);
+  ], [openView, openEdit, canManage, canDelete, downloadMutation]);
 
   // ── JSX ────────────────────────────────────────────────────────────────────
 
@@ -485,17 +527,32 @@ export default function TabDocuments() {
             <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             Excel
           </Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => uploadRef.current?.click()}>
-            <Upload className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Téléverser
-          </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Nouveau document
-          </Button>
+          {canManage && (
+            <>
+              <Button
+                variant="outline" size="sm" className="h-8 text-xs"
+                onClick={() => uploadRef.current?.click()}
+                disabled={uploadMutation.isPending}
+              >
+                <Upload className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                {uploadMutation.isPending ? 'Envoi...' : 'Téléverser'}
+              </Button>
+              <Button size="sm" className="h-8 text-xs" onClick={openNew}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                Nouveau document
+              </Button>
+            </>
+          )}
           <input ref={uploadRef} type="file" className="sr-only" aria-hidden="true" tabIndex={-1} onChange={handleFileUpload} />
         </div>
       </div>
+
+      {(uploadError || downloadError) && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{uploadError ?? downloadError}</span>
+        </div>
+      )}
 
       {/* ── Alerte EN_VALIDATION ─────────────────────────────────────────── */}
       {docsEnValidation.length > 0 && (
@@ -552,18 +609,23 @@ export default function TabDocuments() {
       </div>
 
       {/* ── Zone de téléversement ────────────────────────────────────────── */}
-      <button
-        type="button"
-        className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-6 text-center bg-muted/5 hover:bg-muted/10 hover:border-primary/40 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label="Zone de dépôt — cliquer pour parcourir les fichiers"
-        onClick={() => uploadRef.current?.click()}
-      >
-        <Upload className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm font-medium text-foreground">Glissez et déposez vos fichiers ici</p>
-        <p className="text-xs text-muted-foreground">
-          ou cliquez pour parcourir — PDF, Word, Excel, Images, ZIP — ajouté automatiquement comme Brouillon
-        </p>
-      </button>
+      {canManage && (
+        <button
+          type="button"
+          className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-6 text-center bg-muted/5 hover:bg-muted/10 hover:border-primary/40 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed"
+          aria-label="Zone de dépôt — cliquer pour parcourir les fichiers"
+          onClick={() => uploadRef.current?.click()}
+          disabled={uploadMutation.isPending}
+        >
+          <Upload className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+          <p className="text-sm font-medium text-foreground">
+            {uploadMutation.isPending ? 'Envoi en cours...' : 'Glissez et déposez vos fichiers ici'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            ou cliquez pour parcourir — PDF, Word, Excel, Images, ZIP — ajouté automatiquement comme Brouillon
+          </p>
+        </button>
+      )}
 
       {/* ── Graphiques ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -640,10 +702,12 @@ export default function TabDocuments() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Registre des documents</CardTitle>
-          <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-            Ajouter
-          </Button>
+          {canManage && (
+            <Button size="sm" className="h-7 text-xs" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+              Ajouter
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -660,21 +724,26 @@ export default function TabDocuments() {
       {/* ── SlideOver ─────────────────────────────────────────────────────── */}
       <DocumentSlideOver
         open={slideOpen}
-        onOpenChange={setSlideOpen}
+        onOpenChange={open => { setSlideOpen(open); if (!open) setSlideError(null); }}
         mode={slideMode}
         document={slideDoc}
         nextCode={currentNextCode}
         onSave={handleSave}
         onDelete={(id) => {
           const target = documents.find(d => d.id === id);
-          if (target) { setSlideOpen(false); setDeleteTarget(target); }
+          if (target) { setSlideOpen(false); setDeleteError(null); setDeleteTarget(target); }
         }}
         onDuplicate={handleDuplicate}
         onArchive={handleArchive}
+        canManage={canManage}
+        canDelete={canDelete}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        isDeleting={deleteMutation.isPending}
+        error={slideError}
       />
 
       {/* ── Modal suppression ─────────────────────────────────────────────── */}
-      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Supprimer le document</ModalTitle>
@@ -684,12 +753,18 @@ export default function TabDocuments() {
               <em>{deleteTarget?.titre}</em> ? Cette action est irréversible.
             </ModalDescription>
           </ModalHeader>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Supprimer
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </ModalFooter>
         </ModalContent>
