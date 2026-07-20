@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   Download, Trash2, Star, StarOff, Search, SlidersHorizontal,
-  FileText, Play, Eye,
+  FileText, Play, Eye, AlertCircle,
 } from 'lucide-react';
 import { ContentLayout } from '@/components/layout/ContentLayout';
 import { PageHeader } from '@/components/layout/AppShell';
@@ -41,7 +41,8 @@ import {
   type MonthlyExportsData,
 } from '@/mocks/reportsMocks';
 import type { RapportProjet, TypeRapport, FormatRapport } from '@/types';
-import { useReports, useCreateReport, useDeleteReport } from '@/hooks/useReports';
+import { useReports, useDeleteReport } from '@/hooks/useReports';
+import { useDownloadDocumentVersion } from '@/hooks/useDocuments';
 import { useAuthStore } from '@/stores/authStore';
 
 // ── Adapters: RapportProjet → ReportPage types ────────────────────────────────
@@ -97,6 +98,7 @@ function adaptToGenerated(r: RapportProjet): GeneratedReport {
     taille:         fmtTailleStr(r.taille_ko),
     statut:         genStat,
     categorie:      TYPE_TO_CATEGORY[r.type],
+    documentId:     r.documentId,
   };
 }
 
@@ -188,6 +190,8 @@ function CategorySection({
   onPreview,
   onToggleFav,
   onDelete,
+  canManage,
+  canDelete,
 }: {
   category: ReportCategory;
   reports: ReportTemplate[];
@@ -195,6 +199,8 @@ function CategorySection({
   onPreview: (r: ReportTemplate) => void;
   onToggleFav: (id: string) => void;
   onDelete: (r: ReportTemplate) => void;
+  canManage: boolean;
+  canDelete: boolean;
 }) {
   if (reports.length === 0) return null;
   return (
@@ -215,6 +221,8 @@ function CategorySection({
             onPreview={onPreview}
             onToggleFav={onToggleFav}
             onDelete={onDelete}
+            canManage={canManage}
+            canDelete={canDelete}
           />
         ))}
       </div>
@@ -228,32 +236,39 @@ function CategorySection({
 
 export default function ReportsPage() {
   const { data: apiRapports } = useReports();
-  const createMutation = useCreateReport();
   const deleteMutation = useDeleteReport();
-  const currentUser = useAuthStore((s) => s.user);
+  const downloadMutation = useDownloadDocumentVersion();
+  const currentRole = useAuthStore((s) => s.user?.role);
+
+  // Miroir des rôles serveur : requireRole sur reports-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   // Un même "code" de modèle peut regrouper des rapports de plusieurs projets
   // (cf. buildTemplates) — on retient le type réel le plus récent par code
-  // pour pouvoir recréer une ligne rapports_projet cohérente à la génération.
+  // pour pouvoir régénérer une ligne rapports_projet cohérente.
   const codeToType = useMemo(() => {
     const map = new Map<string, TypeRapport>();
     for (const r of apiRapports ?? []) map.set(r.code_rapport, r.type);
     return map;
   }, [apiRapports]);
 
-  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
-  const [generated, setGenerated] = useState<GeneratedReport[]>([]);
+  // "favori" est une préférence purement locale (aucune colonne backend) —
+  // seul état réellement local légitime ici, distinct des données serveur
+  // (cf. audit : l'ancien useEffect+setState copiait aussi templates/generated,
+  // qui sont maintenant dérivés directement de apiRapports, jamais recopiés).
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (apiRapports) {
-      setTemplates(prev => {
-        const built = buildTemplates(apiRapports);
-        const prevById = new Map(prev.map(t => [t.id, t]));
-        return built.map(t => ({ ...t, favori: prevById.get(t.id)?.favori ?? t.favori }));
-      });
-      setGenerated(apiRapports.map(adaptToGenerated));
-    }
-  }, [apiRapports]);
+  const templates = useMemo(() => {
+    if (!apiRapports) return [];
+    return buildTemplates(apiRapports).map(t => ({ ...t, favori: favoriteIds.has(t.id) }));
+  }, [apiRapports, favoriteIds]);
+
+  const generated = useMemo(
+    () => (apiRapports ?? []).map(adaptToGenerated),
+    [apiRapports],
+  );
 
   const monthlyExports = useMemo(
     () => buildMonthlyExports(apiRapports ?? []),
@@ -273,6 +288,8 @@ export default function ReportsPage() {
   // Delete template modal
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<ReportTemplate | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // ── Dynamic KPIs ──────────────────────────────────────────────────────────
   const kpis = useMemo<ReportsKPIs>(() => ({
@@ -328,50 +345,52 @@ export default function ReportsPage() {
   }
 
   function handleToggleFav(id: string) {
-    setTemplates((prev) =>
-      prev.map((t) => t.id === id ? { ...t, favori: !t.favori } : t)
-    );
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
   function openDelete(report: ReportTemplate) {
     setReportToDelete(report);
+    setDeleteError(null);
     setDeleteModalOpen(true);
   }
 
   function handleDeleteConfirm() {
     if (!reportToDelete) return;
-    setTemplates((prev) => prev.filter((t) => t.id !== reportToDelete.id));
-    deleteMutation.mutate(reportToDelete.id);
-    setDeleteModalOpen(false);
-    setReportToDelete(null);
-  }
-
-  function handleGenerated(
-    report: ReportTemplate, format: ReportFormat, projectId: string,
-    dateDebut: string, dateFin: string,
-  ) {
-    const auteur = currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Utilisateur inconnu';
-    const beFormat: FormatRapport = format === 'XLSX' ? 'Excel' : format === 'DOCX' ? 'Word' : 'PDF';
-    createMutation.mutate({
-      projet_id: projectId,
-      code_rapport: report.code,
-      titre: report.nom,
-      description: report.description,
-      type: codeToType.get(report.code) ?? 'AVANCEMENT',
-      format: beFormat,
-      statut: 'GENERE',
-      periode: `${dateDebut} → ${dateFin}`,
-      version: '1.0',
-      auteur,
-      taille_ko: 0,
-      nb_telechargements: 0,
-      date_generation: new Date().toISOString().slice(0, 10),
+    deleteMutation.mutate(reportToDelete.id, {
+      onSuccess: () => {
+        setDeleteModalOpen(false);
+        setReportToDelete(null);
+      },
+      onError: (err) => {
+        setDeleteError(err instanceof Error ? err.message : 'Échec de la suppression du rapport.');
+      },
     });
   }
 
   function handleDeleteGenerated(id: string) {
-    setGenerated((prev) => prev.filter((g) => g.id !== id));
-    deleteMutation.mutate(id);
+    setDownloadError(null);
+    deleteMutation.mutate(id, {
+      onError: (err) => {
+        setDownloadError(err instanceof Error ? err.message : 'Échec de la suppression du rapport.');
+      },
+    });
+  }
+
+  function handleDownloadGenerated(g: GeneratedReport) {
+    if (!g.documentId) return;
+    setDownloadError(null);
+    downloadMutation.mutate(g.documentId, {
+      onSuccess: (data) => {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
+      },
+      onError: (err) => {
+        setDownloadError(err instanceof Error ? err.message : 'Échec du téléchargement du rapport.');
+      },
+    });
   }
 
   // ── History DataTable columns ─────────────────────────────────────────────
@@ -445,25 +464,27 @@ export default function ReportsPage() {
           {
             label: 'Télécharger',
             icon: <Download className="h-3.5 w-3.5" />,
-            onClick: () => {},
-            disabled: g.statut === 'Erreur',
+            onClick: () => handleDownloadGenerated(g),
+            disabled: g.statut === 'Erreur' || !g.documentId,
           },
-          {
+        ];
+        if (canDelete) {
+          actions.push({
             label: 'Supprimer',
             icon: <Trash2 className="h-3.5 w-3.5" />,
             onClick: () => handleDeleteGenerated(g.id),
             variant: 'destructive',
             separator: true,
-          },
-        ];
+          });
+        }
         return <ActionsMenu actions={actions} aria-label={`Actions pour ${g.reportNom}`} />;
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [canDelete]);
 
   // ── Header actions ────────────────────────────────────────────────────────
-  const headerActions = (
+  const headerActions = canManage ? (
     <Button
       variant="default"
       leftIcon={<Play className="h-4 w-4" />}
@@ -475,7 +496,7 @@ export default function ReportsPage() {
     >
       Générer un rapport
     </Button>
-  );
+  ) : undefined;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -573,6 +594,8 @@ export default function ReportsPage() {
                   onPreview={openPreview}
                   onToggleFav={handleToggleFav}
                   onDelete={openDelete}
+                  canManage={canManage}
+                  canDelete={canDelete}
                 />
               ))}
             </div>
@@ -597,6 +620,8 @@ export default function ReportsPage() {
                   onPreview={openPreview}
                   onToggleFav={handleToggleFav}
                   onDelete={openDelete}
+                  canManage={canManage}
+                  canDelete={canDelete}
                 />
               ))}
             </div>
@@ -631,16 +656,18 @@ export default function ReportsPage() {
                       <span>{r.nombreExports} fois</span>
                     </div>
                     <div className="flex gap-2">
+                      {canManage && (
+                        <Button
+                          variant="default" size="sm" className="flex-1 gap-1"
+                          leftIcon={<Play className="h-3 w-3" />}
+                          onClick={() => openGenerate(r)}
+                          aria-label={`Générer ${r.nom}`}
+                        >
+                          Générer
+                        </Button>
+                      )}
                       <Button
-                        variant="default" size="sm" className="flex-1 gap-1"
-                        leftIcon={<Play className="h-3 w-3" />}
-                        onClick={() => openGenerate(r)}
-                        aria-label={`Générer ${r.nom}`}
-                      >
-                        Générer
-                      </Button>
-                      <Button
-                        variant="outline" size="sm" className="gap-1"
+                        variant="outline" size="sm" className={canManage ? 'gap-1' : 'flex-1 gap-1'}
                         leftIcon={<Eye className="h-3 w-3" />}
                         onClick={() => openPreview(r)}
                         aria-label={`Aperçu de ${r.nom}`}
@@ -658,6 +685,12 @@ export default function ReportsPage() {
         {/* ── Historique ───────────────────────────────────────────── */}
         <TabsContent value="historique">
           <div className="flex flex-col gap-6">
+            {downloadError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {downloadError}
+              </div>
+            )}
             <ReportExportsChart data={monthlyExports} />
             <DataTable
               columns={historyColumns}
@@ -675,8 +708,9 @@ export default function ReportsPage() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         report={selectedReport}
+        reportType={codeToType.get(selectedReport?.code ?? '') ?? 'AVANCEMENT'}
         mode={sheetMode}
-        onGenerated={handleGenerated}
+        canManage={canManage}
       />
 
       {/* ── Delete Template Modal ────────────────────────────────────────── */}
@@ -690,11 +724,17 @@ export default function ReportsPage() {
               Cette action est irréversible et supprimera ce modèle du catalogue.
             </ModalDescription>
           </ModalHeader>
+          {deleteError && (
+            <div className="mx-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </div>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
               <Trash2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
               Supprimer
             </Button>

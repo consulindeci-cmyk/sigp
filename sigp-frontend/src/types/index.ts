@@ -371,6 +371,7 @@ export interface RapportProjet {
   taille_ko: number;
   nb_telechargements: number;
   commentaires?: string;
+  documentId?: string | null;   // documents_projet.id du fichier réellement généré/stocké
   createdAt: string;
   updatedAt: string;
 }

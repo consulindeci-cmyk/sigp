@@ -17,6 +17,7 @@ interface CreateReportBody {
   tailleKo?: number;
   nbTelechargements?: number;
   commentaires?: string;
+  documentId?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -76,6 +77,7 @@ Deno.serve(async (req: Request) => {
         taille_ko: body.tailleKo ?? 0,
         nb_telechargements: body.nbTelechargements ?? 0,
         commentaires: body.commentaires?.trim() ?? null,
+        document_id: body.documentId ?? null,
         created_by: profile.id,
         updated_at: new Date().toISOString(),
       })

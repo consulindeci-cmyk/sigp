@@ -1,35 +1,53 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Download, CheckCircle2, FileText, AlertCircle, Eye, Play } from 'lucide-react';
+import { X, CheckCircle2, FileText, AlertCircle, Eye, Play } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/forms/Button';
 import { Select } from '@/components/ui/forms/Select';
 import { Input } from '@/components/ui/forms/Input';
 import { Badge } from '@/components/ui/data-display/Badge';
-import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import {
   SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import { formatBadgeVariant } from '@/components/reports/ReportCatalogCard';
-import type { ReportTemplate, ReportFormat } from '@/mocks/reportsMocks';
+import type { ReportTemplate } from '@/mocks/reportsMocks';
+import type { TypeRapport } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
+import { useUploadDocument } from '@/hooks/useDocuments';
+import { useCreateReport } from '@/hooks/useReports';
+import {
+  buildReportFile, buildSections, fetchProjectHeader, triggerBrowserDownload,
+  type ReportSection,
+} from '@/lib/reportBuilder';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types
+// Vrai moteur de génération (cf. audit Documents & Rapports) : plus de barre
+// de progression setInterval ni de bouton "Télécharger" vide. "Générer"
+// construit un vrai PDF/Excel à partir des données réelles du projet
+// (calculate_project_evm, budget_lignes version APPROUVE, ptba_activites,
+// risques), déclenche le téléchargement navigateur, téléverse le fichier
+// réel vers sigp-documents (documents-upload-version) et n'enregistre la
+// ligne de catalogue rapports_projet qu'une fois les DEUX étapes confirmées.
+// "Aperçu" affiche les mêmes données réelles sous forme de tableau, sans
+// upload ni écriture — plus de skeleton figé "Prévisualisation simulée".
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type GenerationMode = 'generate' | 'preview';
+
+// Seuls ces deux formats ont une vraie librairie de génération dans le
+// projet (jspdf/jspdf-autotable, xlsx) — Word/CSV ne sont pas proposés ici.
+type RealFormat = 'PDF' | 'XLSX';
 
 export interface ReportGenerationSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   report: ReportTemplate | null;
+  reportType: TypeRapport;
   mode: GenerationMode;
-  onGenerated?: (report: ReportTemplate, format: ReportFormat, projectId: string, dateDebut: string, dateFin: string) => void;
+  canManage: boolean;
 }
 
-// Liste réelle des projets pour le sélecteur de périmètre — rapports_projet.
-// project_id est NOT NULL, donc un projet doit être choisi avant de générer.
 function useProjectOptions() {
   return useQuery({
     queryKey: ['projects-dropdown-reports'],
@@ -46,85 +64,141 @@ function useProjectOptions() {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ReportGenerationSheet
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function ReportGenerationSheet({
-  open,
-  onOpenChange,
-  report,
-  mode,
-  onGenerated,
+  open, onOpenChange, report, reportType, mode, canManage,
 }: ReportGenerationSheetProps) {
-  const [format, setFormat] = useState<ReportFormat>('PDF');
+  const [format, setFormat] = useState<RealFormat>('PDF');
   const [dateDebut, setDateDebut] = useState('2026-01-01');
-  const [dateFin, setDateFin] = useState('2026-06-30');
+  const [dateFin, setDateFin] = useState(new Date().toISOString().slice(0, 10));
   const [projectId, setProjectId] = useState('');
   const [projectError, setProjectError] = useState(false);
-  const [progress, setProgress] = useState(0);
+
   const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
   const [previewing, setPreviewing] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewSections, setPreviewSections] = useState<ReportSection[] | null>(null);
 
   const { data: projectOptions = [] } = useProjectOptions();
+  const currentUser = useAuthStore(s => s.user);
+  const authorName = currentUser
+    ? (`${currentUser.prenom ?? ''} ${currentUser.nom ?? ''}`.trim() || currentUser.email)
+    : 'Utilisateur';
+
+  const uploadMutation = useUploadDocument(projectId);
+  const createReportMutation = useCreateReport(projectId || undefined);
 
   // Reset state on open
   useEffect(() => {
     if (open && report) {
-      setFormat(report.formatsDisponibles[0]);
-      setProgress(0);
+      setFormat('PDF');
       setGenerating(false);
+      setGenError(null);
       setDone(false);
       setPreviewing(false);
+      setPreviewError(null);
+      setPreviewSections(null);
       setProjectId('');
       setProjectError(false);
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [open, report]);
 
-  function runProgress(onComplete: () => void) {
-    setProgress(0);
-    let p = 0;
-    intervalRef.current = setInterval(() => {
-      p += 8 + Math.floor(Math.random() * 6);
-      if (p >= 100) {
-        p = 100;
-        clearInterval(intervalRef.current!);
-        setProgress(100);
-        setTimeout(onComplete, 300);
-      } else {
-        setProgress(p);
-      }
-    }, 180);
-  }
+  const isPreviewMode = mode === 'preview';
 
-  function handleGenerate() {
+  async function handleGenerate() {
     if (!report) return;
     if (!projectId) { setProjectError(true); return; }
     setProjectError(false);
     setGenerating(true);
-    setDone(false);
-    runProgress(() => {
+    setGenError(null);
+    try {
+      const built = await buildReportFile({
+        type: reportType,
+        format: format === 'XLSX' ? 'Excel' : 'PDF',
+        projectId,
+        reportTitle: report.nom,
+        reportCode: report.code,
+        dateDebut,
+        dateFin,
+      });
+
+      // Téléchargement navigateur immédiat du fichier réel.
+      triggerBrowserDownload(built.blob, built.fileName);
+
+      const file = new File([built.blob], built.fileName, { type: built.mimeType });
+      const today = new Date().toISOString().slice(0, 10);
+
+      // 1. Fichier réel vers le bucket privé sigp-documents.
+      const createdDoc = await uploadMutation.mutateAsync({
+        file,
+        meta: {
+          projet_id: projectId,
+          code_document: `RPT-${report.code}`,
+          titre: built.fileName,
+          categorie: 'Rapport',
+          version: '1.0',
+          auteur: authorName,
+          responsable: authorName,
+          date_creation: today,
+          date_modification: today,
+          statut: 'VALIDE',
+          taille_ko: built.sizeKo,
+          type_fichier: format === 'XLSX' ? 'Excel' : 'PDF',
+          mots_cles: [],
+          confidentialite: 'INTERNE',
+        },
+      });
+
+      // 2. Ligne de catalogue rapports_projet, référençant le vrai fichier —
+      // n'est écrite qu'une fois le fichier réellement stocké (pas avant).
+      await createReportMutation.mutateAsync({
+        projet_id: projectId,
+        code_rapport: report.code,
+        titre: report.nom,
+        description: report.description,
+        type: reportType,
+        format: format === 'XLSX' ? 'Excel' : 'PDF',
+        statut: 'GENERE',
+        periode: `${dateDebut} → ${dateFin}`,
+        version: '1.0',
+        auteur: authorName,
+        taille_ko: built.sizeKo,
+        nb_telechargements: 0,
+        date_generation: today,
+        documentId: createdDoc.id,
+      });
+
       setGenerating(false);
       setDone(true);
-      onGenerated?.(report, format, projectId, dateDebut, dateFin);
-    });
+    } catch (err) {
+      setGenerating(false);
+      setGenError(err instanceof Error ? err.message : 'Échec de la génération du rapport.');
+    }
   }
 
-  function handlePreview() {
+  async function handlePreview() {
     if (!report) return;
+    if (!projectId) { setProjectError(true); return; }
+    setProjectError(false);
     setPreviewing(true);
-    runProgress(() => {
+    setPreviewError(null);
+    try {
+      const project = await fetchProjectHeader(projectId);
+      const sections = await buildSections(reportType, projectId, project?.devise ?? 'XOF');
+      setPreviewSections(sections);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Échec du chargement de l'aperçu.");
+    } finally {
       setPreviewing(false);
-    });
+    }
   }
 
   if (!report) return null;
 
-  const isPreviewMode = mode === 'preview';
   const title = isPreviewMode ? `Aperçu — ${report.nom}` : `Générer — ${report.nom}`;
+  const busy = generating || previewing || uploadMutation.isPending || createReportMutation.isPending;
 
   return (
     <SlideOver open={open} onOpenChange={onOpenChange}>
@@ -151,32 +225,34 @@ export function ReportGenerationSheet({
               <div className="flex flex-col gap-1">
                 <p className="text-[13px] font-semibold text-foreground">{report.nom}</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{report.description}</p>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {report.formatsDisponibles.map((f) => (
-                    <Badge key={f} variant={formatBadgeVariant(f)} className="text-[10px] px-1.5 py-0">{f}</Badge>
-                  ))}
-                </div>
+                {!isPreviewMode && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    <Badge variant={formatBadgeVariant('PDF')} className="text-[10px] px-1.5 py-0">PDF</Badge>
+                    <Badge variant={formatBadgeVariant('XLSX')} className="text-[10px] px-1.5 py-0">XLSX</Badge>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Config form */}
             {!done && (
               <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-foreground" htmlFor="rpt-format">
-                    Format d'export
-                  </label>
-                  <Select
-                    id="rpt-format"
-                    value={format}
-                    onChange={(e) => setFormat(e.target.value as ReportFormat)}
-                    disabled={generating || previewing}
-                  >
-                    {report.formatsDisponibles.map((f) => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
-                  </Select>
-                </div>
+                {!isPreviewMode && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-foreground" htmlFor="rpt-format">
+                      Format d'export
+                    </label>
+                    <Select
+                      id="rpt-format"
+                      value={format}
+                      onChange={(e) => setFormat(e.target.value as RealFormat)}
+                      disabled={busy}
+                    >
+                      <option value="PDF">PDF</option>
+                      <option value="XLSX">Excel (XLSX)</option>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
@@ -188,7 +264,7 @@ export function ReportGenerationSheet({
                       type="date"
                       value={dateDebut}
                       onChange={(e) => setDateDebut(e.target.value)}
-                      disabled={generating || previewing}
+                      disabled={busy}
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -200,49 +276,37 @@ export function ReportGenerationSheet({
                       type="date"
                       value={dateFin}
                       onChange={(e) => setDateFin(e.target.value)}
-                      disabled={generating || previewing}
+                      disabled={busy}
                     />
                   </div>
                 </div>
 
-                {!isPreviewMode && (
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-foreground" htmlFor="rpt-projet">
-                      Projet <span className="text-destructive">*</span>
-                    </label>
-                    <Select
-                      id="rpt-projet"
-                      value={projectId}
-                      onChange={(e) => { setProjectId(e.target.value); setProjectError(false); }}
-                      disabled={generating || previewing}
-                      error={projectError}
-                    >
-                      <option value="">Sélectionner un projet…</option>
-                      {projectOptions.map((p) => (
-                        <option key={p.id} value={p.id}>{p.nom}</option>
-                      ))}
-                    </Select>
-                    {projectError && <p className="text-xs text-destructive">Un projet doit être sélectionné.</p>}
-                  </div>
-                )}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-foreground" htmlFor="rpt-projet">
+                    Projet <span className="text-destructive">*</span>
+                  </label>
+                  <Select
+                    id="rpt-projet"
+                    value={projectId}
+                    onChange={(e) => { setProjectId(e.target.value); setProjectError(false); }}
+                    disabled={busy}
+                    error={projectError}
+                  >
+                    <option value="">Sélectionner un projet…</option>
+                    {projectOptions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nom}</option>
+                    ))}
+                  </Select>
+                  {projectError && <p className="text-xs text-destructive">Un projet doit être sélectionné.</p>}
+                </div>
               </div>
             )}
 
-            {/* Progress */}
-            {(generating || previewing) && (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between text-[12px]">
-                  <span className="text-muted-foreground">
-                    {isPreviewMode ? 'Chargement de l\'aperçu...' : 'Génération en cours...'}
-                  </span>
-                  <span className="font-mono font-semibold text-foreground">{progress}%</span>
-                </div>
-                <ProgressBar
-                  value={progress}
-                  size="sm"
-                  color="primary"
-                  aria-label={`Progression ${progress}%`}
-                />
+            {/* Erreurs réelles (génération ou aperçu) */}
+            {(genError || previewError) && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>{genError ?? previewError}</span>
               </div>
             )}
 
@@ -252,50 +316,59 @@ export function ReportGenerationSheet({
                 <div className="flex items-center gap-2 text-success text-sm bg-success/10 rounded-md px-4 py-3 border border-success/20">
                   <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <div>
-                    <p className="font-medium">Rapport généré avec succès</p>
+                    <p className="font-medium">Rapport généré, téléchargé et enregistré</p>
                     <p className="text-[11px] text-success/80 mt-0.5">
                       {report.nom} — {format} · {dateDebut} → {dateFin}
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="default"
-                  className="w-full gap-2"
-                  leftIcon={<Download className="h-4 w-4" />}
-                  onClick={() => {}}
-                  aria-label="Télécharger le rapport généré"
-                >
-                  Télécharger le {format}
-                </Button>
-                <p className="text-[10px] text-center text-muted-foreground">Téléchargement simulé — aucune API</p>
               </div>
             )}
 
-            {/* Preview placeholder */}
-            {isPreviewMode && !previewing && !done && (
-              <div className="border border-border rounded-lg p-4 bg-muted/20 min-h-[180px] flex flex-col items-center justify-center gap-2 text-muted-foreground">
+            {/* Aperçu réel */}
+            {isPreviewMode && !previewing && previewSections && (
+              <div className="flex flex-col gap-4 max-h-[360px] overflow-y-auto">
+                {previewSections.map((section) => (
+                  <div key={section.title} className="border border-border rounded-lg overflow-hidden">
+                    <div className="px-3 py-2 bg-muted/30 border-b border-border">
+                      <p className="text-xs font-semibold text-foreground">{section.title}</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-[11px]">
+                        <thead>
+                          <tr className="bg-muted/10">
+                            {section.head.map((h) => (
+                              <th key={h} className="px-2 py-1.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {section.rows.slice(0, 8).map((row, i) => (
+                            <tr key={i} className="border-t border-border">
+                              {row.map((cell, j) => (
+                                <td key={j} className="px-2 py-1.5 text-foreground whitespace-nowrap">{cell}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {section.rows.length > 8 && (
+                        <p className="text-[10px] text-muted-foreground px-2 py-1 bg-muted/10">
+                          + {section.rows.length - 8} ligne{section.rows.length - 8 > 1 ? 's' : ''} supplémentaire{section.rows.length - 8 > 1 ? 's' : ''} dans le fichier généré
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {isPreviewMode && !previewing && !previewSections && !previewError && (
+              <div className="border border-border rounded-lg p-4 bg-muted/20 min-h-[140px] flex flex-col items-center justify-center gap-2 text-muted-foreground">
                 <AlertCircle className="h-8 w-8" aria-hidden="true" />
                 <p className="text-[12px] text-center">
-                  Cliquez sur « Aperçu » pour charger la prévisualisation simulée
+                  Sélectionnez un projet puis cliquez sur « Aperçu » pour charger les données réelles.
                 </p>
-              </div>
-            )}
-
-            {isPreviewMode && !previewing && progress === 100 && !done && (
-              <div className="border border-border rounded-lg p-4 bg-muted/10 min-h-[180px] flex flex-col gap-3">
-                <div className="h-3 bg-muted rounded w-2/3" aria-hidden="true" />
-                <div className="h-2 bg-muted/60 rounded w-full" aria-hidden="true" />
-                <div className="h-2 bg-muted/60 rounded w-4/5" aria-hidden="true" />
-                <div className="h-2 bg-muted/60 rounded w-full" aria-hidden="true" />
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  {[45, 68, 92].map((v, i) => (
-                    <div key={i} className="flex flex-col items-center gap-1">
-                      <div className="h-12 w-full bg-primary/20 rounded-sm" style={{ height: `${v / 2}px` }} aria-hidden="true" />
-                      <div className="h-1.5 bg-muted/60 rounded w-4/5" aria-hidden="true" />
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[10px] text-center text-muted-foreground mt-1">Prévisualisation simulée</p>
               </div>
             )}
           </div>
@@ -305,16 +378,16 @@ export function ReportGenerationSheet({
           <SlideOverClose asChild>
             <Button variant="outline">{done ? 'Fermer' : 'Annuler'}</Button>
           </SlideOverClose>
-          {!done && (
+          {!done && canManage && (
             <Button
               variant="default"
               onClick={isPreviewMode ? handlePreview : handleGenerate}
-              disabled={generating || previewing}
+              disabled={busy}
               leftIcon={isPreviewMode ? <Eye className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             >
               {isPreviewMode
                 ? (previewing ? 'Chargement...' : 'Aperçu')
-                : (generating ? 'Génération...' : 'Générer')
+                : (generating || uploadMutation.isPending || createReportMutation.isPending ? 'Génération...' : 'Générer')
               }
             </Button>
           )}

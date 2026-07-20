@@ -17,6 +17,7 @@ interface UpdateReportBody {
   tailleKo?: number;
   nbTelechargements?: number;
   commentaires?: string;
+  documentId?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -67,6 +68,7 @@ Deno.serve(async (req: Request) => {
     if (body.tailleKo !== undefined) updatePayload.taille_ko = body.tailleKo;
     if (body.nbTelechargements !== undefined) updatePayload.nb_telechargements = body.nbTelechargements;
     if (body.commentaires !== undefined) updatePayload.commentaires = body.commentaires?.trim() ?? null;
+    if (body.documentId !== undefined) updatePayload.document_id = body.documentId ?? null;
 
     const { data: updated, error: updateError } = await admin
       .from('rapports_projet')

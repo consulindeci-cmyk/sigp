@@ -40,6 +40,8 @@ export interface ReportCatalogCardProps {
   onPreview:     (r: ReportTemplate) => void;
   onToggleFav:   (id: string) => void;
   onDelete:      (r: ReportTemplate) => void;
+  canManage?:    boolean;
+  canDelete?:    boolean;
 }
 
 export function ReportCatalogCard({
@@ -48,11 +50,15 @@ export function ReportCatalogCard({
   onPreview,
   onToggleFav,
   onDelete,
+  canManage = true,
+  canDelete = true,
 }: ReportCatalogCardProps) {
   const moreActions: ActionItem[] = [
-    { label: 'Aperçu',     icon: <Eye className="h-3.5 w-3.5" />,    onClick: () => onPreview(report) },
-    { label: 'Supprimer',  icon: <Trash2 className="h-3.5 w-3.5" />, onClick: () => onDelete(report), variant: 'destructive', separator: true },
+    { label: 'Aperçu', icon: <Eye className="h-3.5 w-3.5" />, onClick: () => onPreview(report) },
   ];
+  if (canDelete) {
+    moreActions.push({ label: 'Supprimer', icon: <Trash2 className="h-3.5 w-3.5" />, onClick: () => onDelete(report), variant: 'destructive', separator: true });
+  }
 
   return (
     <Card className="flex flex-col h-full hover:shadow-sm transition-shadow duration-150">
@@ -102,20 +108,22 @@ export function ReportCatalogCard({
 
         {/* Actions */}
         <div className="flex gap-2">
-          <Button
-            variant="default"
-            size="sm"
-            className="flex-1 gap-1.5"
-            leftIcon={<Play className="h-3 w-3" />}
-            onClick={() => onGenerate(report)}
-            aria-label={`Générer ${report.nom}`}
-          >
-            Générer
-          </Button>
+          {canManage && (
+            <Button
+              variant="default"
+              size="sm"
+              className="flex-1 gap-1.5"
+              leftIcon={<Play className="h-3 w-3" />}
+              onClick={() => onGenerate(report)}
+              aria-label={`Générer ${report.nom}`}
+            >
+              Générer
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
+            className={canManage ? 'gap-1.5' : 'flex-1 gap-1.5'}
             leftIcon={<Eye className="h-3 w-3" />}
             onClick={() => onPreview(report)}
             aria-label={`Aperçu de ${report.nom}`}

@@ -88,6 +88,7 @@ export interface GeneratedReport {
   taille: string;
   statut: GeneratedStatus;
   categorie: ReportCategory;
+  documentId?: string | null;
 }
 
 export interface ReportsKPIs {

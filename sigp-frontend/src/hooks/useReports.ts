@@ -29,6 +29,7 @@ interface RapportRow {
   taille_ko: number;
   nb_telechargements: number;
   commentaires: string | null;
+  document_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,7 +37,7 @@ interface RapportRow {
 const REPORT_SELECT = `
   id, project_id, code_rapport, titre, description, type, format, statut,
   periode, date_generation, date_telechargement, version, auteur, taille_ko,
-  nb_telechargements, commentaires, created_at, updated_at
+  nb_telechargements, commentaires, document_id, created_at, updated_at
 `;
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
@@ -59,6 +60,7 @@ function adaptReport(row: RapportRow): RapportProjet {
     taille_ko:           row.taille_ko,
     nb_telechargements:  row.nb_telechargements,
     commentaires:        row.commentaires ?? undefined,
+    documentId:          row.document_id,
     createdAt:           row.created_at,
     updatedAt:           row.updated_at,
   };
@@ -108,6 +110,7 @@ export interface ReportSaveFEPayload {
   date_generation:     string;
   nb_telechargements:  number;
   date_telechargement?: string;
+  documentId?:         string | null;
 }
 
 function toCreatePayload(p: ReportSaveFEPayload) {
@@ -127,6 +130,7 @@ function toCreatePayload(p: ReportSaveFEPayload) {
     tailleKo:           p.taille_ko,
     nbTelechargements:  p.nb_telechargements,
     commentaires:       p.commentaires,
+    documentId:         p.documentId,
   };
 }
 
@@ -146,6 +150,7 @@ function toUpdatePayload(payload: Partial<RapportProjet>): Record<string, unknow
   if (payload.taille_ko         !== undefined) dto.tailleKo           = payload.taille_ko;
   if (payload.nb_telechargements !== undefined) dto.nbTelechargements  = payload.nb_telechargements;
   if (payload.commentaires      !== undefined) dto.commentaires       = payload.commentaires;
+  if (payload.documentId        !== undefined) dto.documentId         = payload.documentId;
   return dto;
 }
 
