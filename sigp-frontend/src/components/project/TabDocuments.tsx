@@ -4,7 +4,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import {
   useDocuments, useCreateDocument, useUpdateDocument, useDeleteDocument,
-  useUploadDocument, useDownloadDocumentVersion,
+  useUploadDocument, useUploadDocumentVersion, useDownloadDocumentVersion,
 } from '@/hooks/useDocuments';
 import * as XLSX from 'xlsx';
 import {
@@ -104,6 +104,7 @@ export default function TabDocuments() {
   const updateMutation = useUpdateDocument(resolvedProjectId);
   const deleteMutation = useDeleteDocument(resolvedProjectId);
   const uploadMutation = useUploadDocument(resolvedProjectId);
+  const uploadVersionMutation = useUploadDocumentVersion();
   const downloadMutation = useDownloadDocumentVersion();
 
   // Dérivé de la réponse serveur, jamais copié dans un state local — plus de
@@ -216,22 +217,38 @@ export default function TabDocuments() {
   // fermeture avant réponse (cf. audit). L'erreur reste affichée si la
   // mutation échoue, l'utilisateur peut corriger et réessayer.
 
-  const handleSave = useCallback((payload: DocumentSavePayload, id?: string) => {
+  // Séquencement fiche → fichier : la fiche (create/update) est confirmée en
+  // premier, puis, seulement si un fichier a été sélectionné dans le
+  // formulaire, documents-upload-version est enchaîné sur le document_id
+  // obtenu. Le SlideOver ne ferme qu'une fois les DEUX étapes confirmées —
+  // si l'upload échoue, la bannière d'erreur reste affichée et le SlideOver
+  // reste ouvert (la fiche, elle, est déjà enregistrée : l'utilisateur peut
+  // réessayer le fichier sans perdre sa saisie).
+  const handleSave = useCallback((payload: DocumentSavePayload, id?: string, file?: File | null) => {
     setSlideError(null);
     const today = new Date().toISOString().slice(0, 10);
     const onError = (err: unknown) => setSlideError(extractErrorMessage(err));
+
+    function afterFicheSaved(savedId: string) {
+      if (!file) { setSlideOpen(false); return; }
+      uploadVersionMutation.mutate(
+        { documentId: savedId, file },
+        { onSuccess: () => setSlideOpen(false), onError },
+      );
+    }
+
     if (id) {
       updateMutation.mutate(
         { id, ...payload, date_modification: today },
-        { onSuccess: () => setSlideOpen(false), onError },
+        { onSuccess: (updated) => afterFicheSaved(updated.id), onError },
       );
     } else {
       createMutation.mutate(
         { ...payload, projet_id: resolvedProjectId, date_modification: today },
-        { onSuccess: () => setSlideOpen(false), onError },
+        { onSuccess: (created) => afterFicheSaved(created.id), onError },
       );
     }
-  }, [resolvedProjectId, createMutation, updateMutation]);
+  }, [resolvedProjectId, createMutation, updateMutation, uploadVersionMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
@@ -737,7 +754,7 @@ export default function TabDocuments() {
         onArchive={handleArchive}
         canManage={canManage}
         canDelete={canDelete}
-        isSaving={createMutation.isPending || updateMutation.isPending}
+        isSaving={createMutation.isPending || updateMutation.isPending || uploadVersionMutation.isPending}
         isDeleting={deleteMutation.isPending}
         error={slideError}
       />

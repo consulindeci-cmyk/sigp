@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, AlertCircle, Upload, Download, Paperclip, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, Upload, Download, Paperclip, Trash2 } from 'lucide-react';
 import type { Livrable, LivrableCategorie, StatutLivrable, PrioriteLivrable } from '@/types';
 import {
   LIVRABLE_CATEGORIES, STATUT_LIVRABLE_OPTIONS, PRIORITE_LIVRABLE_OPTIONS,
 } from '@/mocks/deliverablesMocks';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalClose,
+} from '@/components/ui/overlays/Modal';
 import { Button }   from '@/components/ui/forms/Button';
 import { Input }    from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
@@ -15,6 +14,7 @@ import { Select }   from '@/components/ui/forms/Select';
 import { Badge }    from '@/components/ui/data-display/Badge';
 import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
+import { useWBS } from '@/hooks/useWBS';
 import {
   useLivrableAttachments, useUploadLivrableAttachment, useDeleteLivrableAttachment,
   useDownloadDocumentVersion,
@@ -23,32 +23,39 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface FormState {
-  code_livrable:  string;
-  nom:            string;
-  description:    string;
-  categorie:      LivrableCategorie;
-  composante:     string;
-  responsableId:  string;
-  date_prevue:    string;
-  date_reelle:    string;
-  avancement:     number;
-  statut:         StatutLivrable;
-  priorite:       PrioriteLivrable;
+  code_livrable:    string;
+  nom:              string;
+  description:      string;
+  categorie:        LivrableCategorie;
+  composante:       string;
+  responsableId:    string;
+  validateurId:     string;
+  wbsId:            string;
+  date_prevue:      string;
+  date_soumission:  string;
+  date_validation:  string;
+  avancement:       number;
+  statut:           StatutLivrable;
+  priorite:         PrioriteLivrable;
 }
 
 export interface LivrableSavePayload {
-  code_livrable:  string;
-  nom:            string;
-  description?:   string;
-  categorie:      LivrableCategorie;
-  composante?:    string;
-  responsable:    string;
-  responsableId:  string;
-  date_prevue:    string;
-  date_reelle?:   string;
-  avancement:     number;
-  statut:         StatutLivrable;
-  priorite:       PrioriteLivrable;
+  code_livrable:    string;
+  nom:              string;
+  description?:     string;
+  categorie:        LivrableCategorie;
+  composante?:      string;
+  responsable:      string;
+  responsableId:    string;
+  validateur:       string;
+  validateurId:     string;
+  wbsId:            string;
+  date_prevue:      string;
+  date_soumission?: string;
+  date_validation?: string;
+  avancement:       number;
+  statut:           StatutLivrable;
+  priorite:         PrioriteLivrable;
 }
 
 export interface LivrableSlideOverProps {
@@ -99,17 +106,20 @@ function fmtDateTime(iso: string): string {
 }
 
 const INIT: FormState = {
-  code_livrable: '',
-  nom:           '',
-  description:   '',
-  categorie:     'Rapport',
-  composante:    '',
-  responsableId: '',
-  date_prevue:   new Date().toISOString().slice(0, 10),
-  date_reelle:   '',
-  avancement:    0,
-  statut:        'A_FAIRE',
-  priorite:      'MOYENNE',
+  code_livrable:   '',
+  nom:             '',
+  description:     '',
+  categorie:       'Rapport',
+  composante:      '',
+  responsableId:   '',
+  validateurId:    '',
+  wbsId:           '',
+  date_prevue:     new Date().toISOString().slice(0, 10),
+  date_soumission: '',
+  date_validation: '',
+  avancement:      0,
+  statut:          'A_FAIRE',
+  priorite:        'MOYENNE',
 };
 
 // ─── Sous-composant : Pièces jointes / Preuves matérielles ────────────────────
@@ -222,28 +232,45 @@ export function LivrableSlideOver({
   const readOnly = mode === 'view';
 
   const { data: orgMembers = [], isLoading: isLoadingMembers } = useOrganisationMembersForPicker(projectId);
-  const responsableOptions = (() => {
+  const responsableOptions = useMemo(() => {
     if (livrable?.responsableId && !orgMembers.some(m => m.id === livrable.responsableId)) {
       return [...orgMembers, { id: livrable.responsableId, displayName: livrable.responsable || 'Utilisateur inconnu' }];
     }
     return orgMembers;
-  })();
+  }, [orgMembers, livrable]);
+  const validateurOptions = useMemo(() => {
+    if (livrable?.validateurId && !orgMembers.some(m => m.id === livrable.validateurId)) {
+      return [...orgMembers, { id: livrable.validateurId, displayName: livrable.validateur || 'Utilisateur inconnu' }];
+    }
+    return orgMembers;
+  }, [orgMembers, livrable]);
+
+  // Nœuds WBS terminaux réels du projet — livrables.wbs_id référence un vrai
+  // nœud existant (cf. audit : champ jusqu'ici jamais exposé dans ce formulaire).
+  const { data: wbsData } = useWBS(projectId);
+  const terminalWbsNodes = useMemo(() => {
+    const all = wbsData?.data ?? [];
+    return all.filter(n => !all.some(other => other.parent_id === n.id));
+  }, [wbsData]);
 
   useEffect(() => {
     if (!open) { setConfirmDelete(false); return; }
     if ((mode === 'edit' || mode === 'view') && livrable) {
       setForm({
-        code_livrable: livrable.code_livrable,
-        nom:           livrable.nom,
-        description:   livrable.description ?? '',
-        categorie:     livrable.categorie,
-        composante:    livrable.composante ?? '',
-        responsableId: livrable.responsableId ?? '',
-        date_prevue:   livrable.date_prevue,
-        date_reelle:   livrable.date_reelle ?? '',
-        avancement:    livrable.avancement,
-        statut:        livrable.statut,
-        priorite:      livrable.priorite,
+        code_livrable:   livrable.code_livrable,
+        nom:             livrable.nom,
+        description:     livrable.description ?? '',
+        categorie:       livrable.categorie,
+        composante:      livrable.composante ?? '',
+        responsableId:   livrable.responsableId ?? '',
+        validateurId:    livrable.validateurId ?? '',
+        wbsId:           livrable.wbsId ?? '',
+        date_prevue:     livrable.date_prevue,
+        date_soumission: livrable.date_soumission ?? '',
+        date_validation: livrable.date_validation ?? '',
+        avancement:      livrable.avancement,
+        statut:          livrable.statut,
+        priorite:        livrable.priorite,
       });
     } else {
       setForm({ ...INIT, code_livrable: nextCode });
@@ -272,21 +299,26 @@ export function LivrableSlideOver({
   // avant réponse du serveur, qui masquait tout échec 403/réseau).
   function handleSave() {
     if (!validate()) return;
-    const selectedMember = responsableOptions.find(m => m.id === form.responsableId);
+    const selectedMember   = responsableOptions.find(m => m.id === form.responsableId);
+    const selectedValidateur = validateurOptions.find(m => m.id === form.validateurId);
     onSave(
       {
-        code_livrable: form.code_livrable.trim(),
-        nom:           form.nom.trim(),
-        description:   form.description.trim() || undefined,
-        categorie:     form.categorie,
-        composante:    form.composante.trim() || undefined,
-        responsable:   selectedMember?.displayName ?? '',
-        responsableId: form.responsableId,
-        date_prevue:   form.date_prevue,
-        date_reelle:   form.date_reelle || undefined,
-        avancement:    form.avancement,
-        statut:        form.statut,
-        priorite:      form.priorite,
+        code_livrable:   form.code_livrable.trim(),
+        nom:             form.nom.trim(),
+        description:     form.description.trim() || undefined,
+        categorie:       form.categorie,
+        composante:      form.composante.trim() || undefined,
+        responsable:     selectedMember?.displayName ?? '',
+        responsableId:   form.responsableId,
+        validateur:      selectedValidateur?.displayName ?? '',
+        validateurId:    form.validateurId,
+        wbsId:           form.wbsId,
+        date_prevue:     form.date_prevue,
+        date_soumission: form.date_soumission || undefined,
+        date_validation: form.date_validation || undefined,
+        avancement:      form.avancement,
+        statut:          form.statut,
+        priorite:        form.priorite,
       },
       livrable?.id,
     );
@@ -303,25 +335,18 @@ export function LivrableSlideOver({
     'Détail du livrable';
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
         {/* ── Header ── */}
-        <SlideOverHeader>
-          <div>
-            <SlideOverTitle>{title}</SlideOverTitle>
-            {livrable && (
-              <p className="text-xs text-muted-foreground mt-0.5">{livrable.code_livrable}</p>
-            )}
-          </div>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="icon" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{title}</ModalTitle>
+          {livrable && (
+            <p className="text-xs text-muted-foreground">{livrable.code_livrable}</p>
+          )}
+        </ModalHeader>
 
         {/* ── Body ── */}
-        <SlideOverBody className="space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
           {/* Aperçu statut (view/edit) */}
           {livrable && (
@@ -380,11 +405,24 @@ export function LivrableSlideOver({
                 rows={3} disabled={readOnly} className="resize-none" />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground" htmlFor="liv-comp">Composante</label>
-              <Input id="liv-comp" value={form.composante}
-                onChange={e => set('composante', e.target.value)}
-                placeholder="Ex: Composante A — Infrastructures" disabled={readOnly} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground" htmlFor="liv-comp">Composante</label>
+                <Input id="liv-comp" value={form.composante}
+                  onChange={e => set('composante', e.target.value)}
+                  placeholder="Ex: Composante A — Infrastructures" disabled={readOnly} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground" htmlFor="liv-wbs">Composante WBS</label>
+                <Select id="liv-wbs" value={form.wbsId}
+                  onChange={e => set('wbsId', e.target.value)}
+                  disabled={readOnly}>
+                  <option value="">Aucune</option>
+                  {terminalWbsNodes.map(n => (
+                    <option key={n.id} value={n.id}>{n.code_wbs} — {n.titre}</option>
+                  ))}
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -393,20 +431,26 @@ export function LivrableSlideOver({
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-3">
               Planification & Réalisation
             </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground" htmlFor="liv-prevue">
+                Date prévue <span className="text-destructive">*</span>
+              </label>
+              <Input id="liv-prevue" type="date" value={form.date_prevue}
+                onChange={e => set('date_prevue', e.target.value)}
+                disabled={readOnly} error={!!errors.date_prevue} />
+              {errors.date_prevue && <p className="text-xs text-destructive">{errors.date_prevue}</p>}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground" htmlFor="liv-prevue">
-                  Date prévue <span className="text-destructive">*</span>
-                </label>
-                <Input id="liv-prevue" type="date" value={form.date_prevue}
-                  onChange={e => set('date_prevue', e.target.value)}
-                  disabled={readOnly} error={!!errors.date_prevue} />
-                {errors.date_prevue && <p className="text-xs text-destructive">{errors.date_prevue}</p>}
+                <label className="text-xs font-medium text-foreground" htmlFor="liv-soumission">Date de soumission</label>
+                <Input id="liv-soumission" type="date" value={form.date_soumission}
+                  onChange={e => set('date_soumission', e.target.value)}
+                  disabled={readOnly} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground" htmlFor="liv-reelle">Date réelle</label>
-                <Input id="liv-reelle" type="date" value={form.date_reelle}
-                  onChange={e => set('date_reelle', e.target.value)}
+                <label className="text-xs font-medium text-foreground" htmlFor="liv-validation">Date de validation</label>
+                <Input id="liv-validation" type="date" value={form.date_validation}
+                  onChange={e => set('date_validation', e.target.value)}
                   disabled={readOnly} />
               </div>
             </div>
@@ -417,23 +461,39 @@ export function LivrableSlideOver({
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-3">
               Responsable & Classification
             </p>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground" htmlFor="liv-resp">
-                Responsable <span className="text-destructive">*</span>
-              </label>
-              <Select
-                id="liv-resp"
-                value={form.responsableId}
-                onChange={e => set('responsableId', e.target.value)}
-                disabled={readOnly || isLoadingMembers}
-                error={!!errors.responsableId}
-              >
-                <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
-                {responsableOptions.map(m => (
-                  <option key={m.id} value={m.id}>{m.displayName}</option>
-                ))}
-              </Select>
-              {errors.responsableId && <p className="text-xs text-destructive">{errors.responsableId}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground" htmlFor="liv-resp">
+                  Responsable <span className="text-destructive">*</span>
+                </label>
+                <Select
+                  id="liv-resp"
+                  value={form.responsableId}
+                  onChange={e => set('responsableId', e.target.value)}
+                  disabled={readOnly || isLoadingMembers}
+                  error={!!errors.responsableId}
+                >
+                  <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
+                  {responsableOptions.map(m => (
+                    <option key={m.id} value={m.id}>{m.displayName}</option>
+                  ))}
+                </Select>
+                {errors.responsableId && <p className="text-xs text-destructive">{errors.responsableId}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground" htmlFor="liv-validateur">Validateur</label>
+                <Select
+                  id="liv-validateur"
+                  value={form.validateurId}
+                  onChange={e => set('validateurId', e.target.value)}
+                  disabled={readOnly || isLoadingMembers}
+                >
+                  <option value="">Non désigné</option>
+                  {validateurOptions.map(m => (
+                    <option key={m.id} value={m.id}>{m.displayName}</option>
+                  ))}
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -512,6 +572,8 @@ export function LivrableSlideOver({
                 </span>
                 <span className="text-muted-foreground">Responsable</span>
                 <span className="text-foreground font-medium">{livrable.responsable || '—'}</span>
+                <span className="text-muted-foreground">Validateur</span>
+                <span className="text-foreground font-medium">{livrable.validateur || '—'}</span>
               </div>
             </div>
           )}
@@ -551,20 +613,20 @@ export function LivrableSlideOver({
               <span>{error}</span>
             </div>
           )}
-        </SlideOverBody>
+        </div>
 
         {/* ── Footer ── */}
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Enregistrement...' : mode === 'new' ? 'Créer le livrable' : 'Enregistrer'}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </div>
+      </ModalContent>
+    </Modal>
   );
 }

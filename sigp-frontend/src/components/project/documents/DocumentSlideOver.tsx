@@ -61,7 +61,7 @@ export interface DocumentSlideOverProps {
   mode:          'new' | 'edit' | 'view';
   document?:     DocumentProjet | null;
   nextCode?:     string;
-  onSave:        (payload: DocumentSavePayload, id?: string) => void;
+  onSave:        (payload: DocumentSavePayload, id?: string, file?: File | null) => void;
   onDelete?:     (id: string) => void;
   onDuplicate?:  (id: string) => void;
   onArchive?:    (id: string) => void;
@@ -123,6 +123,11 @@ export function DocumentSlideOver({
   const [errors, setErrors]       = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  // Fichier réellement sélectionné, conservé pour être envoyé à
+  // documents-upload-version une fois la fiche créée/modifiée avec succès
+  // (cf. handleSave) — auparavant discardé, seules les métadonnées dérivées
+  // (type/taille) étaient gardées (cf. audit).
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const downloadMutation = useDownloadDocumentVersion();
 
@@ -152,6 +157,7 @@ export function DocumentSlideOver({
     }
     setErrors({});
     setConfirmDelete(false);
+    setSelectedFile(null);
   }, [open, mode, doc, nextCode]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -178,6 +184,7 @@ export function DocumentSlideOver({
       taille_ko: String(taille),
       titre: prev.titre || auto_titre,
     }));
+    setSelectedFile(file);
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -203,9 +210,11 @@ export function DocumentSlideOver({
     return Object.keys(e).length === 0;
   }
 
-  // Le SlideOver ne se ferme plus lui-même : le parent possède la mutation et
-  // ne ferme qu'après confirmation serveur (cf. audit — fermeture aveugle
-  // avant réponse du serveur, qui masquait tout échec 403/réseau).
+  // Le SlideOver ne se ferme plus lui-même : le parent possède la mutation
+  // (fiche + éventuel fichier séquencé derrière, cf. TabDocuments.tsx) et ne
+  // ferme qu'après confirmation serveur des DEUX étapes (cf. audit —
+  // fermeture aveugle avant réponse du serveur, qui masquait tout échec
+  // 403/réseau — et maintenant tout échec d'upload).
   function handleSave() {
     if (!validate()) return;
     onSave(
@@ -226,6 +235,7 @@ export function DocumentSlideOver({
         confidentialite: form.confidentialite,
       },
       doc?.id,
+      selectedFile,
     );
   }
 
@@ -317,19 +327,23 @@ export function DocumentSlideOver({
             </p>
 
             {/* Sélecteur de fichier (new / edit uniquement) — auto-détecte
-                type/taille pour le formulaire, mais n'envoie PAS encore le
-                fichier réel vers documents-upload-version (contrairement à
-                la zone de dépôt globale de TabDocuments.tsx, corrigée cette
-                session). Hors périmètre de ce chantier — signalé, non
-                corrigé : ce sélecteur reste, pour l'instant, un remplissage
-                automatique de champs, pas un vrai téléversement. */}
+                type/taille pour le formulaire ET envoie réellement le
+                fichier vers documents-upload-version une fois la fiche
+                créée/modifiée avec succès (cf. handleSave, séquencé côté
+                TabDocuments.tsx). */}
             {!readOnly && (
               <div className="rounded-lg border-2 border-dashed border-border bg-muted/10 p-3 flex items-center gap-3">
                 <Button variant="outline" size="sm" type="button" onClick={() => fileRef.current?.click()}>
                   <Upload className="h-3.5 w-3.5 mr-1.5" />
                   Sélectionner un fichier
                 </Button>
-                <p className="text-xs text-muted-foreground">Auto-détecte type et taille</p>
+                {selectedFile ? (
+                  <p className="text-xs text-foreground truncate">
+                    {selectedFile.name} <span className="text-muted-foreground">— sera téléversé à l'enregistrement</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Auto-détecte type et taille</p>
+                )}
                 <input ref={fileRef} type="file" className="sr-only" aria-hidden="true" tabIndex={-1} onChange={handleFileSelect} />
               </div>
             )}

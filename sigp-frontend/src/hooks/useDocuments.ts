@@ -189,6 +189,25 @@ export function useCreateDocument(projectId: string) {
   });
 }
 
+// Attache un fichier réel à un document DÉJÀ existant (créé ou en cours
+// d'édition) — documents-upload-version seul, sans re-créer de fiche.
+// Utilisé par DocumentSlideOver.tsx (formulaire complet, une fois
+// documents-create/update confirmé) et réutilisable par tout autre flux qui
+// aurait besoin de rattacher/remplacer un fichier a posteriori.
+export function useUploadDocumentVersion() {
+  return useMutation({
+    mutationFn: async ({ documentId, file }: { documentId: string; file: File }) => {
+      const fileBase64 = await fileToBase64(file);
+      await invokeEdgeFunction('documents-upload-version', {
+        documentId,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileBase64,
+      });
+    },
+  });
+}
+
 // Téléversement réel (zone de dépôt / bouton "Téléverser" de TabDocuments.tsx)
 // — documents-create (livrableId omis = NULL, document global au projet) +
 // documents-upload-version (fichier réel vers le bucket privé sigp-documents).

@@ -295,8 +295,13 @@ export interface Livrable {
   composante?: string;        // Composante projet (ex. "Composante A")
   responsable: string;
   responsableId?: string | null;
+  validateur?: string;
+  validateurId?: string | null;
+  wbsId?: string | null;
   date_prevue: string;        // ISO date
-  date_reelle?: string;       // ISO date — renseignée à la livraison
+  date_reelle?: string;       // ISO date dérivée (validation, sinon soumission) — lecture seule
+  date_soumission?: string;   // ISO date
+  date_validation?: string;   // ISO date
   avancement: number;         // 0–100
   statut: StatutLivrable;
   priorite: PrioriteLivrable;

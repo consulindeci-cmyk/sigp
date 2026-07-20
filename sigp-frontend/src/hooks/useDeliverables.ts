@@ -17,6 +17,7 @@ interface LivrableRow {
   date_soumission: string | null;
   date_validation: string | null;
   responsable_id: string | null;
+  validateur_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -24,7 +25,8 @@ interface LivrableRow {
 
 const LIVRABLE_SELECT = `
   id, project_id, wbs_id, code, nom, description, statut, date_prevue,
-  date_soumission, date_validation, responsable_id, notes, created_at, updated_at
+  date_soumission, date_validation, responsable_id, validateur_id, notes,
+  created_at, updated_at
 `;
 
 // ── Extra metadata stored in `notes` (inchangé, indépendant du backend) ──────
@@ -86,12 +88,14 @@ function isoDate(val: string | null | undefined): string {
 }
 
 // ── Adapter: ligne Supabase → frontend Livrable ───────────────────────────────
-// responsable_id est une vraie FK vers users(id), transmise depuis peu (cf.
-// audit Livrables) — le nom affiché est résolu via un aller-retour groupé
-// (mêmes principes que useRisks.ts/useTasks.ts), pas d'embed PostgREST.
+// responsable_id/validateur_id sont de vraies FK vers users(id) — les noms
+// affichés sont résolus via un aller-retour groupé (mêmes principes que
+// useRisks.ts/useTasks.ts), pas d'embed PostgREST.
 
-function adaptLivrable(row: LivrableRow, responsableNames: Map<string, string>): Livrable {
+function adaptLivrable(row: LivrableRow, userNames: Map<string, string>): Livrable {
   const meta = decodeMeta(row.notes);
+  const dateSoumission = isoDate(row.date_soumission) || undefined;
+  const dateValidation = isoDate(row.date_validation) || undefined;
   return {
     id:            row.id,
     projet_id:     row.project_id,
@@ -100,10 +104,15 @@ function adaptLivrable(row: LivrableRow, responsableNames: Map<string, string>):
     description:   row.description ?? undefined,
     categorie:     meta?.categorie  ?? 'Autre',
     composante:    meta?.composante ?? undefined,
-    responsable:   row.responsable_id ? responsableNames.get(row.responsable_id) ?? '' : (meta?.responsable ?? ''),
+    responsable:   row.responsable_id ? userNames.get(row.responsable_id) ?? '' : (meta?.responsable ?? ''),
     responsableId: row.responsable_id,
+    validateur:    row.validateur_id ? userNames.get(row.validateur_id) ?? '' : undefined,
+    validateurId:  row.validateur_id,
+    wbsId:         row.wbs_id,
     date_prevue:   isoDate(row.date_prevue),
-    date_reelle:   isoDate(row.date_validation) || isoDate(row.date_soumission) || undefined,
+    date_reelle:   dateValidation || dateSoumission,
+    date_soumission: dateSoumission,
+    date_validation: dateValidation,
     avancement:    meta?.avancement ?? 0,
     statut:        beStatutToFe(row.statut),
     priorite:      meta?.priorite   ?? 'MOYENNE',
@@ -126,13 +135,17 @@ function buildCreatePayload(projectId: string, l: LivPayload) {
   };
   return {
     projectId,
-    nom:           l.nom,
-    code:          l.code_livrable || undefined,
-    description:   l.description   || undefined,
-    statut:        feStatutToBe(l.statut),
-    datePrevue:    l.date_prevue   || undefined,
-    responsableId: l.responsableId || undefined,
-    notes:         encodeMeta(meta),
+    nom:            l.nom,
+    code:           l.code_livrable || undefined,
+    description:    l.description   || undefined,
+    statut:         feStatutToBe(l.statut),
+    datePrevue:     l.date_prevue   || undefined,
+    dateSoumission: l.date_soumission || undefined,
+    dateValidation: l.date_validation || undefined,
+    responsableId:  l.responsableId || undefined,
+    validateurId:   l.validateurId  || undefined,
+    wbsId:          l.wbsId         || undefined,
+    notes:          encodeMeta(meta),
   };
 }
 
@@ -145,12 +158,16 @@ function buildUpdatePayload(l: Partial<Livrable>, current?: Livrable) {
     priorite:    l.priorite    ?? current?.priorite   ?? 'MOYENNE',
   };
   const p: Record<string, unknown> = { notes: encodeMeta(meta) };
-  if (l.nom           !== undefined) p.nom           = l.nom;
-  if (l.code_livrable !== undefined) p.code          = l.code_livrable;
-  if (l.description   !== undefined) p.description   = l.description;
-  if (l.statut        !== undefined) p.statut        = feStatutToBe(l.statut);
-  if (l.date_prevue   !== undefined) p.datePrevue    = l.date_prevue || undefined;
-  if (l.responsableId !== undefined) p.responsableId = l.responsableId || null;
+  if (l.nom             !== undefined) p.nom            = l.nom;
+  if (l.code_livrable   !== undefined) p.code           = l.code_livrable;
+  if (l.description     !== undefined) p.description    = l.description;
+  if (l.statut          !== undefined) p.statut         = feStatutToBe(l.statut);
+  if (l.date_prevue     !== undefined) p.datePrevue     = l.date_prevue || undefined;
+  if (l.date_soumission !== undefined) p.dateSoumission = l.date_soumission || undefined;
+  if (l.date_validation !== undefined) p.dateValidation = l.date_validation || undefined;
+  if (l.responsableId   !== undefined) p.responsableId  = l.responsableId || null;
+  if (l.validateurId    !== undefined) p.validateurId   = l.validateurId || null;
+  if (l.wbsId           !== undefined) p.wbsId          = l.wbsId || null;
   return p;
 }
 
@@ -176,23 +193,25 @@ export function useDeliverables(projectId: string) {
       if (error) throw error;
       const rows = data as unknown as LivrableRow[];
 
-      // Résolution groupée des noms de responsables (cf. note sur
-      // LivrableRow.responsable_id) — un seul aller-retour, pas de N+1.
-      const responsableIds = [...new Set(rows.map(r => r.responsable_id).filter((id): id is string => !!id))];
-      const responsableNames = new Map<string, string>();
-      if (responsableIds.length > 0) {
+      // Résolution groupée des noms de responsables ET de validateurs (deux
+      // FK distinctes vers users(id)) — un seul aller-retour, pas de N+1.
+      const userIds = [...new Set(
+        rows.flatMap(r => [r.responsable_id, r.validateur_id]).filter((id): id is string => !!id),
+      )];
+      const userNames = new Map<string, string>();
+      if (userIds.length > 0) {
         const { data: usersData, error: usersError } = await supabase
           .from('users')
           .select('id, nom, prenom')
-          .in('id', responsableIds);
+          .in('id', userIds);
         if (usersError) throw usersError;
         for (const u of (usersData ?? []) as { id: string; nom: string | null; prenom: string | null }[]) {
           const nom = `${u.prenom ?? ''} ${u.nom ?? ''}`.trim();
-          if (nom) responsableNames.set(u.id, nom);
+          if (nom) userNames.set(u.id, nom);
         }
       }
 
-      const livrables = rows.map(row => adaptLivrable(row, responsableNames));
+      const livrables = rows.map(row => adaptLivrable(row, userNames));
       return { data: livrables, meta: { total: livrables.length, page: 1, limit: 100, totalPages: 1 } };
     },
     enabled: !!projectId,
