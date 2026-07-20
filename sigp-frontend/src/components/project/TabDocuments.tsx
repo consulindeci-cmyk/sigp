@@ -245,7 +245,18 @@ export default function TabDocuments() {
     } else {
       createMutation.mutate(
         { ...payload, projet_id: resolvedProjectId, date_modification: today },
-        { onSuccess: (created) => afterFicheSaved(created.id), onError },
+        {
+          onSuccess: (created) => {
+            // La fiche existe déjà en base même si l'upload qui suit échoue —
+            // on bascule le SlideOver sur ce document existant pour qu'un
+            // nouvel essai réutilise updateMutation dessus au lieu de
+            // recréer une deuxième fiche en double (cf. audit Documents).
+            setSlideDoc(created);
+            setSlideMode('edit');
+            afterFicheSaved(created.id);
+          },
+          onError,
+        },
       );
     }
   }, [resolvedProjectId, createMutation, updateMutation, uploadVersionMutation]);
@@ -305,9 +316,7 @@ export default function TabDocuments() {
   // sigp-documents) — remplace l'ancienne fabrication de ligne de registre
   // sans jamais stocker le fichier (cf. audit).
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function processUpload(file: File) {
     setUploadError(null);
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     const typeMap: Record<string, TypeFichier> = {
@@ -340,7 +349,36 @@ export default function TabDocuments() {
       },
       { onError: (err) => setUploadError(extractErrorMessage(err)) },
     );
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processUpload(file);
     if (uploadRef.current) uploadRef.current.value = '';
+  }
+
+  // Vrai drag & drop (cf. audit : la zone de dépôt n'écoutait jusqu'ici que
+  // le clic — déposer un fichier ne faisait rien malgré le texte annoncé).
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  function handleDragOver(e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    if (!canManage || uploadMutation.isPending) return;
+    setIsDraggingOver(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (!canManage || uploadMutation.isPending) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) processUpload(file);
   }
 
   function handleDownload(doc: DocumentProjet) {
@@ -625,13 +663,18 @@ export default function TabDocuments() {
         />
       </div>
 
-      {/* ── Zone de téléversement ────────────────────────────────────────── */}
+      {/* ── Zone de téléversement (vrai drag & drop + clic) ────────────────── */}
       {canManage && (
         <button
           type="button"
-          className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-6 text-center bg-muted/5 hover:bg-muted/10 hover:border-primary/40 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed"
-          aria-label="Zone de dépôt — cliquer pour parcourir les fichiers"
+          className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-6 text-center transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed ${
+            isDraggingOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/5 hover:bg-muted/10 hover:border-primary/40'
+          }`}
+          aria-label="Zone de dépôt — glissez un fichier ou cliquez pour parcourir"
           onClick={() => uploadRef.current?.click()}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           disabled={uploadMutation.isPending}
         >
           <Upload className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
@@ -717,14 +760,8 @@ export default function TabDocuments() {
 
       {/* ── DataTable ─────────────────────────────────────────────────────── */}
       <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">Registre des documents</CardTitle>
-          {canManage && (
-            <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-              Ajouter
-            </Button>
-          )}
         </CardHeader>
         <CardContent className="p-0">
           <DataTable

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Upload, Download, Copy, Archive, RotateCcw, AlertCircle } from 'lucide-react';
+import { Upload, Download, Copy, Archive, RotateCcw, AlertCircle } from 'lucide-react';
 import type {
   DocumentProjet, DocumentCategorie, TypeFichier,
   StatutDocument, ConfidentialiteDocument,
@@ -9,9 +9,8 @@ import {
   STATUT_DOCUMENT_OPTIONS, CONFIDENTIALITE_OPTIONS,
 } from '@/mocks/documentsMocks';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalClose,
+} from '@/components/ui/overlays/Modal';
 import { Button }   from '@/components/ui/forms/Button';
 import { Input }    from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
@@ -252,25 +251,18 @@ export function DocumentSlideOver({
   const statutLabel = STATUT_DOCUMENT_OPTIONS.find(o => o.value === (readOnly ? doc?.statut : form.statut))?.label ?? '';
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
         {/* ── Header ── */}
-        <SlideOverHeader>
-          <div>
-            <SlideOverTitle>{title}</SlideOverTitle>
-            {doc && (
-              <p className="text-xs text-muted-foreground mt-0.5">{doc.code_document} · v{doc.version}</p>
-            )}
-          </div>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="icon" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{title}</ModalTitle>
+          {doc && (
+            <p className="text-xs text-muted-foreground">{doc.code_document} · v{doc.version}</p>
+          )}
+        </ModalHeader>
 
         {/* ── Body ── */}
-        <SlideOverBody className="space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
           {/* Aperçu statut (view/edit) */}
           {doc && (
@@ -484,8 +476,10 @@ export function DocumentSlideOver({
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground" htmlFor="doc-taille">Taille (Ko)</label>
                 <Input id="doc-taille" type="number" min={0} value={form.taille_ko}
-                  onChange={e => set('taille_ko', e.target.value)}
-                  placeholder="0" disabled={readOnly} />
+                  placeholder="0" disabled />
+                <p className="text-[10px] text-muted-foreground">
+                  Calculée automatiquement à partir du fichier réellement sélectionné.
+                </p>
               </div>
             </div>
           </div>
@@ -548,20 +542,20 @@ export function DocumentSlideOver({
               <span>{error}</span>
             </div>
           )}
-        </SlideOverBody>
+        </div>
 
         {/* ── Footer ── */}
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
-          </SlideOverClose>
+          </ModalClose>
           {!readOnly && (
             <Button onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Enregistrement...' : mode === 'new' ? 'Créer le document' : 'Enregistrer'}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </div>
+      </ModalContent>
+    </Modal>
   );
 }
