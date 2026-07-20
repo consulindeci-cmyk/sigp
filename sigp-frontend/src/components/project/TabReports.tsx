@@ -614,14 +614,8 @@ export default function TabReports() {
 
       {/* ── DataTable ─────────────────────────────────────────────────────── */}
       <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">Registre des rapports</CardTitle>
-          {canManage && (
-            <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-              Générer
-            </Button>
-          )}
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
