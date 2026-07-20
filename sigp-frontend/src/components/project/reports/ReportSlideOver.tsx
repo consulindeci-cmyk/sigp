@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, Download, Copy, Archive, RotateCcw } from 'lucide-react';
+import { X, Download, Copy, Archive, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { RapportProjet, TypeRapport, StatutRapport, FormatRapport } from '@/types';
 import {
-  TYPE_RAPPORT_OPTIONS, STATUT_RAPPORT_OPTIONS, FORMAT_RAPPORT_OPTIONS,
+  TYPE_RAPPORT_OPTIONS, STATUT_RAPPORT_OPTIONS,
 } from '@/mocks/reportsMocks';
 import {
   SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
@@ -13,8 +13,20 @@ import { Input }    from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
 import { Select }   from '@/components/ui/forms/Select';
 import { Badge }    from '@/components/ui/data-display/Badge';
+import { useAuthStore } from '@/stores/authStore';
+import { useUploadDocument, useDownloadDocumentVersion } from '@/hooks/useDocuments';
+import { useCreateReport } from '@/hooks/useReports';
+import { buildReportFile, triggerBrowserDownload, type BuildableFormat } from '@/lib/reportBuilder';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// "new" = vraie génération (cf. audit Documents & Rapports / moteur global
+// reportBuilder.ts) : plus de simulateDownload() ni de blob .txt fictif.
+// Construit le vrai PDF/Excel à partir des données réelles du projet,
+// déclenche le téléchargement navigateur, téléverse le binaire réel vers
+// sigp-documents et n'enregistre la fiche rapports_projet qu'une fois le
+// fichier réellement stocké. "edit"/"view" restent des écrans de métadonnées
+// sur un rapport déjà généré (pas de régénération du fichier).
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface FormState {
   code_rapport:    string;
@@ -29,6 +41,16 @@ interface FormState {
   taille_ko:       string;
   commentaires:    string;
   date_generation: string;
+}
+
+interface GenerateFormState {
+  titre:        string;
+  description:  string;
+  type:         TypeRapport;
+  format:       BuildableFormat;
+  dateDebut:    string;
+  dateFin:      string;
+  commentaires: string;
 }
 
 export interface ReportSavePayload {
@@ -53,10 +75,11 @@ export interface ReportSlideOverProps {
   mode:         'new' | 'edit' | 'view';
   rapport?:     RapportProjet | null;
   nextCode?:    string;
-  onSave:       (payload: ReportSavePayload, id?: string) => void;
+  projectId:    string;
+  canManage:    boolean;
+  onSave:       (payload: ReportSavePayload, id: string) => void;
   onDelete?:    (id: string) => void;
   onDuplicate?: (id: string) => void;
-  onDownload?:  (id: string) => void;
   onArchive?:   (id: string) => void;
 }
 
@@ -75,23 +98,6 @@ function statutVariant(s: StatutRapport): 'outline' | 'warning' | 'success' | 's
   return 'secondary';
 }
 
-function formatToExt(f: FormatRapport): string {
-  const map: Record<FormatRapport, string> = { PDF: 'pdf', Excel: 'xlsx', Word: 'docx' };
-  return map[f];
-}
-
-function simulateDownload(rapport: RapportProjet) {
-  const ext     = formatToExt(rapport.format);
-  const content = `Rapport: ${rapport.titre}\nCode: ${rapport.code_rapport}\nType: ${rapport.type}\nPériode: ${rapport.periode}\nAuteur: ${rapport.auteur}\nStatut: ${rapport.statut}`;
-  const blob    = new Blob([content], { type: 'text/plain;charset=utf-8;' });
-  const url     = URL.createObjectURL(blob);
-  const a       = document.createElement('a');
-  a.href     = url;
-  a.download = `${rapport.code_rapport}_${rapport.titre.replace(/\s+/g, '_')}.${ext}`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 const INIT: FormState = {
   code_rapport:    '',
   titre:           '',
@@ -107,15 +113,42 @@ const INIT: FormState = {
   date_generation: new Date().toISOString().slice(0, 10),
 };
 
+const INIT_GEN: GenerateFormState = {
+  titre:        '',
+  description:  '',
+  type:         'MENSUEL',
+  format:       'PDF',
+  dateDebut:    new Date().toISOString().slice(0, 10).slice(0, 8) + '01',
+  dateFin:      new Date().toISOString().slice(0, 10),
+  commentaires: '',
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ReportSlideOver({
-  open, onOpenChange, mode, rapport, nextCode = 'RPT-001',
-  onSave, onDelete, onDuplicate, onDownload, onArchive,
+  open, onOpenChange, mode, rapport, nextCode = 'RPT-001', projectId, canManage,
+  onSave, onDelete, onDuplicate, onArchive,
 }: ReportSlideOverProps) {
-  const [form, setForm]           = useState<FormState>(INIT);
-  const [errors, setErrors]       = useState<Partial<Record<keyof FormState, string>>>({});
+  const [form, setForm]     = useState<FormState>(INIT);
+  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const [genForm, setGenForm]     = useState<GenerateFormState>(INIT_GEN);
+  const [genErrors, setGenErrors] = useState<Partial<Record<keyof GenerateFormState, string>>>({});
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError]     = useState<string | null>(null);
+  const [genDone, setGenDone]       = useState(false);
+
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const currentUser = useAuthStore(s => s.user);
+  const authorName = currentUser
+    ? (`${currentUser.prenom ?? ''} ${currentUser.nom ?? ''}`.trim() || currentUser.email)
+    : 'Utilisateur';
+
+  const uploadMutation       = useUploadDocument(projectId);
+  const createReportMutation = useCreateReport(projectId);
+  const downloadMutation     = useDownloadDocumentVersion();
 
   const readOnly = mode === 'view';
 
@@ -136,16 +169,26 @@ export function ReportSlideOver({
         commentaires:    rapport.commentaires ?? '',
         date_generation: rapport.date_generation,
       });
-    } else {
-      setForm({ ...INIT, code_rapport: nextCode });
+    } else if (mode === 'new') {
+      setGenForm({ ...INIT_GEN });
+      setGenErrors({});
+      setGenerating(false);
+      setGenError(null);
+      setGenDone(false);
     }
     setErrors({});
+    setDownloadError(null);
     setConfirmDelete(false);
   }, [open, mode, rapport, nextCode]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: undefined }));
+  }
+
+  function setGen<K extends keyof GenerateFormState>(key: K, value: GenerateFormState[K]) {
+    setGenForm(prev => ({ ...prev, [key]: value }));
+    if (genErrors[key]) setGenErrors(prev => ({ ...prev, [key]: undefined }));
   }
 
   function validate(): boolean {
@@ -161,7 +204,7 @@ export function ReportSlideOver({
   }
 
   function handleSave() {
-    if (!validate()) return;
+    if (!rapport || !validate()) return;
     onSave(
       {
         code_rapport:    form.code_rapport.trim(),
@@ -176,17 +219,103 @@ export function ReportSlideOver({
         taille_ko:       Math.max(0, parseInt(form.taille_ko, 10) || 0),
         commentaires:    form.commentaires.trim() || undefined,
         date_generation: form.date_generation,
-        nb_telechargements: rapport?.nb_telechargements ?? 0,
+        nb_telechargements: rapport.nb_telechargements,
       },
-      rapport?.id,
+      rapport.id,
     );
-    onOpenChange(false);
+  }
+
+  function validateGen(): boolean {
+    const e: Partial<Record<keyof GenerateFormState, string>> = {};
+    if (!genForm.titre.trim())  e.titre     = 'Le titre est requis.';
+    if (!genForm.dateDebut)     e.dateDebut = 'La date de début est requise.';
+    if (!genForm.dateFin)       e.dateFin   = 'La date de fin est requise.';
+    setGenErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  async function handleGenerate() {
+    if (!validateGen()) return;
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const built = await buildReportFile({
+        type: genForm.type,
+        format: genForm.format,
+        projectId,
+        reportTitle: genForm.titre.trim(),
+        reportCode: nextCode,
+        dateDebut: genForm.dateDebut,
+        dateFin: genForm.dateFin,
+      });
+
+      // Téléchargement navigateur immédiat du fichier réellement construit.
+      triggerBrowserDownload(built.blob, built.fileName);
+
+      const file  = new File([built.blob], built.fileName, { type: built.mimeType });
+      const today = new Date().toISOString().slice(0, 10);
+
+      // 1. Fichier réel vers le bucket privé sigp-documents.
+      const createdDoc = await uploadMutation.mutateAsync({
+        file,
+        meta: {
+          projet_id: projectId,
+          code_document: `RPT-${nextCode}`,
+          titre: built.fileName,
+          categorie: 'Rapport',
+          version: '1.0',
+          auteur: authorName,
+          responsable: authorName,
+          date_creation: today,
+          date_modification: today,
+          statut: 'VALIDE',
+          taille_ko: built.sizeKo,
+          type_fichier: genForm.format,
+          mots_cles: [],
+          confidentialite: 'INTERNE',
+        },
+      });
+
+      // 2. Fiche de catalogue rapports_projet, référençant le vrai fichier —
+      // n'est écrite qu'une fois le fichier réellement stocké (pas avant).
+      await createReportMutation.mutateAsync({
+        projet_id: projectId,
+        code_rapport: nextCode,
+        titre: genForm.titre.trim(),
+        description: genForm.description.trim() || undefined,
+        type: genForm.type,
+        format: genForm.format,
+        statut: 'GENERE',
+        periode: `${genForm.dateDebut} → ${genForm.dateFin}`,
+        version: '1.0',
+        auteur: authorName,
+        taille_ko: built.sizeKo,
+        commentaires: genForm.commentaires.trim() || undefined,
+        nb_telechargements: 0,
+        date_generation: today,
+        documentId: createdDoc.id,
+      });
+
+      setGenerating(false);
+      setGenDone(true);
+    } catch (err) {
+      setGenerating(false);
+      setGenError(err instanceof Error ? err.message : 'Échec de la génération du rapport.');
+    }
+  }
+
+  function handleDownload() {
+    if (!rapport?.documentId) return;
+    setDownloadError(null);
+    downloadMutation.mutate(rapport.documentId, {
+      onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
+      onError: (err) => setDownloadError(err instanceof Error ? err.message : 'Échec du téléchargement du rapport.'),
+    });
   }
 
   function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     if (rapport?.id) onDelete?.(rapport.id);
-    onOpenChange(false);
   }
 
   const title =
@@ -196,7 +325,131 @@ export function ReportSlideOver({
 
   const statutLabel = STATUT_RAPPORT_OPTIONS.find(o => o.value === form.statut)?.label ?? '';
   const typeLabel   = TYPE_RAPPORT_OPTIONS.find(o => o.value === form.type)?.label ?? '';
+  const genBusy     = generating || uploadMutation.isPending || createReportMutation.isPending;
 
+  // ─── Mode "new" — vrai moteur de génération ──────────────────────────────
+  if (mode === 'new') {
+    return (
+      <SlideOver open={open} onOpenChange={onOpenChange}>
+        <SlideOverContent>
+          <SlideOverHeader>
+            <SlideOverTitle>Générer un rapport</SlideOverTitle>
+            <SlideOverClose asChild>
+              <Button variant="ghost" size="icon" aria-label="Fermer">
+                <X className="h-4 w-4" />
+              </Button>
+            </SlideOverClose>
+          </SlideOverHeader>
+
+          <SlideOverBody className="space-y-5">
+            {!genDone && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground" htmlFor="gen-titre">
+                    Titre <span className="text-destructive">*</span>
+                  </label>
+                  <Input id="gen-titre" value={genForm.titre}
+                    onChange={e => setGen('titre', e.target.value)}
+                    placeholder="Ex: Rapport d'avancement T1 2026"
+                    disabled={genBusy} error={!!genErrors.titre} />
+                  {genErrors.titre && <p className="text-xs text-destructive">{genErrors.titre}</p>}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground" htmlFor="gen-desc">Description</label>
+                  <Textarea id="gen-desc" value={genForm.description}
+                    onChange={e => setGen('description', e.target.value)}
+                    placeholder="Résumé du contenu et de l'objet du rapport…"
+                    rows={2} disabled={genBusy} className="resize-none" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground" htmlFor="gen-type">Type</label>
+                    <Select id="gen-type" value={genForm.type}
+                      onChange={e => setGen('type', e.target.value as TypeRapport)}
+                      disabled={genBusy}>
+                      {TYPE_RAPPORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground" htmlFor="gen-format">Format</label>
+                    <Select id="gen-format" value={genForm.format}
+                      onChange={e => setGen('format', e.target.value as BuildableFormat)}
+                      disabled={genBusy}>
+                      <option value="PDF">PDF</option>
+                      <option value="Excel">Excel (XLSX)</option>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground" htmlFor="gen-debut">
+                      Date début <span className="text-destructive">*</span>
+                    </label>
+                    <Input id="gen-debut" type="date" value={genForm.dateDebut}
+                      onChange={e => setGen('dateDebut', e.target.value)}
+                      disabled={genBusy} error={!!genErrors.dateDebut} />
+                    {genErrors.dateDebut && <p className="text-xs text-destructive">{genErrors.dateDebut}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground" htmlFor="gen-fin">
+                      Date fin <span className="text-destructive">*</span>
+                    </label>
+                    <Input id="gen-fin" type="date" value={genForm.dateFin}
+                      onChange={e => setGen('dateFin', e.target.value)}
+                      disabled={genBusy} error={!!genErrors.dateFin} />
+                    {genErrors.dateFin && <p className="text-xs text-destructive">{genErrors.dateFin}</p>}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground" htmlFor="gen-commentaires">Commentaires</label>
+                  <Textarea id="gen-commentaires" value={genForm.commentaires}
+                    onChange={e => setGen('commentaires', e.target.value)}
+                    placeholder="Observations, notes…"
+                    rows={2} disabled={genBusy} className="resize-none" />
+                </div>
+              </div>
+            )}
+
+            {genError && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>{genError}</span>
+              </div>
+            )}
+
+            {genDone && (
+              <div className="flex items-center gap-2 text-success text-sm bg-success/10 rounded-md px-4 py-3 border border-success/20">
+                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Rapport généré, téléchargé et enregistré</p>
+                  <p className="text-[11px] text-success/80 mt-0.5">
+                    {genForm.titre} — {genForm.format} · {genForm.dateDebut} → {genForm.dateFin}
+                  </p>
+                </div>
+              </div>
+            )}
+          </SlideOverBody>
+
+          <SlideOverFooter>
+            <SlideOverClose asChild>
+              <Button variant="outline">{genDone ? 'Fermer' : 'Annuler'}</Button>
+            </SlideOverClose>
+            {!genDone && (
+              <Button onClick={handleGenerate} disabled={genBusy}>
+                {genBusy ? 'Génération en cours…' : 'Générer le rapport'}
+              </Button>
+            )}
+          </SlideOverFooter>
+        </SlideOverContent>
+      </SlideOver>
+    );
+  }
+
+  // ─── Modes "edit" / "view" — métadonnées d'un rapport déjà généré ────────
   return (
     <SlideOver open={open} onOpenChange={onOpenChange}>
       <SlideOverContent>
@@ -241,24 +494,32 @@ export function ReportSlideOver({
             </div>
           )}
 
+          {downloadError && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{downloadError}</span>
+            </div>
+          )}
+
           {/* View mode — actions */}
           {readOnly && rapport && (
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline" size="sm"
-                onClick={() => { simulateDownload(rapport); onDownload?.(rapport.id); }}
+                onClick={handleDownload}
+                disabled={!rapport.documentId || downloadMutation.isPending}
               >
                 <Download className="h-3.5 w-3.5 mr-1.5" />
-                Télécharger
+                {downloadMutation.isPending ? 'Téléchargement…' : 'Télécharger'}
               </Button>
-              {onDuplicate && (
-                <Button variant="outline" size="sm" onClick={() => { onDuplicate(rapport.id); onOpenChange(false); }}>
+              {canManage && onDuplicate && (
+                <Button variant="outline" size="sm" onClick={() => onDuplicate(rapport.id)}>
                   <Copy className="h-3.5 w-3.5 mr-1.5" />
                   Dupliquer
                 </Button>
               )}
-              {onArchive && (
-                <Button variant="outline" size="sm" onClick={() => { onArchive(rapport.id); onOpenChange(false); }}>
+              {canManage && onArchive && (
+                <Button variant="outline" size="sm" onClick={() => onArchive(rapport.id)}>
                   {rapport.statut === 'ARCHIVE'
                     ? <><RotateCcw className="h-3.5 w-3.5 mr-1.5" />Restaurer</>
                     : <><Archive className="h-3.5 w-3.5 mr-1.5" />Archiver</>}
@@ -280,7 +541,7 @@ export function ReportSlideOver({
                 </label>
                 <Input id="rpt-code" value={form.code_rapport}
                   onChange={e => set('code_rapport', e.target.value)}
-                  placeholder="RPT-001" disabled={readOnly} error={!!errors.code_rapport} />
+                  placeholder="RPT-001" disabled={true} error={!!errors.code_rapport} />
                 {errors.code_rapport && <p className="text-xs text-destructive">{errors.code_rapport}</p>}
               </div>
               <div className="space-y-1.5">
@@ -329,11 +590,7 @@ export function ReportSlideOver({
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground" htmlFor="rpt-format">Format</label>
-                <Select id="rpt-format" value={form.format}
-                  onChange={e => set('format', e.target.value as FormatRapport)}
-                  disabled={readOnly}>
-                  {FORMAT_RAPPORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
+                <Input id="rpt-format" value={form.format} disabled className="font-mono" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground" htmlFor="rpt-statut">Statut</label>
@@ -347,11 +604,7 @@ export function ReportSlideOver({
                 <label className="text-xs font-medium text-foreground" htmlFor="rpt-periode">
                   Période <span className="text-destructive">*</span>
                 </label>
-                <Input id="rpt-periode" value={form.periode}
-                  onChange={e => set('periode', e.target.value)}
-                  placeholder="Ex: T1 2026, Janvier 2026, Annuel 2025"
-                  disabled={readOnly} error={!!errors.periode} />
-                {errors.periode && <p className="text-xs text-destructive">{errors.periode}</p>}
+                <Input id="rpt-periode" value={form.periode} disabled className="font-mono" />
               </div>
             </div>
           </div>
@@ -373,18 +626,13 @@ export function ReportSlideOver({
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground" htmlFor="rpt-date">
-                  Date de génération <span className="text-destructive">*</span>
+                  Date de génération
                 </label>
-                <Input id="rpt-date" type="date" value={form.date_generation}
-                  onChange={e => set('date_generation', e.target.value)}
-                  disabled={readOnly} error={!!errors.date_generation} />
-                {errors.date_generation && <p className="text-xs text-destructive">{errors.date_generation}</p>}
+                <Input id="rpt-date" type="date" value={form.date_generation} disabled />
               </div>
               <div className="space-y-1.5 col-span-2">
                 <label className="text-xs font-medium text-foreground" htmlFor="rpt-taille">Taille (Ko)</label>
-                <Input id="rpt-taille" type="number" min={0} value={form.taille_ko}
-                  onChange={e => set('taille_ko', e.target.value)}
-                  placeholder="0" disabled={readOnly} />
+                <Input id="rpt-taille" type="number" min={0} value={form.taille_ko} disabled />
               </div>
             </div>
 
@@ -425,7 +673,7 @@ export function ReportSlideOver({
           )}
 
           {/* Supprimer (edit) */}
-          {mode === 'edit' && rapport && onDelete && (
+          {mode === 'edit' && rapport && onDelete && canManage && (
             <div className="pt-2 border-t border-border">
               {confirmDelete ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -459,9 +707,9 @@ export function ReportSlideOver({
           <SlideOverClose asChild>
             <Button variant="outline">Fermer</Button>
           </SlideOverClose>
-          {!readOnly && (
+          {!readOnly && canManage && (
             <Button onClick={handleSave}>
-              {mode === 'new' ? 'Générer le rapport' : 'Enregistrer'}
+              Enregistrer
             </Button>
           )}
         </SlideOverFooter>

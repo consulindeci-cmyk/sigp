@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
@@ -16,7 +16,9 @@ import {
   STATUT_RAPPORT_OPTIONS, FORMAT_RAPPORT_OPTIONS,
 } from '@/mocks/reportsMocks';
 import { useReports, useCreateReport, useUpdateReport, useDeleteReport } from '@/hooks/useReports';
+import { useDownloadDocumentVersion } from '@/hooks/useDocuments';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { ReportSlideOver } from './reports/ReportSlideOver';
 import type { ReportSavePayload } from './reports/ReportSlideOver';
 import { DataTable }  from '@/components/ui/data-table/DataTable';
@@ -60,23 +62,6 @@ function formatVariant(f: FormatRapport): 'destructive' | 'success' | 'default' 
   return 'default';
 }
 
-function formatToExt(f: FormatRapport): string {
-  const map: Record<FormatRapport, string> = { PDF: 'pdf', Excel: 'xlsx', Word: 'docx' };
-  return map[f];
-}
-
-function simulateDownload(rapport: RapportProjet) {
-  const ext     = formatToExt(rapport.format);
-  const content = `Rapport: ${rapport.titre}\nCode: ${rapport.code_rapport}\nType: ${rapport.type}\nPériode: ${rapport.periode}\nAuteur: ${rapport.auteur}\nStatut: ${rapport.statut}`;
-  const blob    = new Blob([content], { type: 'text/plain;charset=utf-8;' });
-  const url     = URL.createObjectURL(blob);
-  const a       = document.createElement('a');
-  a.href     = url;
-  a.download = `${rapport.code_rapport}_${rapport.titre.replace(/\s+/g, '_')}.${ext}`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 function nextReportCode(rapports: RapportProjet[]): string {
   const max = rapports.reduce((m, r) => {
     const n = parseInt(r.code_rapport.replace('RPT-', ''), 10);
@@ -93,19 +78,24 @@ export default function TabReports() {
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
   const { data: apiRapports, isLoading } = useReports(resolvedProjectId);
-  const createMutation = useCreateReport(resolvedProjectId);
-  const updateMutation = useUpdateReport(resolvedProjectId);
-  const deleteMutation = useDeleteReport(resolvedProjectId);
+  const createMutation   = useCreateReport(resolvedProjectId);
+  const updateMutation   = useUpdateReport(resolvedProjectId);
+  const deleteMutation   = useDeleteReport(resolvedProjectId);
+  const downloadMutation = useDownloadDocumentVersion();
 
-  const [rapports, setRapports]   = useState<RapportProjet[]>([]);
+  const currentRole = useAuthStore(s => s.user?.role);
+  // Miroir des rôles serveur : requireRole sur reports-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
+  const rapports = useMemo(() => apiRapports ?? [], [apiRapports]);
+
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideMode, setSlideMode] = useState<'new' | 'edit' | 'view'>('new');
   const [slideRpt,  setSlideRpt]  = useState<RapportProjet | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RapportProjet | null>(null);
-
-  useEffect(() => {
-    if (apiRapports) setRapports(apiRapports);
-  }, [apiRapports]);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
@@ -204,88 +194,78 @@ export default function TabReports() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
-  const handleSave = useCallback((payload: ReportSavePayload, id?: string) => {
-    const now = new Date().toISOString();
-    if (id) {
-      setRapports(prev => prev.map(r =>
-        r.id === id ? { ...r, ...payload, updatedAt: now } : r,
-      ));
-      updateMutation.mutate({ id, ...payload });
-    } else {
-      const newRapport: RapportProjet = {
-        id: `rpt-${Date.now()}`,
-        projet_id: resolvedProjectId,
-        ...payload,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setRapports(prev => [newRapport, ...prev]);
-      simulateDownload(newRapport);
-      createMutation.mutate({ ...payload, projet_id: resolvedProjectId });
-    }
-  }, [updateMutation, createMutation, resolvedProjectId]);
+  const handleSave = useCallback((payload: ReportSavePayload, id: string) => {
+    setActionError(null);
+    updateMutation.mutate({ id, ...payload }, {
+      onSuccess: () => setSlideOpen(false),
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Échec de la mise à jour du rapport.'),
+    });
+  }, [updateMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    setRapports(prev => prev.filter(r => r.id !== deleteTarget.id));
-    deleteMutation.mutate(deleteTarget.id);
-    setDeleteTarget(null);
+    setActionError(null);
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Échec de la suppression du rapport.'),
+    });
   }, [deleteTarget, deleteMutation]);
 
+  // Duplique la fiche de catalogue en conservant le lien vers le fichier réel
+  // déjà stocké (documentId) — pas de nouveau binaire généré, simple
+  // re-catalogage sous un nouveau code, honnête sur ce qu'il représente.
   const handleDuplicate = useCallback((id: string) => {
-    const now = new Date().toISOString();
     const original = rapports.find(r => r.id === id);
     if (!original) return;
-    const copy: RapportProjet = {
-      ...original,
-      id: `rpt-${Date.now()}`,
+    setActionError(null);
+    createMutation.mutate({
+      projet_id: resolvedProjectId,
       code_rapport: nextReportCode(rapports),
       titre: `${original.titre} (copie)`,
+      description: original.description,
+      type: original.type,
+      format: original.format,
       statut: 'GENERE',
-      version: '1.0',
+      periode: original.periode,
+      version: original.version,
+      auteur: original.auteur,
+      taille_ko: original.taille_ko,
+      commentaires: original.commentaires,
       nb_telechargements: 0,
-      date_generation: now.slice(0, 10),
-      date_telechargement: undefined,
-      createdAt: now,
-      updatedAt: now,
-    };
-    setRapports(prev => [copy, ...prev]);
-    createMutation.mutate({ ...copy, projet_id: resolvedProjectId });
+      date_generation: new Date().toISOString().slice(0, 10),
+      documentId: original.documentId,
+    }, {
+      onSuccess: () => setSlideOpen(false),
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Échec de la duplication du rapport.'),
+    });
   }, [rapports, createMutation, resolvedProjectId]);
 
   const handleArchive = useCallback((id: string) => {
-    const now = new Date().toISOString();
-    setRapports(prev => {
-      const current = prev.find(r => r.id === id);
-      const nextStatut: StatutRapport = current?.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE';
-      updateMutation.mutate({ id, statut: nextStatut });
-      return prev.map(r =>
-        r.id === id ? { ...r, statut: nextStatut, updatedAt: now } : r,
-      );
+    const current = rapports.find(r => r.id === id);
+    if (!current) return;
+    const nextStatut: StatutRapport = current.statut === 'ARCHIVE' ? 'VALIDE' : 'ARCHIVE';
+    setActionError(null);
+    updateMutation.mutate({ id, statut: nextStatut }, {
+      onSuccess: () => setSlideOpen(false),
+      onError: (err) => setActionError(err instanceof Error ? err.message : "Échec de l'archivage du rapport."),
     });
-  }, [updateMutation]);
+  }, [rapports, updateMutation]);
 
-  const handleDownload = useCallback((id: string) => {
-    const now = new Date().toISOString();
-    setRapports(prev => {
-      const current = prev.find(r => r.id === id);
-      if (current) {
+  const handleDownload = useCallback((r: RapportProjet) => {
+    if (!r.documentId) return;
+    setActionError(null);
+    downloadMutation.mutate(r.documentId, {
+      onSuccess: (data) => {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
         updateMutation.mutate({
-          id,
-          nb_telechargements: current.nb_telechargements + 1,
-          date_telechargement: now.slice(0, 10),
-        });
-      }
-      return prev.map(r =>
-        r.id === id ? {
-          ...r,
+          id: r.id,
           nb_telechargements: r.nb_telechargements + 1,
-          date_telechargement: now.slice(0, 10),
-          updatedAt: now,
-        } : r,
-      );
+          date_telechargement: new Date().toISOString().slice(0, 10),
+        });
+      },
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Échec du téléchargement du rapport.'),
     });
-  }, [updateMutation]);
+  }, [downloadMutation, updateMutation]);
 
   const openNew  = useCallback(() => { setSlideRpt(null); setSlideMode('new');  setSlideOpen(true); }, []);
   const openView = useCallback((r: RapportProjet) => { setSlideRpt(r); setSlideMode('view'); setSlideOpen(true); }, []);
@@ -441,26 +421,31 @@ export default function TabReports() {
       cell: ({ row }) => (
         <div className="flex items-center gap-1 justify-end">
           <Button variant="ghost" size="sm" aria-label="Télécharger"
-            onClick={() => { simulateDownload(row.original); handleDownload(row.original.id); }}>
+            disabled={!row.original.documentId}
+            onClick={() => handleDownload(row.original)}>
             <Download className="h-3.5 w-3.5" />
           </Button>
           <Button variant="ghost" size="sm" aria-label="Aperçu" onClick={() => openView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setDeleteTarget(row.original)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canManage && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setDeleteTarget(row.original)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
-  ], [openView, openEdit, handleDownload]);
+  ], [openView, openEdit, handleDownload, canManage, canDelete]);
 
   // ── JSX ────────────────────────────────────────────────────────────────────
 
@@ -484,12 +469,22 @@ export default function TabReports() {
             <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             Excel
           </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Générer un rapport
-          </Button>
+          {canManage && (
+            <Button size="sm" className="h-8 text-xs" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              Générer un rapport
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* ── Erreur d'action ──────────────────────────────────────────────── */}
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {actionError}
+        </div>
+      )}
 
       {/* ── Alerte EN_ATTENTE ─────────────────────────────────────────────── */}
       {rapportsEnAttente.length > 0 && (
@@ -621,10 +616,12 @@ export default function TabReports() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Registre des rapports</CardTitle>
-          <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-            Générer
-          </Button>
+          {canManage && (
+            <Button size="sm" className="h-7 text-xs" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+              Générer
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -645,13 +642,14 @@ export default function TabReports() {
         mode={slideMode}
         rapport={slideRpt}
         nextCode={currentNextCode}
+        projectId={resolvedProjectId}
+        canManage={canManage}
         onSave={handleSave}
         onDelete={(id) => {
           const target = rapports.find(r => r.id === id);
-          if (target) { setSlideOpen(false); setDeleteTarget(target); }
+          if (target) { setSlideOpen(false); setActionError(null); setDeleteTarget(target); }
         }}
         onDuplicate={handleDuplicate}
-        onDownload={handleDownload}
         onArchive={handleArchive}
       />
 
@@ -666,11 +664,17 @@ export default function TabReports() {
               <em>{deleteTarget?.titre}</em> ? Cette action est irréversible.
             </ModalDescription>
           </ModalHeader>
+          {actionError && (
+            <div className="mx-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {actionError}
+            </div>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
               Supprimer
             </Button>
           </ModalFooter>
