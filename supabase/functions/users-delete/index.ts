@@ -37,13 +37,27 @@ Deno.serve(async (req: Request) => {
 
     // Soft delete du profil — réplique UsersRepository.softDelete() (jamais
     // de suppression physique). deleted_at est vérifié par authorize() sur
-    // TOUTES les Edge Functions : un compte supprimé ne peut plus s'authentifier
-    // même si son compte Supabase Auth reste techniquement actif.
+    // TOUTES les Edge Functions, ET indispensable ici : login_history/comments/
+    // historique/gouvernance référencent users(id) sans ON DELETE CASCADE — une
+    // suppression physique de public.users échouerait (violation FK) pour tout
+    // utilisateur ayant déjà été connecté ou ayant produit un enregistrement.
     const { error: deleteError } = await admin
       .from('users')
       .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', body.id);
     if (deleteError) throw deleteError;
+
+    // Suppression physique du compte Supabase Auth — c'était l'étape manuelle
+    // (dashboard Supabase) qu'il fallait éliminer. Faite APRÈS le soft delete
+    // du profil applicatif : si elle échoue (ex. déjà purgé côté Auth), l'accès
+    // reste bloqué dans tous les cas via deleted_at, donc pas de rollback ni
+    // d'échec de la requête pour un problème non bloquant côté Auth.
+    if (existing.auth_user_id) {
+      const { error: authDeleteError } = await admin.auth.admin.deleteUser(existing.auth_user_id);
+      if (authDeleteError) {
+        console.error('[users-delete] échec suppression auth.users (profil déjà désactivé) :', authDeleteError);
+      }
+    }
 
     await admin.from('historique').insert({
       id: crypto.randomUUID(),
