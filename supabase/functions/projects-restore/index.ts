@@ -11,10 +11,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { admin, profile } = await authorize(req);
-    // Même rôle que projects-delete (ADMIN seul, org_admin) — un SUPER_ADMIN
-    // ne restaure pas lui-même un projet (page Projets en lecture seule
-    // côté supervision plateforme).
-    requireRole(profile, ['ADMIN']);
+    // Même rôle que projects-delete : SUPER_ADMIN rétabli en fallback
+    // d'urgence (cf. audit Rôles) — la restauration reste une responsabilité
+    // org_admin au quotidien, mais le SUPER_ADMIN plateforme doit pouvoir
+    // agir en cas d'incident.
+    requireRole(profile, ['ADMIN', 'SUPER_ADMIN']);
 
     const body: RestoreProjectBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
@@ -28,12 +29,14 @@ Deno.serve(async (req: Request) => {
     if (findError) throw findError;
     if (!existing) return json({ error: 'Projet introuvable dans la corbeille' }, 404);
 
-    const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
-      p_project_id: body.id,
-    });
-    if (orgError) throw orgError;
-    if (!projectOrgId || projectOrgId !== profile.organisation_id) {
-      return json({ error: "Accès refusé : ce projet n'appartient pas à votre organisation" }, 403);
+    if (profile.role !== 'SUPER_ADMIN') {
+      const { data: projectOrgId, error: orgError } = await admin.rpc('project_organisation_id', {
+        p_project_id: body.id,
+      });
+      if (orgError) throw orgError;
+      if (!projectOrgId || projectOrgId !== profile.organisation_id) {
+        return json({ error: "Accès refusé : ce projet n'appartient pas à votre organisation" }, 403);
+      }
     }
 
     const { data: restored, error: restoreError } = await admin

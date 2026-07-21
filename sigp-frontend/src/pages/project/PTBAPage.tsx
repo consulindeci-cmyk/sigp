@@ -9,6 +9,7 @@ import ProjectActivitiesTab from '@/components/project/ProjectActivitiesTab';
 import { usePTBA } from '@/hooks/usePTBA';
 import { useTasks } from '@/hooks/useTasks';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
 import type { Tache } from '@/types';
 
@@ -257,6 +258,11 @@ export default function PTBAPage() {
     ?? (Array.isArray(tasksData) ? tasksData as Tache[] : [])
   ).map(adaptTache);
 
+  // Miroir de requireRole(profile, [...]) sur ptba-update — la saisie inline
+  // de la matrice (cf. audit Rôles) doit être bloquée pour VIEWER/AUDITEUR.
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canEditPtba = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+
   const [localPtba, setLocalPtba] = useState<PTBA | null>(null);
 
   useEffect(() => {
@@ -425,7 +431,7 @@ export default function PTBAPage() {
               <div className="flex flex-col h-full">
                 <MatrixRibbon ptba={ptba} />
                 <div className="flex-1 overflow-hidden">
-                  <PTBAMatrix ptba={ptba} onUpdatePTBA={setLocalPtba} />
+                  <PTBAMatrix ptba={ptba} onUpdatePTBA={setLocalPtba} canEdit={canEditPtba} />
                 </div>
               </div>
             </TabsContent>

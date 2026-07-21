@@ -11,9 +11,10 @@ interface PTBAMatrixRowProps {
   initialLigne: PTBALigne;
   expandedQuarters: Record<string, boolean>;
   onLigneChange: (updatedLigne: PTBALigne) => void;
+  canEdit: boolean;
 }
 
-const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: PTBAMatrixRowProps) => {
+const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange, canEdit }: PTBAMatrixRowProps) => {
   const [ligne, setLigne] = useState<PTBALigne>(initialLigne);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
@@ -24,6 +25,10 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
   }, [initialLigne]);
 
   const handleCellClick = (monthKey: keyof PTBALigne) => {
+    // VIEWER/AUDITEUR (lecture seule) : la cellule ne bascule jamais en mode
+    // édition — évite l'illusion d'un champ modifiable pour un rôle qui ne
+    // peut de toute façon rien persister (cf. audit Rôles).
+    if (!canEdit) return;
     setEditingCell(monthKey);
     setTempValue(String(ligne[monthKey] || 0));
     setCellError(null);
@@ -89,7 +94,11 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange }: P
             )}
           </div>
         ) : (
-          <div className="cursor-text px-3 py-1.5 flex items-center justify-end text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-colors min-h-[32px]">
+          <div
+            className={`px-3 py-1.5 flex items-center justify-end text-muted-foreground min-h-[32px] transition-colors ${
+              canEdit ? 'cursor-text hover:bg-muted/30 hover:text-foreground' : 'cursor-default'
+            }`}
+          >
             {formatMoney(ligne[mKey] as number)}
           </div>
         )}
@@ -162,9 +171,11 @@ PTBAMatrixRow.displayName = 'PTBAMatrixRow';
 interface PTBAMatrixProps {
   ptba: PTBA;
   onUpdatePTBA?: (updatedPTBA: PTBA) => void;
+  /** Autorise la saisie inline des cellules mensuelles (cf. audit Rôles — VIEWER/AUDITEUR en lecture seule). */
+  canEdit?: boolean;
 }
 
-export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
+export default function PTBAMatrix({ ptba, onUpdatePTBA, canEdit = false }: PTBAMatrixProps) {
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({
     Q1: false, Q2: false, Q3: false, Q4: false,
   });
@@ -248,6 +259,7 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA }: PTBAMatrixProps) {
               initialLigne={ligne}
               expandedQuarters={expandedQuarters}
               onLigneChange={handleLigneChange}
+              canEdit={canEdit}
             />
           ))}
         </tbody>

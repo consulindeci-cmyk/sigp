@@ -4,14 +4,12 @@ export * from './ptba';
 // authStore, les RLS et les Edge Functions Supabase.
 export type BackendRole = 'ADMIN' | 'COORDINATEUR' | 'CHARGE_PROGRAMME' | 'FINANCIER' | 'AUDITEUR' | 'VIEWER';
 
-// Anciennes valeurs, encore utilisées par le module Users/Settings (non migré
-// dans ce pilote) — à retirer une fois ce module migré vers Supabase à son tour.
-export type Role =
-  | BackendRole
-  | 'SUPER_ADMIN' | 'ADMIN_PROJET' | 'COORDONNATEUR_PROJET'
-  | 'RESPONSABLE_FINANCIER' | 'RESPONSABLE_TECHNIQUE'
-  | 'RESPONSABLE_PASSATION_MARCHES' | 'RESPONSABLE_SUIVI_EVALUATION'
-  | 'BAILLEUR' | 'OBSERVATEUR';
+// Les 7 rôles réellement vivants du système (RLS + Edge Functions + IHM) —
+// cf. audit Rôles : les anciennes valeurs (ADMIN_PROJET, COORDONNATEUR_PROJET,
+// RESPONSABLE_*, BAILLEUR, OBSERVATEUR) n'existaient dans aucune policy RLS
+// ni aucun requireRole, retirées pour aligner ce type sur la réalité du
+// système (même liste que UserRole dans lib/userAdapter.ts).
+export type Role = BackendRole | 'SUPER_ADMIN';
 
 export type StatutProjet = 'PREPARATION' | 'ACTIF' | 'SUSPENDU' | 'CLOTURE' | 'ANNULE';
 
