@@ -6,8 +6,8 @@ interface UpdateCommentBody {
   message?: string;
   statut?: string;
   priorite?: string;
-  pieceJointe?: string;
-  mention?: string;
+  pieceJointeDocumentId?: string | null;
+  mentionUserId?: string | null;
   lu?: boolean;
 }
 
@@ -50,15 +50,15 @@ Deno.serve(async (req: Request) => {
     if (body.message !== undefined) updatePayload.message = body.message.trim();
     if (body.statut !== undefined) updatePayload.statut = body.statut;
     if (body.priorite !== undefined) updatePayload.priorite = body.priorite;
-    if (body.pieceJointe !== undefined) updatePayload.piece_jointe = body.pieceJointe;
-    if (body.mention !== undefined) updatePayload.mention = body.mention;
+    if (body.pieceJointeDocumentId !== undefined) updatePayload.piece_jointe_document_id = body.pieceJointeDocumentId;
+    if (body.mentionUserId !== undefined) updatePayload.mention_user_id = body.mentionUserId;
     if (body.lu !== undefined) updatePayload.lu = body.lu;
 
     const { data: updated, error: updateError } = await admin
       .from('project_comments')
       .update(updatePayload)
       .eq('id', body.id)
-      .select('*, auteur:users!auteur_id(nom, prenom, role)')
+      .select('*, auteur:users!auteur_id(nom, prenom, role), mention_user:users!mention_user_id(nom, prenom)')
       .single();
     if (updateError) throw updateError;
 

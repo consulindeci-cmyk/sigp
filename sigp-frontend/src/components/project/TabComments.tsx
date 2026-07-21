@@ -16,7 +16,9 @@ import {
   PRIORITE_COMMENTAIRE_LABEL, STATUT_OPTIONS, PRIORITE_OPTIONS, MODULE_OPTIONS,
 } from '@/mocks/commentsMocks';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useComments, useCreateComment, useUpdateComment, useDeleteComment } from '@/hooks/useComments';
+import { useUploadCommentAttachment, useDownloadDocumentVersion } from '@/hooks/useDocuments';
 import { CommentSlideOver } from './comments/CommentSlideOver';
 import type { CommentSavePayload } from './comments/CommentSlideOver';
 import { DataTable }  from '@/components/ui/data-table/DataTable';
@@ -60,15 +62,33 @@ export default function TabComments() {
   const projectId = urlProjectId || activeProjectId || '';
 
   const { data: commentaires = [] } = useComments(projectId);
-  const createMutation = useCreateComment(projectId);
-  const updateMutation = useUpdateComment(projectId);
-  const deleteMutation = useDeleteComment(projectId);
+  const createMutation   = useCreateComment(projectId);
+  const updateMutation   = useUpdateComment(projectId);
+  const deleteMutation   = useDeleteComment(projectId);
+  const uploadMutation   = useUploadCommentAttachment(projectId);
+  const downloadMutation = useDownloadDocumentVersion();
+
+  // Modération par propriété (ownership), pas par rôle de gestion : miroir
+  // exact de la RLS/Edge Functions comments-update/comments-delete
+  // (auteur OU ADMIN/SUPER_ADMIN). Tout commentaire visible ici est déjà
+  // garanti de la même organisation par la policy SELECT — un ADMIN qui le
+  // voit est donc forcément dans son périmètre.
+  const currentUser = useAuthStore(s => s.user);
+  const currentRole = currentUser?.role;
+  const canManageComment = useCallback((c: CommentaireProjet) =>
+    currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN' || c.auteurId === currentUser?.id,
+  [currentRole, currentUser?.id]);
+  // Miroir de requireRole(documents-create) : seuls ces rôles peuvent
+  // réellement téléverser un fichier (attacher une pièce jointe suppose de
+  // créer un vrai documents_projet + un vrai upload Storage).
+  const canAttachFile = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
 
   const [slideOpen,   setSlideOpen]     = useState(false);
   const [slideMode,   setSlideMode]     = useState<'new' | 'edit' | 'view'>('new');
   const [slideCmt,    setSlideCmt]      = useState<CommentaireProjet | null>(null);
   const [defaultPid,  setDefaultPid]    = useState<string>('');
   const [deleteTarget, setDeleteTarget] = useState<CommentaireProjet | null>(null);
+  const [actionError, setActionError]   = useState<string | null>(null);
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
 
@@ -81,7 +101,7 @@ export default function TabComments() {
       c.statut === 'RESOLU' || c.statut === 'FERME',
     ).length;
     const ajd     = commentaires.filter(c => c.date_creation === today).length;
-    const avec_pj = commentaires.filter(c => !!c.piece_jointe).length;
+    const avec_pj = commentaires.filter(c => !!c.pieceJointeDocumentId).length;
     return { total: commentaires.length, ouverts, resolus, ajd, avec_pj };
   }, [commentaires]);
 
@@ -163,37 +183,71 @@ export default function TabComments() {
   ], [auteurOptions]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
+  // Le parent possède les mutations et ne ferme le SlideOver qu'après
+  // confirmation serveur (onSuccess) — plus de fermeture aveugle (cf. audit :
+  // un non-auteur cliquant Modifier/Supprimer sur le commentaire d'un autre
+  // échouait en silence, RLS/Edge Function refusant sans aucun signal).
+  //
+  // Séquencement fiche → pièce jointe : si un fichier a été sélectionné, il
+  // est réellement téléversé (documents-create + documents-upload-version)
+  // AVANT la création/mise à jour du commentaire, pour inclure le vrai
+  // document_id obtenu dans le même appel — pas d'état "commentaire créé mais
+  // pièce jointe orpheline" possible côté commentaire (l'inverse du risque
+  // documenté sur Documents, où c'est la fiche qui précède le fichier).
+  const handleSave = useCallback(async (payload: CommentSavePayload, id: string | undefined, file: File | null) => {
+    setActionError(null);
+    try {
+      let pieceJointeDocumentId: string | null | undefined = payload.removeAttachment ? null : undefined;
+      if (file) {
+        const created = await uploadMutation.mutateAsync(file);
+        pieceJointeDocumentId = created.id;
+      }
 
-  const handleSave = useCallback((payload: CommentSavePayload, id?: string) => {
-    if (id) {
-      updateMutation.mutate({
-        id,
-        message: payload.message,
-        statut: payload.statut,
-        priorite: payload.priorite,
-        pieceJointe: payload.piece_jointe,
-        mention: payload.mention,
-      });
-    } else {
-      createMutation.mutate({
-        module: payload.module,
-        elementId: payload.element_id,
-        elementNom: payload.element_nom,
-        message: payload.message,
-        statut: payload.statut,
-        priorite: payload.priorite,
-        parentId: payload.parent_id,
-        pieceJointe: payload.piece_jointe,
-        mention: payload.mention,
-      });
+      if (id) {
+        await updateMutation.mutateAsync({
+          id,
+          message: payload.message,
+          statut: payload.statut,
+          priorite: payload.priorite,
+          pieceJointeDocumentId,
+          mentionUserId: payload.mention_user_id,
+        });
+      } else {
+        await createMutation.mutateAsync({
+          module: payload.module,
+          elementId: payload.element_id,
+          elementNom: payload.element_nom,
+          message: payload.message,
+          statut: payload.statut,
+          priorite: payload.priorite,
+          parentId: payload.parent_id,
+          pieceJointeDocumentId,
+          mentionUserId: payload.mention_user_id,
+        });
+      }
+      setSlideOpen(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Échec de l\'enregistrement du commentaire.');
     }
-  }, [createMutation, updateMutation]);
+  }, [createMutation, updateMutation, uploadMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    deleteMutation.mutate(deleteTarget.id);
-    setDeleteTarget(null);
+    setActionError(null);
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Échec de la suppression du commentaire.'),
+    });
   }, [deleteTarget, deleteMutation]);
+
+  const handleDownload = useCallback((c: CommentaireProjet) => {
+    if (!c.pieceJointeDocumentId) return;
+    setActionError(null);
+    downloadMutation.mutate(c.pieceJointeDocumentId, {
+      onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
+      onError: (err) => setActionError(err instanceof Error ? err.message : 'Échec du téléchargement.'),
+    });
+  }, [downloadMutation]);
 
   const openNew  = useCallback(() => {
     setSlideCmt(null); setDefaultPid(''); setSlideMode('new'); setSlideOpen(true);
@@ -217,7 +271,7 @@ export default function TabComments() {
     const rows = commentaires.map(c => [
       c.id, c.date_creation, c.auteur, c.role, c.module, c.element_nom,
       STATUT_COMMENTAIRE_LABEL[c.statut], PRIORITE_COMMENTAIRE_LABEL[c.priorite],
-      c.message, c.piece_jointe ?? '', c.mention ?? '', c.parent_id ?? '',
+      c.message, c.pieceJointeDocumentId ? 'Oui' : 'Non', c.mentionUserName ?? '', c.parent_id ?? '',
     ]);
     const csv  = bom + [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -233,7 +287,7 @@ export default function TabComments() {
     const rows = commentaires.map(c => [
       c.id, c.date_creation, c.auteur, c.role, c.module, c.element_nom,
       STATUT_COMMENTAIRE_LABEL[c.statut], PRIORITE_COMMENTAIRE_LABEL[c.priorite],
-      c.message, c.piece_jointe ?? '', c.mention ?? '', c.parent_id ?? '',
+      c.message, c.pieceJointeDocumentId ? 'Oui' : 'Non', c.mentionUserName ?? '', c.parent_id ?? '',
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
@@ -337,14 +391,20 @@ export default function TabComments() {
     },
     {
       id: 'piece_jointe',
-      accessorFn: (row: CommentaireProjet) => row.piece_jointe ? 'Oui' : 'Non',
+      accessorFn: (row: CommentaireProjet) => row.pieceJointeDocumentId ? 'Oui' : 'Non',
       header: 'PJ',
       meta: { align: 'center' } as Record<string, unknown>,
-      cell: ({ row }) => row.original.piece_jointe
+      cell: ({ row }) => row.original.pieceJointeDocumentId
         ? (
-          <span className="flex items-center justify-center" title={row.original.piece_jointe}>
-            <Paperclip className="h-3.5 w-3.5 text-info" aria-label={row.original.piece_jointe} />
-          </span>
+          <button
+            type="button"
+            className="flex items-center justify-center w-full disabled:opacity-50"
+            onClick={() => handleDownload(row.original)}
+            disabled={downloadMutation.isPending}
+            aria-label="Télécharger la pièce jointe"
+          >
+            <Paperclip className="h-3.5 w-3.5 text-info" />
+          </button>
         )
         : <span className="text-[11px] text-muted-foreground text-center block">—</span>,
     },
@@ -374,20 +434,24 @@ export default function TabComments() {
           <Button variant="ghost" size="sm" aria-label="Voir" onClick={() => openView(row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost" size="sm" aria-label="Supprimer"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setDeleteTarget(row.original)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canManageComment(row.original) && (
+            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(row.original)}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canManageComment(row.original) && (
+            <Button
+              variant="ghost" size="sm" aria-label="Supprimer"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setDeleteTarget(row.original)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
-  ], [openView, openEdit]);
+  ], [openView, openEdit, canManageComment, handleDownload, downloadMutation.isPending]);
 
   // ── JSX ──────────────────────────────────────────────────────────────────────
 
@@ -417,6 +481,13 @@ export default function TabComments() {
           </Button>
         </div>
       </div>
+
+      {actionError && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{actionError}</span>
+        </div>
+      )}
 
       {/* ── Alerte commentaires ouverts ───────────────────────────────────────── */}
       {ouvertsParents.length > 0 && (
@@ -558,13 +629,7 @@ export default function TabComments() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Registre des commentaires</CardTitle>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground font-mono">{commentaires.length} entrées</span>
-            <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-              Ajouter
-            </Button>
-          </div>
+          <span className="text-xs text-muted-foreground font-mono">{commentaires.length} entrées</span>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -580,22 +645,27 @@ export default function TabComments() {
       {/* ── SlideOver ─────────────────────────────────────────────────────────── */}
       <CommentSlideOver
         open={slideOpen}
-        onOpenChange={setSlideOpen}
+        onOpenChange={(open) => { setSlideOpen(open); if (!open) setActionError(null); }}
         mode={slideMode}
         commentaire={slideCmt}
         parentRef={parentRef}
         replies={replies}
         defaultParentId={defaultPid}
+        projectId={projectId}
+        canManage={slideCmt ? canManageComment(slideCmt) : true}
+        canAttachFile={canAttachFile}
+        isSaving={createMutation.isPending || updateMutation.isPending || uploadMutation.isPending}
+        error={actionError}
         onSave={handleSave}
         onDelete={(id) => {
           const target = commentaires.find(c => c.id === id);
-          if (target) { setSlideOpen(false); setDeleteTarget(target); }
+          if (target) { setSlideOpen(false); setActionError(null); setDeleteTarget(target); }
         }}
         onReply={openReply}
       />
 
       {/* ── Modal suppression ──────────────────────────────────────────────────── */}
-      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setActionError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Supprimer le commentaire</ModalTitle>
@@ -606,12 +676,18 @@ export default function TabComments() {
               Cette action supprimera également les réponses associées.
             </ModalDescription>
           </ModalHeader>
+          {actionError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {actionError}
+            </p>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Supprimer
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </ModalFooter>
         </ModalContent>

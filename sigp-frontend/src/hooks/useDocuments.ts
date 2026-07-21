@@ -357,6 +357,33 @@ export function useDeleteLivrableAttachment(projectId: string, livrableId: strin
   });
 }
 
+// Pièce jointe réelle d'un commentaire (project_comments.piece_jointe_
+// document_id) — un seul fichier par commentaire, pas de liste à tenir à
+// jour côté documents_projet (contrairement aux livrables), donc pas besoin
+// de FK retour ni de query key dédiée : documents-create sans livrableId
+// (document global au projet) + documents-upload-version, comme partout
+// ailleurs (cf. audit Commentaires : remplace l'ancien champ texte libre
+// "nom de fichier" tapé au clavier, sans fichier réel derrière).
+export function useUploadCommentAttachment(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const { data: created } = await invokeEdgeFunction<{ data: { id: string } }>('documents-create', {
+        projectId, titre: file.name,
+      });
+      const fileBase64 = await fileToBase64(file);
+      await invokeEdgeFunction('documents-upload-version', {
+        documentId: created.id,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileBase64,
+      });
+      return created;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: documentKeys.project(projectId) }),
+  });
+}
+
 // documentId générique (pas propre aux livrables) — réutilisable partout où
 // une pièce jointe doit être téléchargée via URL signée.
 export function useDownloadDocumentVersion() {

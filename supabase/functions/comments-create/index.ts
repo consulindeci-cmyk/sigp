@@ -10,8 +10,8 @@ interface CreateCommentBody {
   statut?: string;
   priorite?: string;
   parentId?: string;
-  pieceJointe?: string;
-  mention?: string;
+  pieceJointeDocumentId?: string;
+  mentionUserId?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -50,13 +50,13 @@ Deno.serve(async (req: Request) => {
         statut: body.statut ?? 'OUVERT',
         priorite: body.priorite ?? 'NORMALE',
         parent_id: body.parentId ?? null,
-        piece_jointe: body.pieceJointe ?? null,
-        mention: body.mention ?? null,
+        piece_jointe_document_id: body.pieceJointeDocumentId ?? null,
+        mention_user_id: body.mentionUserId ?? null,
         lu: false,
         created_by: profile.id,
         updated_at: new Date().toISOString(),
       })
-      .select('*, auteur:users!auteur_id(nom, prenom, role)')
+      .select('*, auteur:users!auteur_id(nom, prenom, role), mention_user:users!mention_user_id(nom, prenom)')
       .single();
 
     if (insertError) throw insertError;

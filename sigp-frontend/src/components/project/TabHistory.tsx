@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useHistory } from '@/hooks/useHistory';
 import { useUIStore } from '@/stores/uiStore';
@@ -66,12 +66,10 @@ export default function TabHistory() {
   const projectId            = urlProjectId || activeProjectId || '';
 
   const { data: apiData } = useHistory(projectId);
-  const [evenements, setEvenements] = useState<HistoriqueProjet[]>([]);
+  // Dérivé de la réponse serveur, jamais copié dans un state local (cf. audit
+  // — même pattern déjà corrigé sur Documents/Rapports/Livrables).
+  const evenements = useMemo(() => apiData?.data ?? [], [apiData]);
 
-  useEffect(() => {
-    const list = (apiData as { data?: HistoriqueProjet[] })?.data ?? (Array.isArray(apiData) ? apiData as HistoriqueProjet[] : []);
-    setEvenements(list);
-  }, [apiData]);
   const [slideOpen,  setSlideOpen]  = useState(false);
   const [slideEvt,   setSlideEvt]   = useState<HistoriqueProjet | null>(null);
 
@@ -153,14 +151,18 @@ export default function TabHistory() {
 
   // ── Exports ───────────────────────────────────────────────────────────────
 
+  // IP/Navigateur volontairement absents des exports : aucune Edge Function
+  // ne renseigne jamais ip_address/user_agent sur `historique` (cf. audit),
+  // ces colonnes seraient donc toujours vides — même raison que leur absence
+  // de HistorySlideOver.tsx.
   const exportCSV = useCallback(() => {
     const bom     = '﻿';
     const headers = ['ID', 'Date', 'Heure', 'Utilisateur', 'Rôle',
-      'Module', 'Élément', 'Action', 'Description', 'Niveau', 'IP', 'Navigateur'];
+      'Module', 'Élément', 'Action', 'Description', 'Niveau'];
     const rows = evenements.map(e => [
       e.id, e.date, e.heure, e.utilisateur, e.role,
       e.module, e.element, ACTION_LABEL[e.action], e.description,
-      NIVEAU_LABEL[e.niveau], e.ip, e.navigateur,
+      NIVEAU_LABEL[e.niveau],
     ]);
     const csv  = bom + [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -172,11 +174,11 @@ export default function TabHistory() {
 
   const exportXLSX = useCallback(() => {
     const headers = ['ID', 'Date', 'Heure', 'Utilisateur', 'Rôle',
-      'Module', 'Élément', 'Action', 'Description', 'Niveau', 'IP', 'Navigateur'];
+      'Module', 'Élément', 'Action', 'Description', 'Niveau'];
     const rows = evenements.map(e => [
       e.id, e.date, e.heure, e.utilisateur, e.role,
       e.module, e.element, ACTION_LABEL[e.action], e.description,
-      NIVEAU_LABEL[e.niveau], e.ip, e.navigateur,
+      NIVEAU_LABEL[e.niveau],
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();

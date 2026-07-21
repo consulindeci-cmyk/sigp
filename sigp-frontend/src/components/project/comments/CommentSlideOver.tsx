@@ -1,19 +1,20 @@
-import { useEffect, useState } from 'react';
-import { X, Paperclip, Reply } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Upload, Download, Paperclip, Reply, AlertCircle } from 'lucide-react';
 import type { CommentaireProjet, ModuleCommentaire, StatutCommentaire, PrioriteCommentaire } from '@/types';
 import {
   MODULE_OPTIONS, STATUT_OPTIONS, PRIORITE_OPTIONS, STATUT_COMMENTAIRE_LABEL,
   PRIORITE_COMMENTAIRE_LABEL,
 } from '@/mocks/commentsMocks';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalClose,
+} from '@/components/ui/overlays/Modal';
 import { Button }   from '@/components/ui/forms/Button';
 import { Input }    from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
 import { Select }   from '@/components/ui/forms/Select';
 import { Badge }    from '@/components/ui/data-display/Badge';
+import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
+import { useDownloadDocumentVersion } from '@/hooks/useDocuments';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,22 +26,24 @@ interface FormState {
   statut:       StatutCommentaire;
   priorite:     PrioriteCommentaire;
   parent_id:    string;
-  piece_jointe: string;
-  mention:      string;
+  mention_user_id: string;
 }
 
 // L'auteur (auteur_id) est résolu côté serveur depuis la session — plus de
-// champ auteur/role saisi à la main comme dans l'ancien mock.
+// champ auteur/role saisi à la main comme dans l'ancien mock. pieceJointe et
+// mention sont désormais de vraies références (document réellement stocké /
+// utilisateur réel) — cf. audit Commentaires.
 export interface CommentSavePayload {
-  module:         ModuleCommentaire;
-  element_id:     string;
-  element_nom:    string;
-  message:        string;
-  statut:         StatutCommentaire;
-  priorite:       PrioriteCommentaire;
-  parent_id:      string | null;
-  piece_jointe:   string | null;
-  mention:        string | null;
+  module:            ModuleCommentaire;
+  element_id:         string;
+  element_nom:        string;
+  message:            string;
+  statut:             StatutCommentaire;
+  priorite:           PrioriteCommentaire;
+  parent_id:          string | null;
+  mention_user_id:    string | null;
+  /** true si l'utilisateur a explicitement retiré la pièce jointe existante (édition). */
+  removeAttachment?:  boolean;
 }
 
 export interface CommentSlideOverProps {
@@ -51,11 +54,16 @@ export interface CommentSlideOverProps {
   parentRef?:    CommentaireProjet | null;
   replies?:      CommentaireProjet[];
   defaultParentId?: string;
-  onSave:        (payload: CommentSavePayload, id?: string) => void;
+  projectId:     string;
+  /** Le commentaire appartient-il à l'utilisateur connecté (ou est-il ADMIN/SUPER_ADMIN) ? Contrôle l'affichage des actions modifier/supprimer. */
+  canManage?:    boolean;
+  /** Miroir de requireRole(documents-create) : seuls ces rôles peuvent réellement stocker un fichier. */
+  canAttachFile?: boolean;
+  isSaving?:     boolean;
+  error?:        string | null;
+  onSave:        (payload: CommentSavePayload, id: string | undefined, file: File | null) => void;
   onDelete?:     (id: string) => void;
   onReply?:      (parent: CommentaireProjet) => void;
-  /** Le commentaire appartient-il à l'utilisateur connecté (ou est-il ADMIN) ? Contrôle l'affichage des actions modifier/supprimer. */
-  canManage?: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -89,8 +97,7 @@ const INIT: FormState = {
   statut:       'OUVERT',
   priorite:     'NORMALE',
   parent_id:    '',
-  piece_jointe: '',
-  mention:      '',
+  mention_user_id: '',
 };
 
 // ─── Row helper (view) ────────────────────────────────────────────────────────
@@ -108,11 +115,19 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function CommentSlideOver({
   open, onOpenChange, mode, commentaire, parentRef, replies = [],
-  defaultParentId, onSave, onDelete, onReply, canManage = true,
+  defaultParentId, projectId, canManage = true, canAttachFile = false,
+  isSaving = false, error = null, onSave, onDelete, onReply,
 }: CommentSlideOverProps) {
   const [form, setForm]               = useState<FormState>(INIT);
   const [errors, setErrors]           = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [removeAttachment, setRemoveAttachment] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const { data: members = [] } = useOrganisationMembersForPicker(projectId);
+  const downloadMutation = useDownloadDocumentVersion();
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const readOnly = mode === 'view';
 
@@ -127,19 +142,38 @@ export function CommentSlideOver({
         statut:       commentaire.statut,
         priorite:     commentaire.priorite,
         parent_id:    commentaire.parent_id ?? '',
-        piece_jointe: commentaire.piece_jointe ?? '',
-        mention:      commentaire.mention ?? '',
+        mention_user_id: commentaire.mentionUserId ?? '',
       });
     } else {
       setForm({ ...INIT, parent_id: defaultParentId ?? '' });
     }
     setErrors({});
     setConfirmDelete(false);
+    setSelectedFile(null);
+    setRemoveAttachment(false);
+    setDownloadError(null);
   }, [open, mode, commentaire, defaultParentId]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: undefined }));
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSelectedFile(file);
+    setRemoveAttachment(false);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function handleDownload() {
+    if (!commentaire?.pieceJointeDocumentId) return;
+    setDownloadError(null);
+    downloadMutation.mutate(commentaire.pieceJointeDocumentId, {
+      onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
+      onError: (err) => setDownloadError(err instanceof Error ? err.message : 'Échec du téléchargement.'),
+    });
   }
 
   function validate(): boolean {
@@ -150,29 +184,32 @@ export function CommentSlideOver({
     return Object.keys(e).length === 0;
   }
 
+  // Le SlideOver ne se ferme plus lui-même : le parent possède la mutation
+  // (fiche + éventuelle pièce jointe séquencée derrière, cf. TabComments.tsx)
+  // et ne ferme qu'après confirmation serveur (cf. audit — fermeture aveugle
+  // qui masquait tout échec 403/réseau, notamment pour les non-auteurs).
   function handleSave() {
     if (!validate()) return;
     onSave(
       {
-        module:           form.module,
-        element_id:       form.element_id.trim(),
-        element_nom:      form.element_nom.trim() || form.element_id.trim(),
-        message:          form.message.trim(),
-        statut:           form.statut,
-        priorite:         form.priorite,
-        parent_id:        form.parent_id.trim() || null,
-        piece_jointe:     form.piece_jointe.trim() || null,
-        mention:          form.mention.trim() || null,
+        module:            form.module,
+        element_id:        form.element_id.trim(),
+        element_nom:       form.element_nom.trim() || form.element_id.trim(),
+        message:           form.message.trim(),
+        statut:            form.statut,
+        priorite:          form.priorite,
+        parent_id:         form.parent_id.trim() || null,
+        mention_user_id:   form.mention_user_id.trim() || null,
+        removeAttachment,
       },
       commentaire?.id,
+      selectedFile,
     );
-    onOpenChange(false);
   }
 
   function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     if (commentaire?.id) onDelete?.(commentaire.id);
-    onOpenChange(false);
   }
 
   const title =
@@ -184,28 +221,23 @@ export function CommentSlideOver({
     ? commentaire.auteur.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
     : '';
 
+  const attachmentLabel = selectedFile
+    ? selectedFile.name
+    : (commentaire?.pieceJointeDocumentId && !removeAttachment ? 'Pièce jointe déjà attachée' : null);
+
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
         {/* ── Header ── */}
-        <SlideOverHeader>
-          <div>
-            <SlideOverTitle>{title}</SlideOverTitle>
-            {commentaire && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {fmtDate(commentaire.date_creation)}
-              </p>
-            )}
-          </div>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="icon" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{title}</ModalTitle>
+          {commentaire && (
+            <p className="text-xs text-muted-foreground">{fmtDate(commentaire.date_creation)}</p>
+          )}
+        </ModalHeader>
 
         {/* ── Body ── */}
-        <SlideOverBody className="space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
           {/* Résumé visuel (view/edit) */}
           {commentaire && (
@@ -242,7 +274,7 @@ export function CommentSlideOver({
           {readOnly && commentaire && onReply && !commentaire.parent_id && (
             <Button
               variant="outline" size="sm"
-              onClick={() => { onReply(commentaire); onOpenChange(false); }}
+              onClick={() => onReply(commentaire)}
             >
               <Reply className="h-3.5 w-3.5 mr-1.5" />
               Répondre
@@ -272,16 +304,17 @@ export function CommentSlideOver({
               <div className="rounded-lg border border-border bg-card p-3 divide-y divide-border">
                 <Row label="Module"  value={<Badge variant="outline" className="text-[10px]">{commentaire?.module}</Badge>} />
                 <Row label="Élément" value={commentaire?.element_nom} />
-                {commentaire?.piece_jointe && (
+                {commentaire?.pieceJointeDocumentId && (
                   <Row label="Pièce jointe" value={
-                    <span className="flex items-center gap-1 text-[12px] text-info">
-                      <Paperclip className="h-3 w-3 shrink-0" />{commentaire.piece_jointe}
-                    </span>
+                    <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloadMutation.isPending}>
+                      <Download className="h-3.5 w-3.5 mr-1.5" />
+                      {downloadMutation.isPending ? 'Préparation…' : 'Télécharger'}
+                    </Button>
                   } />
                 )}
-                {commentaire?.mention && (
+                {commentaire?.mentionUserName && (
                   <Row label="Mention" value={
-                    <span className="text-[12px] font-medium text-primary">{commentaire.mention}</span>
+                    <span className="text-[12px] font-medium text-primary">{commentaire.mentionUserName}</span>
                   } />
                 )}
               </div>
@@ -418,6 +451,13 @@ export function CommentSlideOver({
             </div>
           )}
 
+          {downloadError && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{downloadError}</span>
+            </div>
+          )}
+
           {/* Section: Options (new/edit) */}
           {!readOnly && (
             <div className="space-y-4 pt-1 border-t border-border">
@@ -426,30 +466,50 @@ export function CommentSlideOver({
               </p>
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-mention">
-                    Mention (nom d'utilisateur)
-                  </label>
-                  <Input
+                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-mention">Mentionner un utilisateur</label>
+                  <Select
                     id="cmt-mention"
-                    value={form.mention}
-                    onChange={e => set('mention', e.target.value)}
-                    placeholder="Ex : Amadou Diallo"
-                  />
+                    value={form.mention_user_id}
+                    onChange={e => set('mention_user_id', e.target.value)}
+                  >
+                    <option value="">Aucune mention</option>
+                    {members.map(m => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground" htmlFor="cmt-pj">
-                    Pièce jointe (nom de fichier)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Paperclip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <Input
-                      id="cmt-pj"
-                      value={form.piece_jointe}
-                      onChange={e => set('piece_jointe', e.target.value)}
-                      placeholder="Ex : rapport_mars.pdf"
-                    />
+                {canAttachFile ? (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground">Pièce jointe</label>
+                    <div className="rounded-lg border-2 border-dashed border-border bg-muted/10 p-3 flex items-center gap-3">
+                      <Button variant="outline" size="sm" type="button" onClick={() => fileRef.current?.click()}>
+                        <Upload className="h-3.5 w-3.5 mr-1.5" />
+                        Sélectionner un fichier
+                      </Button>
+                      {attachmentLabel ? (
+                        <p className="text-xs text-foreground truncate flex items-center gap-1">
+                          <Paperclip className="h-3 w-3 shrink-0" />{attachmentLabel}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Aucun fichier attaché</p>
+                      )}
+                      <input ref={fileRef} type="file" className="sr-only" aria-hidden="true" tabIndex={-1} onChange={handleFileSelect} />
+                    </div>
+                    {mode === 'edit' && commentaire?.pieceJointeDocumentId && !selectedFile && (
+                      <Button
+                        variant="ghost" size="sm"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setRemoveAttachment(prev => !prev)}
+                      >
+                        {removeAttachment ? 'Annuler le retrait' : 'Retirer la pièce jointe'}
+                      </Button>
+                    )}
                   </div>
-                </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Votre rôle ne permet pas d'attacher de fichier à un commentaire.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -511,20 +571,27 @@ export function CommentSlideOver({
               )}
             </div>
           )}
-        </SlideOverBody>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
 
         {/* ── Footer ── */}
-        <SlideOverFooter>
-          <SlideOverClose asChild>
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+          <ModalClose asChild>
             <Button variant="outline">Fermer</Button>
-          </SlideOverClose>
-          {!readOnly && (
-            <Button onClick={handleSave}>
-              {mode === 'new' ? 'Ajouter le commentaire' : 'Enregistrer'}
+          </ModalClose>
+          {!readOnly && canManage && (
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement…' : mode === 'new' ? 'Ajouter le commentaire' : 'Enregistrer'}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </div>
+      </ModalContent>
+    </Modal>
   );
 }

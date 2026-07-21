@@ -502,6 +502,7 @@ export interface CommentaireProjet {
   module: ModuleCommentaire;
   element_id: string;
   element_nom: string;
+  auteurId: string | null;
   auteur: string;
   role: string;
   message: string;
@@ -510,8 +511,9 @@ export interface CommentaireProjet {
   statut: StatutCommentaire;
   priorite: PrioriteCommentaire;
   parent_id?: string | null;
-  piece_jointe?: string | null;
-  mention?: string | null;
+  pieceJointeDocumentId?: string | null;  // documents_projet.id du fichier réellement stocké
+  mentionUserId?: string | null;          // users.id de l'utilisateur réellement mentionné
+  mentionUserName?: string | null;        // résolu côté serveur pour affichage
   lu: boolean;
   createdAt: string;
   updatedAt: string;

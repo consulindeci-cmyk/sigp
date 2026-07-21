@@ -15,8 +15,12 @@ import type { HistoriqueProjet, ModuleHistorique, PaginatedResponse, TypeActionH
 // - `niveau` : aucune notion de gravité n'existe sur cette table — approximé
 //   à partir de l'action (DELETE/REJECT → AVERTISSEMENT, sinon INFO).
 // - `role`/`utilisateur` : résolus via une jointure sur `users`.
-// - `ip`/`navigateur` : correspondent directement à `ip_address`/`user_agent`,
-//   bien réels sur cette table (contrairement au Journal des Opérations).
+// - `ip`/`navigateur` : mappés depuis `ip_address`/`user_agent`, mais AUCUNE
+//   Edge Function ne renseigne jamais ces deux colonnes à l'insertion —
+//   elles sont donc toujours vides en pratique. Champs conservés dans le
+//   type adapté pour ne pas casser la forme de HistoriqueProjet, mais
+//   volontairement absents de l'UI (cf. HistorySlideOver.tsx) tant qu'aucune
+//   Edge Function ne les alimente réellement.
 
 interface HistoriqueRow {
   id: string;
