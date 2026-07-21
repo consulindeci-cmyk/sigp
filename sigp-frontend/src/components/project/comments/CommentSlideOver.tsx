@@ -89,6 +89,10 @@ function fmtDate(iso: string): string {
   } catch { return iso; }
 }
 
+function truncate(s: string, max = 70): string {
+  return s.length > max ? `${s.slice(0, max).trimEnd()}…` : s;
+}
+
 const INIT: FormState = {
   module:       'Projet',
   element_id:   '',
@@ -358,6 +362,20 @@ export function CommentSlideOver({
               </div>
             )}
           </div>
+
+          {/* Indicateur de réponse (new/edit) — contexte du commentaire
+              parent pendant la rédaction, absent jusqu'ici (cf. suivi
+              audit Commentaires : seule la vue affichait le parent, pas
+              le formulaire de saisie d'une réponse). */}
+          {!readOnly && parentRef && (
+            <div className="rounded-lg border border-info/30 bg-info/5 p-3 flex items-start gap-2.5">
+              <Reply className="h-4 w-4 text-info mt-0.5 shrink-0" aria-hidden="true" />
+              <p className="text-[12px] text-foreground leading-relaxed">
+                En réponse à : <strong>{parentRef.auteur}</strong> —{' '}
+                <span className="text-muted-foreground italic">"{truncate(parentRef.message)}"</span>
+              </p>
+            </div>
+          )}
 
           {/* Section: Message */}
           <div className="space-y-4 pt-1 border-t border-border">

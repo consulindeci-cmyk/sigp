@@ -297,10 +297,15 @@ export default function TabComments() {
 
   // ── Données SlideOver ────────────────────────────────────────────────────────
 
+  // Résout le parent depuis slideCmt.parent_id (vue/édition d'une réponse
+  // existante) OU depuis defaultPid (nouvelle réponse en cours de rédaction,
+  // où slideCmt est encore null) — sans ce second cas, le formulaire de
+  // réponse n'a aucun moyen d'afficher le contexte du commentaire parent.
   const parentRef = useMemo(() => {
-    if (!slideCmt?.parent_id) return null;
-    return commentaires.find(c => c.id === slideCmt.parent_id) ?? null;
-  }, [slideCmt, commentaires]);
+    const parentId = slideCmt?.parent_id || defaultPid;
+    if (!parentId) return null;
+    return commentaires.find(c => c.id === parentId) ?? null;
+  }, [slideCmt, defaultPid, commentaires]);
 
   const replies = useMemo(() => {
     if (!slideCmt || slideMode !== 'view') return [];
