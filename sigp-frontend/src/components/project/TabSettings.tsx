@@ -16,6 +16,7 @@ import {
   CATEGORIE_PARAM_OPTIONS, STATUT_PARAM_OPTIONS, STATUT_PARAM_LABEL,
 } from '@/mocks/settingsMocks';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import {
   useProjectSettings, useCreateProjectSetting, useUpdateProjectSetting, useDeleteProjectSetting,
 } from '@/hooks/useProjectSettings';
@@ -66,10 +67,17 @@ export default function TabSettings() {
   const updateMutation = useUpdateProjectSetting(projectId);
   const deleteMutation = useDeleteProjectSetting(projectId);
 
+  // Miroir de requireRole(profile, [...]) sur settings-create/update
+  // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+
   const [slideOpen, setSlideOpen]     = useState(false);
   const [slideMode, setSlideMode]     = useState<'new' | 'edit' | 'view'>('new');
   const [slideCfg,  setSlideCfg]      = useState<ConfigurationProjet | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ConfigurationProjet | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
 
@@ -174,37 +182,63 @@ export default function TabSettings() {
   ], [auteurOptions, moisOptions]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
+  // Le parent possède les mutations et ne ferme le Modal qu'après confirmation
+  // serveur (onSuccess) — plus de fermeture aveugle ni d'échec silencieux
+  // (cf. audit Paramètres du Projet).
+
+  function extractErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+  }
 
   const handleSave = useCallback((payload: SettingSavePayload, id?: string) => {
+    setActionError(null);
+    const onSettled = {
+      onSuccess: () => setSlideOpen(false),
+      onError: (err: unknown) => setActionError(extractErrorMessage(err)),
+    };
     if (id) {
-      updateMutation.mutate({ id, ...payload });
+      updateMutation.mutate({ id, ...payload }, onSettled);
     } else {
-      createMutation.mutate(payload);
+      createMutation.mutate(payload, onSettled);
     }
   }, [createMutation, updateMutation]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
-    deleteMutation.mutate(deleteTarget.id);
-    setDeleteTarget(null);
+    setActionError(null);
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
+      onError: (err) => setActionError(extractErrorMessage(err)),
+    });
   }, [deleteTarget, deleteMutation]);
 
   const handleRestore = useCallback((cfg: ConfigurationProjet) => {
-    updateMutation.mutate({ id: cfg.id, statut: 'ACTIF' });
+    setActionError(null);
+    updateMutation.mutate(
+      { id: cfg.id, statut: 'ACTIF' },
+      { onError: (err) => setActionError(extractErrorMessage(err)) },
+    );
   }, [updateMutation]);
 
   const handleDuplicate = useCallback((cfg: ConfigurationProjet) => {
-    createMutation.mutate({
-      categorie: cfg.categorie,
-      nom: `${cfg.nom} (copie)`,
-      description: cfg.description,
-      valeur: cfg.valeur,
-      valeurDefaut: cfg.valeur_defaut,
-      typeValeur: cfg.type_valeur,
-      requis: cfg.requis,
-      modifiable: cfg.modifiable,
-      statut: 'EN_ATTENTE',
-    });
+    setActionError(null);
+    createMutation.mutate(
+      {
+        categorie: cfg.categorie,
+        nom: `${cfg.nom} (copie)`,
+        description: cfg.description,
+        valeur: cfg.valeur,
+        valeurDefaut: cfg.valeur_defaut,
+        typeValeur: cfg.type_valeur,
+        requis: cfg.requis,
+        modifiable: cfg.modifiable,
+        statut: 'EN_ATTENTE',
+      },
+      {
+        onSuccess: () => setSlideOpen(false),
+        onError: (err) => setActionError(extractErrorMessage(err)),
+      },
+    );
   }, [createMutation]);
 
   const openNew  = useCallback(() => {
@@ -351,10 +385,12 @@ export default function TabSettings() {
             <Button variant="ghost" size="sm" aria-label="Voir" onClick={() => openView(cfg)}>
               <Eye className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(cfg)}>
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            {canRestore && (
+            {canManage && (
+              <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => openEdit(cfg)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canManage && canRestore && (
               <Button
                 variant="ghost" size="sm" aria-label="Restaurer"
                 className="text-success hover:bg-success/10 hover:text-success"
@@ -363,25 +399,29 @@ export default function TabSettings() {
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
             )}
-            <Button
-              variant="ghost" size="sm" aria-label="Dupliquer"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => handleDuplicate(cfg)}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost" size="sm" aria-label="Supprimer"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => setDeleteTarget(cfg)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            {canManage && (
+              <Button
+                variant="ghost" size="sm" aria-label="Dupliquer"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => handleDuplicate(cfg)}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="ghost" size="sm" aria-label="Supprimer"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => { setActionError(null); setDeleteTarget(cfg); }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         );
       },
     },
-  ], [openView, openEdit, handleRestore, handleDuplicate]);
+  ], [openView, openEdit, handleRestore, handleDuplicate, canManage, canDelete]);
 
   // ── JSX ──────────────────────────────────────────────────────────────────────
 
@@ -405,12 +445,21 @@ export default function TabSettings() {
             <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             Excel
           </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Nouveau paramètre
-          </Button>
+          {canManage && (
+            <Button size="sm" className="h-8 text-xs" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              Nouveau paramètre
+            </Button>
+          )}
         </div>
       </div>
+
+      {actionError && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{actionError}</span>
+        </div>
+      )}
 
       {/* ── Alerte configuration ─────────────────────────────────────────────── */}
       {alertParams.length > 0 && (
@@ -566,13 +615,7 @@ export default function TabSettings() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Registre des paramètres</CardTitle>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground font-mono">{configs.length} entrées</span>
-            <Button size="sm" className="h-7 text-xs" onClick={openNew}>
-              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-              Ajouter
-            </Button>
-          </div>
+          <span className="text-xs text-muted-foreground font-mono">{configs.length} entrées</span>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
@@ -585,24 +628,26 @@ export default function TabSettings() {
         </CardContent>
       </Card>
 
-      {/* ── SlideOver ─────────────────────────────────────────────────────────── */}
+      {/* ── Modal paramètre ───────────────────────────────────────────────────── */}
       <SettingSlideOver
         open={slideOpen}
-        onOpenChange={setSlideOpen}
+        onOpenChange={(open) => { setSlideOpen(open); if (!open) setActionError(null); }}
         mode={slideMode}
         setting={slideCfg}
+        canManage={canManage}
+        canDelete={canDelete}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+        error={actionError}
         onSave={handleSave}
         onDelete={(id) => {
           const target = configs.find(c => c.id === id);
-          if (target) { setSlideOpen(false); setDeleteTarget(target); }
+          if (target) { setSlideOpen(false); setActionError(null); setDeleteTarget(target); }
         }}
-        onDuplicate={(cfg) => {
-          handleDuplicate(cfg);
-        }}
+        onDuplicate={handleDuplicate}
       />
 
       {/* ── Modal suppression ──────────────────────────────────────────────────── */}
-      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <Modal open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setActionError(null); } }}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>Supprimer le paramètre</ModalTitle>
@@ -613,12 +658,18 @@ export default function TabSettings() {
               Cette action est irréversible.
             </ModalDescription>
           </ModalHeader>
+          {actionError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {actionError}
+            </p>
+          )}
           <ModalFooter>
             <ModalClose asChild>
               <Button variant="outline">Annuler</Button>
             </ModalClose>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Supprimer
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </ModalFooter>
         </ModalContent>

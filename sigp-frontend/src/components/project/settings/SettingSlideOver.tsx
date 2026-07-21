@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
-import { X, Copy } from 'lucide-react';
+import { Copy, AlertCircle } from 'lucide-react';
 import type { ConfigurationProjet, CategorieParametre, StatutParametre } from '@/types';
 import {
   CATEGORIE_PARAM_OPTIONS, STATUT_PARAM_OPTIONS, TYPE_VALEUR_OPTIONS,
   STATUT_PARAM_LABEL,
 } from '@/mocks/settingsMocks';
 import {
-  SlideOver, SlideOverContent, SlideOverHeader, SlideOverTitle,
-  SlideOverBody, SlideOverFooter, SlideOverClose,
-} from '@/components/ui/overlays/SlideOver';
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalClose,
+} from '@/components/ui/overlays/Modal';
 import { Button }   from '@/components/ui/forms/Button';
 import { Input }    from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
@@ -48,6 +47,10 @@ export interface SettingSlideOverProps {
   onOpenChange: (v: boolean) => void;
   mode:         'new' | 'edit' | 'view';
   setting?:     ConfigurationProjet | null;
+  canManage?:   boolean;
+  canDelete?:   boolean;
+  isSaving?:    boolean;
+  error?:       string | null;
   onSave:       (payload: SettingSavePayload, id?: string) => void;
   onDelete?:    (id: string) => void;
   onDuplicate?: (setting: ConfigurationProjet) => void;
@@ -93,7 +96,8 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function SettingSlideOver({
-  open, onOpenChange, mode, setting, onSave, onDelete, onDuplicate,
+  open, onOpenChange, mode, setting, canManage = true, canDelete = true,
+  isSaving = false, error = null, onSave, onDelete, onDuplicate,
 }: SettingSlideOverProps) {
   const [form, setForm]               = useState<FormState>(INIT);
   const [errors, setErrors]           = useState<Partial<Record<keyof FormState, string>>>({});
@@ -135,6 +139,9 @@ export function SettingSlideOver({
     return Object.keys(e).length === 0;
   }
 
+  // Le Modal ne se ferme plus lui-même : le parent possède la mutation et ne
+  // ferme qu'après confirmation serveur (onSuccess) — cf. audit Paramètres du
+  // Projet (fermeture aveugle qui masquait tout échec 403/validation).
   function handleSave() {
     if (!validate()) return;
     onSave(
@@ -151,13 +158,11 @@ export function SettingSlideOver({
       },
       setting?.id,
     );
-    onOpenChange(false);
   }
 
   function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     if (setting?.id) onDelete?.(setting.id);
-    onOpenChange(false);
   }
 
   const title =
@@ -166,28 +171,21 @@ export function SettingSlideOver({
     'Détail du paramètre';
 
   return (
-    <SlideOver open={open} onOpenChange={onOpenChange}>
-      <SlideOverContent>
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
 
         {/* ── Header ── */}
-        <SlideOverHeader>
-          <div>
-            <SlideOverTitle>{title}</SlideOverTitle>
-            {setting && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {setting.code_param} · modifié le {fmtDate(setting.date_modification)}
-              </p>
-            )}
-          </div>
-          <SlideOverClose asChild>
-            <Button variant="ghost" size="icon" aria-label="Fermer">
-              <X className="h-4 w-4" />
-            </Button>
-          </SlideOverClose>
-        </SlideOverHeader>
+        <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
+          <ModalTitle>{title}</ModalTitle>
+          {setting && (
+            <p className="text-xs text-muted-foreground">
+              {setting.code_param} · modifié le {fmtDate(setting.date_modification)}
+            </p>
+          )}
+        </ModalHeader>
 
         {/* ── Body ── */}
-        <SlideOverBody className="space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
           {/* Résumé visuel (view/edit) */}
           {setting && (
@@ -208,10 +206,10 @@ export function SettingSlideOver({
                 <p className="text-[13px] font-semibold text-foreground leading-snug">{setting.nom}</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">{setting.code_param}</p>
               </div>
-              {onDuplicate && mode === 'view' && (
+              {onDuplicate && mode === 'view' && canManage && (
                 <Button
                   variant="outline" size="sm"
-                  onClick={() => { onDuplicate(setting); onOpenChange(false); }}
+                  onClick={() => onDuplicate(setting)}
                   aria-label="Dupliquer"
                 >
                   <Copy className="h-3.5 w-3.5 mr-1.5" />
@@ -260,7 +258,7 @@ export function SettingSlideOver({
                     id="prm-nom"
                     value={form.nom}
                     onChange={e => set('nom', e.target.value)}
-                    placeholder="Ex : Seuil alerte budget"
+                    placeholder="Ex : Devise d'affichage par défaut"
                     error={!!errors.nom}
                   />
                   {errors.nom && <p className="text-xs text-destructive">{errors.nom}</p>}
@@ -401,7 +399,7 @@ export function SettingSlideOver({
           </div>
 
           {/* Supprimer (edit) */}
-          {mode === 'edit' && setting && onDelete && (
+          {mode === 'edit' && setting && onDelete && canDelete && (
             <div className="pt-2 border-t border-border">
               {confirmDelete ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -428,20 +426,27 @@ export function SettingSlideOver({
               )}
             </div>
           )}
-        </SlideOverBody>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
 
         {/* ── Footer ── */}
-        <SlideOverFooter>
-          <SlideOverClose asChild>
-            <Button variant="outline">Fermer</Button>
-          </SlideOverClose>
-          {!readOnly && (
-            <Button onClick={handleSave}>
-              {mode === 'new' ? 'Créer le paramètre' : 'Enregistrer'}
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+          <ModalClose asChild>
+            <Button variant="outline">{readOnly ? 'Fermer' : 'Annuler'}</Button>
+          </ModalClose>
+          {!readOnly && canManage && (
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Enregistrement…' : mode === 'new' ? 'Créer le paramètre' : 'Enregistrer'}
             </Button>
           )}
-        </SlideOverFooter>
-      </SlideOverContent>
-    </SlideOver>
+        </div>
+      </ModalContent>
+    </Modal>
   );
 }

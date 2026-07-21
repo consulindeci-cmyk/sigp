@@ -82,6 +82,7 @@ export function useCreateProjectSetting(projectId: string) {
       return adaptSetting(data)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['project-settings', projectId] }),
+    onError: () => qc.invalidateQueries({ queryKey: ['project-settings', projectId] }),
   })
 }
 
@@ -109,6 +110,7 @@ export function useUpdateProjectSetting(projectId: string) {
       return adaptSetting(data)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['project-settings', projectId] }),
+    onError: () => qc.invalidateQueries({ queryKey: ['project-settings', projectId] }),
   })
 }
 
@@ -119,5 +121,6 @@ export function useDeleteProjectSetting(projectId: string) {
       await invokeEdgeFunction<{ message: string }>('settings-delete', { id })
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['project-settings', projectId] }),
+    onError: () => qc.invalidateQueries({ queryKey: ['project-settings', projectId] }),
   })
 }

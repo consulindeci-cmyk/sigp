@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit2, Share2, FileText, AlertTriangle, Copy, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Edit2, Share2, FileText, AlertTriangle, AlertCircle, Copy, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Input } from '@/components/ui/forms/Input';
@@ -12,6 +12,9 @@ import {
 } from '@/components/ui/overlays/Modal';
 import { ProjectEditModal } from '@/components/projects/ProjectEditModal';
 import type { Project } from '@/lib/projectAdapter';
+import { useAuthStore } from '@/stores/authStore';
+import { buildReportFile, triggerBrowserDownload } from '@/lib/reportBuilder';
+import type { TypeRapport } from '@/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,6 +74,14 @@ interface ProjectHeaderProps {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
+const RAPPORT_TYPE_MAP: Record<string, TypeRapport> = {
+  avancement: 'AVANCEMENT',
+  financier:  'FINANCIER',
+  evm:        'EVM',
+  risques:    'RISQUES',
+  final:      'FINAL',
+};
+
 export default function ProjectHeader({ project, onProjectUpdate, isUpdating = false, updateError = null }: ProjectHeaderProps) {
   const [showEdit,    setShowEdit]    = useState(false);
   const [showShare,   setShowShare]   = useState(false);
@@ -78,10 +89,17 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
   const [linkCopied,  setLinkCopied]  = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false); // DEFAULT TO EXPANDED
 
+  // Miroir de requireRole(profile, ['COORDINATEUR', 'ADMIN']) sur
+  // projects-update — SUPER_ADMIN exclu par choix : la modification d'un
+  // projet reste une responsabilité org_admin, pas plateforme.
+  const currentRole = useAuthStore(s => s.user?.role);
+  const canManageProject = currentRole === 'COORDINATEUR' || currentRole === 'ADMIN';
+
   const [rapportType,       setRapportType]       = useState('avancement');
-  const [rapportFormat,     setRapportFormat]     = useState('csv');
+  const [rapportFormat,     setRapportFormat]     = useState<'PDF' | 'Excel'>('PDF');
   const [rapportGenerating, setRapportGenerating] = useState(false);
   const [rapportDone,       setRapportDone]       = useState(false);
+  const [rapportError,      setRapportError]      = useState<string | null>(null);
 
   async function handleSaveProject(data: Partial<Project>) {
     try {
@@ -99,46 +117,33 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
     setTimeout(() => setLinkCopied(false), 2000);
   }
 
-  function handleGenerateReport() {
+  // Vrai moteur de génération (reportBuilder.ts) — remplace la simulation
+  // setTimeout et les formats "(simulé)" (cf. audit Paramètres du Projet) :
+  // un rapport de synthèse réel (EVM + Budget + Risques + PTBA), construit à
+  // partir des données réellement stockées pour ce projet, téléchargé
+  // immédiatement. Pas de catalogage dans rapports_projet ici — ce bouton
+  // reste un export rapide, le Centre de Rapports (TabReports.tsx) couvre
+  // déjà le cycle complet génération+stockage+historique.
+  async function handleGenerateReport() {
     setRapportGenerating(true);
-    setTimeout(() => {
+    setRapportError(null);
+    try {
+      const built = await buildReportFile({
+        type: RAPPORT_TYPE_MAP[rapportType] ?? 'AVANCEMENT',
+        format: rapportFormat,
+        projectId: project.id,
+        reportTitle: `Rapport de synthèse — ${project.name}`,
+        reportCode: project.code,
+        dateDebut: project.startDate,
+        dateFin: project.endDate,
+      });
+      triggerBrowserDownload(built.blob, built.fileName);
       setRapportGenerating(false);
       setRapportDone(true);
-
-      const rows = [
-        ['Indicateur', 'Valeur'],
-        ['Projet', project.name],
-        ['Code', project.code],
-        ['Bailleur', project.donor],
-        ['Pays', project.country],
-        ['Secteur', project.sector],
-        ['Chef de projet', project.manager],
-        ['Statut', project.status],
-        ['Budget total', project.budgetDisplay],
-        ['Date début', project.startDate],
-        ['Date fin', project.endDate],
-        ['Progression physique', `${project.progressScore}%`],
-        ["Taux d'exécution budgétaire", `${project.tauxDecaissement}%`],
-        ['Profil qualité', `${project.profileScore}%`],
-      ];
-      const csv = '﻿' + rows
-        .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
-        .join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `rapport-${rapportType}-${project.code}-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setTimeout(() => {
-        setRapportDone(false);
-        setShowRapport(false);
-      }, 1400);
-    }, 700);
+    } catch (err) {
+      setRapportGenerating(false);
+      setRapportError(err instanceof Error ? err.message : 'Échec de la génération du rapport.');
+    }
   }
 
   const physBarClass = project.progressScore >= 70
@@ -175,14 +180,16 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
                 >
                   {isCollapsed ? <ChevronDown className="w-5 h-5 text-muted-foreground" /> : <ChevronUp className="w-5 h-5 text-muted-foreground" />}
                 </Button>
-                <Button
-                  variant="outline"
-                  leftIcon={<Edit2 className="w-4 h-4" />}
-                  onClick={() => setShowEdit(true)}
-                  className="hidden md:flex"
-                >
-                  Modifier
-                </Button>
+                {canManageProject && (
+                  <Button
+                    variant="outline"
+                    leftIcon={<Edit2 className="w-4 h-4" />}
+                    onClick={() => setShowEdit(true)}
+                    className="hidden md:flex"
+                  >
+                    Modifier
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   leftIcon={<Share2 className="w-4 h-4" />}
@@ -194,7 +201,7 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
                 <Button
                   variant="secondary"
                   leftIcon={<FileText className="w-4 h-4" />}
-                  onClick={() => { setRapportDone(false); setShowRapport(true); }}
+                  onClick={() => { setRapportDone(false); setRapportError(null); setShowRapport(true); }}
                   className="hidden md:flex"
                 >
                   Rapport
@@ -355,33 +362,40 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
               <Select
                 id="rpt-format"
                 value={rapportFormat}
-                onChange={e => setRapportFormat(e.target.value)}
+                onChange={e => setRapportFormat(e.target.value as 'PDF' | 'Excel')}
                 disabled={rapportGenerating || rapportDone}
               >
-                <option value="csv">CSV (données)</option>
-                <option value="pdf">PDF (simulé)</option>
-                <option value="word">Word — .docx (simulé)</option>
+                <option value="PDF">PDF</option>
+                <option value="Excel">Excel (XLSX)</option>
               </Select>
             </div>
+            {rapportError && (
+              <div className="flex items-start gap-2 text-destructive text-sm bg-destructive/10 rounded-md px-3 py-2 border border-destructive/20" role="alert">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>{rapportError}</span>
+              </div>
+            )}
             {rapportDone && (
               <div className="flex items-center gap-2 text-success text-sm bg-success/10 rounded-md px-3 py-2 border border-success/20">
                 <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
-                Rapport généré — téléchargement en cours…
+                Rapport généré et téléchargé.
               </div>
             )}
           </div>
           <ModalFooter>
             <ModalClose asChild>
-              <Button variant="outline" disabled={rapportGenerating}>Annuler</Button>
+              <Button variant="outline" disabled={rapportGenerating}>{rapportDone ? 'Fermer' : 'Annuler'}</Button>
             </ModalClose>
+            {!rapportDone && (
             <Button
               variant="default"
               onClick={handleGenerateReport}
-              disabled={rapportGenerating || rapportDone}
+              disabled={rapportGenerating}
             >
               <FileText className="h-4 w-4 mr-1.5" aria-hidden="true" />
               {rapportGenerating ? 'Génération…' : 'Générer'}
             </Button>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
