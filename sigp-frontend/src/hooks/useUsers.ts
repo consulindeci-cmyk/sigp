@@ -259,9 +259,15 @@ export function useCreateUser() {
       const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string | null; prenom: string | null; email: string; role: UserRole; actif: boolean } }>('users-create', { ...payload });
       return adaptUserDto(edgeRowToDto(data));
     },
+    // userKeys.list() sans arguments produit ['users','list',undefined], qui
+    // ne correspond JAMAIS à la vraie clé de la liste affichée (['users',
+    // 'list', {page, limit, search, ...}] — cf. useUsersTable.ts) : invalider
+    // sur userKeys.all (['users']) couvre list/kpis/detail en un seul appel,
+    // par préfixe, quels que soient les paramètres réels de la query active
+    // (cf. correction UX UsersPage : suppression/création/modification
+    // n'actualisaient jamais la liste sans F5).
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: userKeys.list() });
-      qc.invalidateQueries({ queryKey: userKeys.kpis() });
+      qc.invalidateQueries({ queryKey: userKeys.all });
     },
   });
 }
@@ -273,10 +279,8 @@ export function useUpdateUser() {
       const { data } = await invokeEdgeFunction<{ data: Partial<UserRowDb> & { id: string; nom: string | null; prenom: string | null; email: string; role: UserRole; actif: boolean } }>('users-update', { id, ...payload });
       return adaptUserDto(edgeRowToDto(data));
     },
-    onSuccess: (_, variables) => {
-      qc.invalidateQueries({ queryKey: userKeys.list() });
-      qc.invalidateQueries({ queryKey: userKeys.kpis() });
-      qc.invalidateQueries({ queryKey: userKeys.detail(variables.id) });
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: userKeys.all });
     },
   });
 }
@@ -288,10 +292,8 @@ export function useDeleteUser() {
       await invokeEdgeFunction<{ message: string }>('users-delete', { id });
       return id;
     },
-    onSuccess: (deletedId) => {
-      qc.invalidateQueries({ queryKey: userKeys.list() });
-      qc.invalidateQueries({ queryKey: userKeys.kpis() });
-      qc.invalidateQueries({ queryKey: userKeys.detail(deletedId) });
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: userKeys.all });
     },
   });
 }
