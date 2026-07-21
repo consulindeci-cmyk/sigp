@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
+import { dashboardKeys } from '@/hooks/useDashboard';
 import type { Budget, BudgetVersion, BudgetLigne, StatutBudget } from '@/types/budget';
 
 // ─── Lignes Supabase (colonnes snake_case) ────────────────────────────────────
@@ -170,6 +171,9 @@ export function useBudgetWorkflow(projetId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.versions(projetId) });
       queryClient.invalidateQueries({ queryKey: ['budget-version'] });
+      // Un changement de statut de version (ex: passage à APPROUVE) change
+      // directement quelles lignes comptent pour le BAC/AC du portefeuille.
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }
@@ -184,6 +188,7 @@ export function useCreateBudgetLine(versionId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });
       queryClient.invalidateQueries({ queryKey: budgetKeys.lines(versionId) });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }
@@ -196,6 +201,7 @@ export function useUpdateBudgetLine(versionId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });
       queryClient.invalidateQueries({ queryKey: budgetKeys.lines(versionId) });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }
@@ -209,6 +215,7 @@ export function useDeleteBudgetLine(versionId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });
       queryClient.invalidateQueries({ queryKey: budgetKeys.lines(versionId) });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }
@@ -220,6 +227,7 @@ export function useCreateBudgetVersion(projectId: string) {
       invokeEdgeFunction<{ data: BudgetVersionRow }>('budget-versions-create', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.versions(projectId) });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }

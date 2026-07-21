@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
+import { dashboardKeys } from '@/hooks/useDashboard';
 import type { PTBA, PTBALigne, StatutPTBA } from '@/types/ptba';
 
 // ─── Ligne Supabase (colonnes snake_case de la table `ptba_activites`) ────────
@@ -246,6 +247,7 @@ export function useCreatePtbaActivite(projectId: string, annee: number) {
     }) => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-create', payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }
@@ -271,6 +273,7 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
     }) => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', { id, ...payload }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }
@@ -283,6 +286,7 @@ export function useDeletePtbaActivite(projectId: string, annee: number) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() });
     },
   });
 }

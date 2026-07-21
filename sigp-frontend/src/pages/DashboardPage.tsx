@@ -56,6 +56,44 @@ const FUNDING_COLORS = [
   'hsl(var(--muted-foreground))',
 ];
 
+// ── Skeletons (état de chargement initial — remplace le "flash à zéro" où les
+// KPIs affichaient 0/'0%' et les listes "Aucune alerte active." pendant que
+// useDashboard() était encore en vol, cf. audit Tableau de Bord) ───────────
+function KpiSkeleton() {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+        <div className="h-8 w-8 rounded-md bg-muted animate-pulse shrink-0" />
+      </CardHeader>
+      <CardContent>
+        <div className="h-6 w-20 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-28 rounded bg-muted animate-pulse mt-2.5" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChartSkeleton({ heightClass = 'h-64' }: { heightClass?: string }) {
+  return <div className={`${heightClass} w-full rounded-md bg-muted/40 animate-pulse`} aria-hidden="true" />;
+}
+
+function ListSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <ul role="list" className="divide-y divide-border">
+      {Array.from({ length: rows }).map((_, i) => (
+        <li key={i} className="flex items-center gap-3 p-4">
+          <div className="h-8 w-8 rounded-md bg-muted animate-pulse shrink-0" aria-hidden="true" />
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="h-3 w-3/4 rounded bg-muted animate-pulse" />
+            <div className="h-2.5 w-1/2 rounded bg-muted animate-pulse" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // ── Tiny reusable section header helper ─────────────────────────────────────
 function SectionHeader({
   title,
@@ -84,7 +122,7 @@ export default function DashboardPage() {
   });
 
   // ── Backend data ─────────────────────────────────────────────────────────
-  const { data: dashboard } = useDashboard();
+  const { data: dashboard, isLoading: dashboardLoading } = useDashboard();
   const { data: notifications } = useNotifications();
   const { data: organisation } = useOrganisation();
   const devise = organisation?.deviseDefaut ?? 'XOF';
@@ -268,66 +306,82 @@ export default function DashboardPage() {
       {/* ── KPI Row 1 — Projets ── */}
       <section aria-label="Indicateurs clés — projets">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <StatCard
-            title="Total des Projets"
-            value={portfolioKPIs.totalProjets}
-            icon={<LayoutGrid className="h-5 w-5 text-primary" aria-hidden="true" />}
-            iconVariant="primary"
-          />
-          <StatCard
-            title="Projets Actifs"
-            value={portfolioKPIs.projetsActifs}
-            icon={<Activity className="h-5 w-5 text-success" aria-hidden="true" />}
-            iconVariant="success"
-            description={`${portfolioKPIs.pctActifs}% du portefeuille`}
-          />
-          <StatCard
-            title="Projets Terminés"
-            value={portfolioKPIs.projetsTermines}
-            icon={<CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
-            iconVariant="default"
-            description={`${portfolioKPIs.pctTermines}% du portefeuille`}
-          />
-          <StatCard
-            title="Projets Suspendus"
-            value={portfolioKPIs.projetsEnRetard}
-            icon={<AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />}
-            iconVariant="destructive"
-          />
+          {dashboardLoading ? (
+            <>
+              <KpiSkeleton /><KpiSkeleton /><KpiSkeleton /><KpiSkeleton />
+            </>
+          ) : (
+            <>
+              <StatCard
+                title="Total des Projets"
+                value={portfolioKPIs.totalProjets}
+                icon={<LayoutGrid className="h-5 w-5 text-primary" aria-hidden="true" />}
+                iconVariant="primary"
+              />
+              <StatCard
+                title="Projets Actifs"
+                value={portfolioKPIs.projetsActifs}
+                icon={<Activity className="h-5 w-5 text-success" aria-hidden="true" />}
+                iconVariant="success"
+                description={`${portfolioKPIs.pctActifs}% du portefeuille`}
+              />
+              <StatCard
+                title="Projets Terminés"
+                value={portfolioKPIs.projetsTermines}
+                icon={<CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
+                iconVariant="default"
+                description={`${portfolioKPIs.pctTermines}% du portefeuille`}
+              />
+              <StatCard
+                title="Projets Suspendus"
+                value={portfolioKPIs.projetsEnRetard}
+                icon={<AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />}
+                iconVariant="destructive"
+              />
+            </>
+          )}
         </div>
       </section>
 
       {/* ── KPI Row 2 — Finances ── */}
       <section aria-label="Indicateurs clés — finances">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <StatCard
-            title="Budget Global"
-            value={portfolioKPIs.budgetGlobal}
-            icon={<Banknote className="h-5 w-5 text-primary" aria-hidden="true" />}
-            iconVariant="primary"
-            description={`réparti sur ${portfolioKPIs.nombreBailleurs} bailleurs`}
-          />
-          <StatCard
-            title="Budget Décaissé"
-            value={portfolioKPIs.budgetDecaisse}
-            icon={<Wallet className="h-5 w-5 text-success" aria-hidden="true" />}
-            iconVariant="success"
-            description={`${portfolioKPIs.tauxDecaissement} taux de décaissement`}
-          />
-          <StatCard
-            title="Contrats de Marchés"
-            value={portfolioKPIs.contratsActifs}
-            icon={<FileSignature className="h-5 w-5 text-primary" aria-hidden="true" />}
-            iconVariant="primary"
-            description={`${portfolioKPIs.contratsEnApprobation} en circuit d'approbation`}
-          />
-          <StatCard
-            title="Risques Critiques"
-            value={portfolioKPIs.risquesCritiques}
-            icon={<ShieldAlert className="h-5 w-5 text-destructive" aria-hidden="true" />}
-            iconVariant="destructive"
-            description={`sur ${portfolioKPIs.risquesCritiquesProgram}`}
-          />
+          {dashboardLoading ? (
+            <>
+              <KpiSkeleton /><KpiSkeleton /><KpiSkeleton /><KpiSkeleton />
+            </>
+          ) : (
+            <>
+              <StatCard
+                title="Budget Global"
+                value={portfolioKPIs.budgetGlobal}
+                icon={<Banknote className="h-5 w-5 text-primary" aria-hidden="true" />}
+                iconVariant="primary"
+                description={`réparti sur ${portfolioKPIs.nombreBailleurs} bailleurs`}
+              />
+              <StatCard
+                title="Budget Décaissé"
+                value={portfolioKPIs.budgetDecaisse}
+                icon={<Wallet className="h-5 w-5 text-success" aria-hidden="true" />}
+                iconVariant="success"
+                description={`${portfolioKPIs.tauxDecaissement} taux de décaissement`}
+              />
+              <StatCard
+                title="Contrats de Marchés"
+                value={portfolioKPIs.contratsActifs}
+                icon={<FileSignature className="h-5 w-5 text-primary" aria-hidden="true" />}
+                iconVariant="primary"
+                description={`${portfolioKPIs.contratsEnApprobation} en circuit d'approbation`}
+              />
+              <StatCard
+                title="Risques Critiques"
+                value={portfolioKPIs.risquesCritiques}
+                icon={<ShieldAlert className="h-5 w-5 text-destructive" aria-hidden="true" />}
+                iconVariant="destructive"
+                description={`sur ${portfolioKPIs.risquesCritiquesProgram}`}
+              />
+            </>
+          )}
         </div>
       </section>
 
@@ -355,6 +409,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent>
+              {dashboardLoading ? <ChartSkeleton /> : (
               <div
                 className="h-64 w-full min-w-0"
                 role="img"
@@ -402,6 +457,7 @@ export default function DashboardPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -414,6 +470,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent>
+              {dashboardLoading ? <ChartSkeleton /> : (
               <div
                 className="h-64 w-full min-w-0"
                 role="img"
@@ -447,6 +504,7 @@ export default function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -465,6 +523,8 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent>
+              {dashboardLoading ? <ChartSkeleton /> : (
+              <>
               {evmData.length === 0 && (
                 <p className="text-sm text-muted-foreground py-4 text-center">
                   Aucun snapshot EVM disponible — créez des snapshots dans les projets.
@@ -534,6 +594,8 @@ export default function DashboardPage() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              </>
+              )}
             </CardContent>
           </Card>
 
@@ -546,6 +608,14 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="space-y-5">
+              {dashboardLoading ? (
+                <div className="space-y-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-4 w-full rounded bg-muted animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+              <>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Budget Total</span>
                 <span className="font-bold font-mono text-foreground">
@@ -591,6 +661,8 @@ export default function DashboardPage() {
                   {budgetConsumption.remaining} M {deviseLabel}
                 </span>
               </div>
+              </>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -609,6 +681,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent>
+              {dashboardLoading ? <ChartSkeleton heightClass="h-56" /> : (
               <div
                 className="h-56 w-full min-w-0"
                 role="img"
@@ -645,6 +718,7 @@ export default function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -657,6 +731,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent>
+              {dashboardLoading ? <ChartSkeleton heightClass="h-56" /> : (
               <div
                 className="h-56 w-full min-w-0"
                 role="img"
@@ -693,6 +768,7 @@ export default function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -722,6 +798,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="p-0">
+              {dashboardLoading ? <ListSkeleton /> : (
               <ul role="list" className="divide-y divide-border">
                 {activitesCritiques.length === 0 && (
                   <li className="p-4 text-sm text-muted-foreground">Aucune activité critique.</li>
@@ -755,6 +832,7 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              )}
             </CardContent>
           </Card>
 
@@ -778,6 +856,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="p-0">
+              {dashboardLoading ? <ListSkeleton /> : (
               <ul role="list" className="divide-y divide-border">
                 {risquesPrincipaux.length === 0 && (
                   <li className="p-4 text-sm text-muted-foreground">Aucun risque majeur identifié.</li>
@@ -822,6 +901,7 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -851,6 +931,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="p-0">
+              {dashboardLoading ? <ListSkeleton /> : (
               <ul role="list" className="divide-y divide-border">
                 {jalons.length === 0 && (
                   <li className="p-4 text-sm text-muted-foreground">Aucun jalon à venir.</li>
@@ -896,6 +977,7 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              )}
             </CardContent>
           </Card>
 
@@ -908,6 +990,7 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="p-0">
+              {dashboardLoading ? <ListSkeleton /> : (
               <ul role="list" className="divide-y divide-border">
                 {evenementsRecents.length === 0 && (
                   <li className="p-4 text-sm text-muted-foreground">Aucun événement récent.</li>
@@ -949,6 +1032,7 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -975,6 +1059,17 @@ export default function DashboardPage() {
             />
           </CardHeader>
           <CardContent>
+            {dashboardLoading ? (
+              <div className="flex gap-4 overflow-hidden pb-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex flex-col items-center gap-2 w-40 sm:w-48 shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+                    <div className="h-2.5 w-16 rounded bg-muted animate-pulse" />
+                    <div className="h-2.5 w-24 rounded bg-muted animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="overflow-x-auto" tabIndex={0} aria-label="Faites défiler pour voir la ligne de temps">
               {timelineItems.length === 0 && (
                 <p className="text-sm text-muted-foreground py-2 px-1">Aucun événement dans la ligne de temps.</p>
@@ -1024,6 +1119,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -1041,7 +1137,14 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="space-y-4">
-              {financementDistribution.length === 0 ? (
+              {dashboardLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="h-3 w-2/3 rounded bg-muted animate-pulse" />
+                    <div className="h-2 w-full rounded bg-muted animate-pulse" />
+                  </div>
+                ))
+              ) : financementDistribution.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">Aucune source de financement enregistrée</p>
               ) : (
                 financementDistribution.map((item, idx) => (
@@ -1072,7 +1175,14 @@ export default function DashboardPage() {
               />
             </CardHeader>
             <CardContent className="space-y-4">
-              {risquesParCategorie.length === 0 ? (
+              {dashboardLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="h-3 w-2/3 rounded bg-muted animate-pulse" />
+                    <div className="h-2 w-full rounded bg-muted animate-pulse" />
+                  </div>
+                ))
+              ) : risquesParCategorie.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">Aucun risque répertorié</p>
               ) : (
                 risquesParCategorie.map((item, idx) => (
@@ -1113,6 +1223,7 @@ export default function DashboardPage() {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
+              {dashboardLoading ? <ListSkeleton /> : (
               <ul role="list" className="divide-y divide-border">
                 {activitesRecentes.length === 0 && (
                   <li className="p-4 text-sm text-muted-foreground">Aucune activité récente.</li>
@@ -1136,6 +1247,7 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              )}
             </CardContent>
           </Card>
 
@@ -1154,6 +1266,7 @@ export default function DashboardPage() {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
+              {dashboardLoading ? <ListSkeleton /> : (
               <ul role="list" className="divide-y divide-border">
                 {echeancesProches.length === 0 && (
                   <li className="p-4 text-sm text-muted-foreground">Aucune échéance à venir.</li>
@@ -1177,6 +1290,7 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1204,32 +1318,36 @@ export default function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            {alerts.length === 0 && (
-              <p className="text-sm text-muted-foreground p-4">Aucune alerte active.</p>
-            )}
-            <ul role="list" className="divide-y divide-destructive/10">
-              {alerts.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-start gap-4 p-4 hover:bg-muted/50 transition-colors"
-                >
-                  <div
-                    className={`p-2 rounded-md shrink-0 ${
-                      item.type === 'critical'
-                        ? 'bg-destructive/10 text-destructive'
-                        : 'bg-warning/10 text-warning'
-                    }`}
-                    aria-label={item.type === 'critical' ? 'Alerte critique' : 'Avertissement'}
+            {dashboardLoading ? <ListSkeleton /> : (
+              <>
+              {alerts.length === 0 && (
+                <p className="text-sm text-muted-foreground p-4">Aucune alerte active.</p>
+              )}
+              <ul role="list" className="divide-y divide-destructive/10">
+                {alerts.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-start gap-4 p-4 hover:bg-muted/50 transition-colors"
                   >
-                    <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.meta}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <div
+                      className={`p-2 rounded-md shrink-0 ${
+                        item.type === 'critical'
+                          ? 'bg-destructive/10 text-destructive'
+                          : 'bg-warning/10 text-warning'
+                      }`}
+                      aria-label={item.type === 'critical' ? 'Alerte critique' : 'Avertissement'}
+                    >
+                      <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.meta}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              </>
+            )}
           </CardContent>
         </Card>
       </section>

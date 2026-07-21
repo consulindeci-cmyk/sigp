@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions'
+import { dashboardKeys } from '@/hooks/useDashboard'
 import type { Risque, NiveauRisque, StatutRisque, RisqueCategorie } from '@/types'
 
 // ── Ligne Supabase (colonnes snake_case de la table `risques`) ────────────────
@@ -201,7 +202,10 @@ export function useCreateRisk(projectId: string) {
       // correctement résolu.
       return adaptRisque(data, new Map())
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['risks', projectId] })
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() })
+    },
   })
 }
 
@@ -213,7 +217,10 @@ export function useUpdateRisk(projectId: string) {
       const { data } = await invokeEdgeFunction<{ data: RisqueRow }>('risques-update', { id, ...payload })
       return adaptRisque(data, new Map())
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['risks', projectId] })
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() })
+    },
   })
 }
 
@@ -223,6 +230,9 @@ export function useDeleteRisk(projectId: string) {
     mutationFn: async (riskId: string) => {
       await invokeEdgeFunction<{ message: string }>('risques-delete', { id: riskId })
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['risks', projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['risks', projectId] })
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() })
+    },
   })
 }

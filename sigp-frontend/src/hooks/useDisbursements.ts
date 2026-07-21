@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions'
+import { dashboardKeys } from '@/hooks/useDashboard'
 
 export type DisbursementStatut = 'PLANIFIE' | 'DEMANDE' | 'APPROUVE' | 'DECAISSE' | 'REJETE'
 
@@ -133,7 +134,10 @@ export function useCreateDisbursement(
       })
       return adaptDisbursement(data)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: disbursementsKey(projectId, fundingSourceIds, budgetLigneIds, contractIds) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: disbursementsKey(projectId, fundingSourceIds, budgetLigneIds, contractIds) })
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() })
+    },
   })
 }
 
@@ -161,7 +165,10 @@ export function useUpdateDisbursement(
       })
       return adaptDisbursement(data)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: disbursementsKey(projectId, fundingSourceIds, budgetLigneIds, contractIds) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: disbursementsKey(projectId, fundingSourceIds, budgetLigneIds, contractIds) })
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() })
+    },
   })
 }
 
@@ -173,6 +180,9 @@ export function useDeleteDisbursement(
     mutationFn: async (id: string) => {
       await invokeEdgeFunction<{ message: string }>('disbursements-delete', { id })
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: disbursementsKey(projectId, fundingSourceIds, budgetLigneIds, contractIds) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: disbursementsKey(projectId, fundingSourceIds, budgetLigneIds, contractIds) })
+      qc.invalidateQueries({ queryKey: dashboardKeys.global() })
+    },
   })
 }
