@@ -1,18 +1,18 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
-import { invokeEdgeFunction } from '@/lib/supabaseFunctions'
 import type { Tache, StatutTache, PaginatedResponse } from '@/types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTE : useTasks(projectId) appelait `/projects/:id/tasks`, une route qui n'a
-// JAMAIS existé côté NestJS (confirmé) — cet onglet "Activités" était donc
-// silencieusement vide en production. Il n'existe pas de table "tasks"
-// dédiée : sur validation explicite de l'utilisateur, ce hook est branché sur
-// la vraie table `ptba_activites` (déjà migrée avec ses Edge Functions dans
-// le module PTBA), avec un mapping de noms de champs — `Tache` et
-// `ptba_activites` représentent le même concept d'activité sous deux
-// vocabulaires différents. Conséquence assumée : les activités créées ici
-// apparaîtront aussi dans l'onglet PTBA (même table), et inversement.
+// JAMAIS existé côté NestJS (confirmé). Il n'existe pas de table "tasks"
+// dédiée : ce hook lit la vraie table `ptba_activites` (module PTBA), avec un
+// mapping de noms de champs — `Tache` et `ptba_activites` représentent le
+// même concept d'activité sous deux vocabulaires différents. Lecture seule
+// ici : la création/modification/suppression se fait exclusivement depuis la
+// Matrice Financière (PTBAPage/usePTBA) — l'ancien onglet "Activités" qui
+// dupliquait ce CRUD via ce hook a été supprimé (cf. optimisation UX PTBA :
+// fusion des vues, un seul point de saisie pour éviter les incohérences
+// d'année/trimestre entre les deux surfaces).
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface PtbaActiviteRow {
@@ -64,19 +64,6 @@ function feStatutToBe(s: StatutTache): string {
     case 'EN_ATTENTE':  return 'NON_DEMARRE';
     default:            return 'NON_DEMARRE'; // A_FAIRE
   }
-}
-
-// ── Trimestre : ptba_activites l'exige, Tache n'a pas cette notion — dérivé
-// depuis date_debut (ou la date du jour à défaut). L'année n'est PLUS dérivée
-// ici : elle doit être celle actuellement sélectionnée dans PTBAPage (cf.
-// useCreateTask ci-dessous) — sinon une activité créée depuis l'onglet
-// Activités atterrissait sous une année différente de celle affichée par la
-// Matrice Financière/Calendrier/Gantt, la rendant invisible ailleurs que dans
-// la liste des Activités (qui, elle, ne filtrait par aucune année).
-
-function deriveTrimestre(dateDebut?: string | null): number {
-  const d = dateDebut ? new Date(dateDebut) : new Date();
-  return Math.ceil((d.getMonth() + 1) / 3);
 }
 
 // ── Adapter: ligne ptba_activites → Tache ─────────────────────────────────────
@@ -152,104 +139,5 @@ export function useTasks(projectId: string, params?: {
       return { data: list, meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) } };
     },
     enabled: !!projectId,
-  })
-}
-
-// Créer une tâche — annee est celle actuellement sélectionnée dans PTBAPage
-// (partagée avec la Matrice/Calendrier/Gantt), pas dérivée de date_debut :
-// une activité créée depuis l'onglet Activités doit atterrir sous la même
-// année que ce que l'utilisateur regarde déjà ailleurs dans le PTBA.
-export function useCreateTask(projectId: string, annee: number) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (dto: Partial<Tache>) => {
-      const trimestre = deriveTrimestre(dto.date_debut);
-      const { data } = await invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-create', {
-        projectId,
-        code: dto.code_tache,
-        libelle: dto.description,
-        wbsId: dto.wbs_id ?? undefined,
-        responsableId: dto.responsableId ?? undefined,
-        dateDebutPrevue: dto.date_debut ?? undefined,
-        dateFinPrevue: dto.date_fin ?? undefined,
-        montantPrevu: dto.cout_prevu ? Number(dto.cout_prevu) : undefined,
-        statut: dto.statut ? feStatutToBe(dto.statut) : undefined,
-        annee, trimestres: [trimestre],
-      });
-      // Nom du responsable non résolu ici (une seule ligne, pas besoin d'un
-      // aller-retour dédié) — la liste se rafraîchit de toute façon via
-      // l'invalidation ci-dessous, avec le nom correctement résolu.
-      return adaptRow(data, new Map());
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: taskKeys.all(projectId) })
-      qc.invalidateQueries({ queryKey: ['evm', projectId] })
-      // usePTBA (Matrice Financière + KPIs de PTBAPage) a sa propre clé de
-      // cache ('ptba', pas 'tasks') bien que les deux hooks lisent la même
-      // table ptba_activites — sans cette invalidation, la Matrice restait
-      // figée sur les anciennes valeurs après une création/modification faite
-      // depuis l'onglet Activités.
-      qc.invalidateQueries({ queryKey: ['ptba', projectId] })
-    },
-  })
-}
-
-// Mettre à jour une tâche (avec mutation optimiste)
-export function useUpdateTask(projectId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, ...dto }: Partial<Tache> & { id: string }) => {
-      const { data } = await invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', {
-        id,
-        libelle: dto.description,
-        wbsId: dto.wbs_id ?? undefined,
-        responsableId: dto.responsableId ?? undefined,
-        dateDebutPrevue: dto.date_debut ?? undefined,
-        dateFinPrevue: dto.date_fin ?? undefined,
-        montantPrevu: dto.cout_prevu !== undefined ? Number(dto.cout_prevu) : undefined,
-        montantRealise: dto.cout_reel !== undefined ? Number(dto.cout_reel) : undefined,
-        tauxRealisation: dto.avancement,
-        statut: dto.statut ? feStatutToBe(dto.statut) : undefined,
-      });
-      // Nom du responsable non résolu ici (une seule ligne, pas besoin d'un
-      // aller-retour dédié) — la liste se rafraîchit de toute façon via
-      // l'invalidation ci-dessous, avec le nom correctement résolu.
-      return adaptRow(data, new Map());
-    },
-    onMutate: async ({ id, ...dto }) => {
-      await qc.cancelQueries({ queryKey: taskKeys.list(projectId) })
-      const previous = qc.getQueryData<PaginatedResponse<Tache>>(taskKeys.list(projectId))
-      if (previous) {
-        qc.setQueryData<PaginatedResponse<Tache>>(taskKeys.list(projectId), {
-          ...previous,
-          data: previous.data.map((t) => (t.id === id ? { ...t, ...dto } : t)),
-        })
-      }
-      return { previous }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(taskKeys.list(projectId), ctx.previous)
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: taskKeys.all(projectId) })
-      qc.invalidateQueries({ queryKey: ['evm', projectId] })
-      qc.invalidateQueries({ queryKey: ['ptba', projectId] })
-    },
-  })
-}
-
-// Supprimer une tâche
-export function useDeleteTask(projectId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (taskId: string) => {
-      await invokeEdgeFunction<{ message: string }>('ptba-delete', { id: taskId })
-      return taskId
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: taskKeys.all(projectId) })
-      qc.invalidateQueries({ queryKey: ['evm', projectId] })
-      qc.invalidateQueries({ queryKey: ['ptba', projectId] })
-    },
   })
 }

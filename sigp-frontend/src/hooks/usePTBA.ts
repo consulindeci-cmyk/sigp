@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import { dashboardKeys } from '@/hooks/useDashboard';
+import { taskKeys } from '@/hooks/useTasks';
 import type { PTBA, PTBALigne, StatutPTBA } from '@/types/ptba';
 
 // ─── Ligne Supabase (colonnes snake_case de la table `ptba_activites`) ────────
@@ -289,6 +290,11 @@ export function useCreatePtbaActivite(projectId: string, annee: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
       qc.invalidateQueries({ queryKey: dashboardKeys.global() });
+      // useTasks (Calendrier/Gantt de PTBAPage) lit la même table via une clé
+      // de cache distincte ('tasks', pas 'ptba') — sans ceci, ces deux vues
+      // restaient figées après une création/modification/suppression faite
+      // depuis la Matrice Financière (seul point de saisie désormais).
+      qc.invalidateQueries({ queryKey: taskKeys.all(projectId) });
     },
   });
 }
@@ -319,6 +325,11 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
       qc.invalidateQueries({ queryKey: dashboardKeys.global() });
+      // useTasks (Calendrier/Gantt de PTBAPage) lit la même table via une clé
+      // de cache distincte ('tasks', pas 'ptba') — sans ceci, ces deux vues
+      // restaient figées après une création/modification/suppression faite
+      // depuis la Matrice Financière (seul point de saisie désormais).
+      qc.invalidateQueries({ queryKey: taskKeys.all(projectId) });
     },
   });
 }
@@ -332,6 +343,11 @@ export function useDeletePtbaActivite(projectId: string, annee: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
       qc.invalidateQueries({ queryKey: dashboardKeys.global() });
+      // useTasks (Calendrier/Gantt de PTBAPage) lit la même table via une clé
+      // de cache distincte ('tasks', pas 'ptba') — sans ceci, ces deux vues
+      // restaient figées après une création/modification/suppression faite
+      // depuis la Matrice Financière (seul point de saisie désormais).
+      qc.invalidateQueries({ queryKey: taskKeys.all(projectId) });
     },
   });
 }

@@ -15,16 +15,16 @@ interface PTBAMatrixRowProps {
   canDelete: boolean;
   onEditLigne: (id: string) => void;
   onDeleteLigne: (id: string) => void;
-  /** Résout wbs_id / logframe_ref_id / responsable_id (des UUID bruts sans
-   * jointure côté hook) en libellés lisibles — cf. audit Cadre Logique. */
+  /** Résout wbs_id / responsable_id (des UUID bruts sans jointure côté hook)
+   * en libellés lisibles — cf. audit Cadre Logique. wbsLabels ne porte que le
+   * code du nœud (ex: "1.1"), pas son titre — colonne dédiée "Code WBS". */
   wbsLabels: Record<string, string>;
-  indicatorLabels: Record<string, string>;
   responsableLabels: Record<string, string>;
 }
 
 const PTBAMatrixRow = memo(({
   initialLigne, expandedQuarters, onLigneChange, canEdit, canDelete,
-  onEditLigne, onDeleteLigne, wbsLabels, indicatorLabels, responsableLabels,
+  onEditLigne, onDeleteLigne, wbsLabels, responsableLabels,
 }: PTBAMatrixRowProps) => {
   const [ligne, setLigne] = useState<PTBALigne>(initialLigne);
   const [editingCell, setEditingCell] = useState<string | null>(null);
@@ -132,39 +132,29 @@ const PTBAMatrixRow = memo(({
   return (
     <tr role="row" className="border-b border-border hover:bg-muted/20 transition-colors">
 
-      {/* First column */}
-      <td className="bg-card border-r border-border px-3 py-1.5">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm">
-            <Activity className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">{ligne.activite_nom}</span>
-          </div>
-          <div className="text-[11px] text-muted-foreground pl-5 truncate">
-            WBS: {(ligne.wbs_id && wbsLabels[ligne.wbs_id]) || ligne.wbs_id || 'N/A'}
-            {' | '}
-            Ind: {(ligne.logframe_ref_id && indicatorLabels[ligne.logframe_ref_id]) || 'N/A'}
-          </div>
-          {ligne.is_procurement && (
-            <div className="pl-5">
-              <Badge variant="warning" className="text-[10px] px-1 py-0">
-                Achat: {ligne.type_marche}
-              </Badge>
-            </div>
-          )}
-        </div>
+      {/* Code WBS */}
+      <td className="px-3 py-1.5 text-xs font-mono text-muted-foreground whitespace-nowrap bg-card border-r border-border">
+        {(ligne.wbs_id && wbsLabels[ligne.wbs_id]) || '—'}
       </td>
 
-      {/* Info columns */}
+      {/* Composante / Activité */}
+      <td className="px-3 py-1.5">
+        <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm">
+          <Activity className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{ligne.activite_nom}</span>
+        </div>
+        {ligne.is_procurement && (
+          <div className="pl-5 mt-1">
+            <Badge variant="warning" className="text-[10px] px-1 py-0">
+              Achat: {ligne.type_marche}
+            </Badge>
+          </div>
+        )}
+      </td>
+
+      {/* Responsable */}
       <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
         {ligne.responsable_externe || (ligne.responsable_id && responsableLabels[ligne.responsable_id]) || 'Non assigné'}
-      </td>
-      <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
-        {ligne.bailleur_id || '-'}
-      </td>
-
-      {/* Total (calculated) */}
-      <td className="px-3 py-1.5 text-right font-bold text-foreground font-mono text-sm bg-muted/10" title="Calculé automatiquement">
-        {formatMoney(ligne.montant_total)}
       </td>
 
       {/* Quarter groups */}
@@ -172,6 +162,11 @@ const PTBAMatrixRow = memo(({
       {renderQuarterGroup('Q2', 'q2_montant', ['m4_montant', 'm5_montant', 'm6_montant'])}
       {renderQuarterGroup('Q3', 'q3_montant', ['m7_montant', 'm8_montant', 'm9_montant'])}
       {renderQuarterGroup('Q4', 'q4_montant', ['m10_montant', 'm11_montant', 'm12_montant'])}
+
+      {/* Budget Prévu (calculé — somme des trimestres) */}
+      <td className="px-3 py-1.5 text-right font-bold text-foreground font-mono text-sm bg-muted/10 border-l border-border" title="Calculé automatiquement">
+        {formatMoney(ligne.montant_total)}
+      </td>
 
       {/* Actions */}
       {(canEdit || canDelete) && (
@@ -218,13 +213,12 @@ interface PTBAMatrixProps {
   onEditLigne?: (id: string) => void;
   onDeleteLigne?: (id: string) => void;
   wbsLabels?: Record<string, string>;
-  indicatorLabels?: Record<string, string>;
   responsableLabels?: Record<string, string>;
 }
 
 export default function PTBAMatrix({
   ptba, onUpdatePTBA, canEdit = false, canDelete = false,
-  onEditLigne, onDeleteLigne, wbsLabels = {}, indicatorLabels = {}, responsableLabels = {},
+  onEditLigne, onDeleteLigne, wbsLabels = {}, responsableLabels = {},
 }: PTBAMatrixProps) {
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({
     Q1: false, Q2: false, Q3: false, Q4: false,
@@ -241,7 +235,7 @@ export default function PTBAMatrix({
     onUpdatePTBA?.({ ...ptba, lignes: newLignes, budget_total: newTotal });
   };
 
-  const renderQuarterHeader = (q: string, months: string[]) => {
+  const renderQuarterHeader = (q: string, months: string[], monthRange: string) => {
     const isExpanded = expandedQuarters[q];
     return (
       <Fragment key={q}>
@@ -256,9 +250,12 @@ export default function PTBAMatrix({
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuarter(q); } }}
           title="Cliquez pour détailler par mois"
         >
-          <div className="flex items-center justify-end gap-1">
-            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {q}
+          <div className="flex flex-col items-end gap-0">
+            <div className="flex items-center gap-1">
+              {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {q}
+            </div>
+            <span className="text-[9px] normal-case font-normal text-muted-foreground/80">{monthRange}</span>
           </div>
         </th>
         {isExpanded && months.map(m => (
@@ -283,23 +280,24 @@ export default function PTBAMatrix({
       <table className="border-collapse w-full text-xs" role="table">
         <thead className="sticky top-0 z-10 bg-card shadow-sm">
           <tr>
-            <th className="bg-card min-w-[250px] border-r border-border px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
-              Activité &amp; Description
+            <th className="bg-card min-w-[90px] border-r border-border px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
+              Code WBS
             </th>
-            <th className="min-w-[100px] px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
+            <th className="bg-card min-w-[220px] border-r border-border px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
+              Composante / Activité
+            </th>
+            <th className="min-w-[140px] px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
               Responsable
             </th>
-            <th className="min-w-[100px] px-3 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-left">
-              Bailleur
-            </th>
-            <th className="min-w-[130px] text-right px-3 py-1.5 text-[11px] uppercase text-foreground font-semibold border-b-2 border-b-border bg-muted/10">
-              Budget Total (Calc)
-            </th>
 
-            {renderQuarterHeader('Q1', ['Jan', 'Fév', 'Mar'])}
-            {renderQuarterHeader('Q2', ['Avr', 'Mai', 'Juin'])}
-            {renderQuarterHeader('Q3', ['Juil', 'Août', 'Sept'])}
-            {renderQuarterHeader('Q4', ['Oct', 'Nov', 'Déc'])}
+            {renderQuarterHeader('Q1', ['Jan', 'Fév', 'Mar'], 'Jan–Mar')}
+            {renderQuarterHeader('Q2', ['Avr', 'Mai', 'Juin'], 'Avr–Juin')}
+            {renderQuarterHeader('Q3', ['Juil', 'Août', 'Sept'], 'Juil–Sep')}
+            {renderQuarterHeader('Q4', ['Oct', 'Nov', 'Déc'], 'Oct–Déc')}
+
+            <th className="min-w-[130px] text-right px-3 py-1.5 text-[11px] uppercase text-foreground font-semibold border-b-2 border-b-border border-l border-border bg-muted/10">
+              Budget Prévu ($)
+            </th>
             {(canEdit || canDelete) && (
               <th className="w-20 shrink-0 bg-card border-l border-border px-2 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-right">
                 Actions
@@ -319,7 +317,6 @@ export default function PTBAMatrix({
               onEditLigne={onEditLigne ?? (() => {})}
               onDeleteLigne={onDeleteLigne ?? (() => {})}
               wbsLabels={wbsLabels}
-              indicatorLabels={indicatorLabels}
               responsableLabels={responsableLabels}
             />
           ))}

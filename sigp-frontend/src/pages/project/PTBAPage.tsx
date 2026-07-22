@@ -3,15 +3,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText, Calendar, ListTree, CheckCircle2, AlertCircle,
-  LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet, ListChecks, Plus, Trash2,
+  LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet, Plus, Trash2,
 } from 'lucide-react';
-import ProjectActivitiesTab from '@/components/project/ProjectActivitiesTab';
 import {
   usePTBA, usePtbaActivite, useCreatePtbaActivite, useUpdatePtbaActivite, useDeletePtbaActivite,
 } from '@/hooks/usePTBA';
 import { useTasks } from '@/hooks/useTasks';
 import { useWBS } from '@/hooks/useWBS';
-import { useLogframe } from '@/hooks/useLogframe';
 import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -308,25 +306,19 @@ export default function PTBAPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Résolution des UUID bruts (wbs_id / logframe_ref_id / responsable_id)
-  // affichés jusqu'ici tels quels dans la matrice.
+  // Résolution des UUID bruts (wbs_id / responsable_id) affichés jusqu'ici
+  // tels quels dans la matrice. wbsLabels ne porte que le code du nœud
+  // (ex: "1.1") — colonne dédiée "Code WBS", cf. alignement Excel. Le
+  // rattachement Indicateur IOV reste sélectionnable dans le formulaire mais
+  // n'est plus affiché en colonne (hors périmètre du modèle Excel).
   const { data: wbsData } = useWBS(resolvedProjectId);
-  const { data: logframeData } = useLogframe(resolvedProjectId);
   const { data: orgMembers = [] } = useOrganisationMembersForPicker(resolvedProjectId);
 
   const wbsLabels = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const n of wbsData?.data ?? []) map[n.id] = `${n.code_wbs} — ${n.titre}`;
+    for (const n of wbsData?.data ?? []) map[n.id] = n.code_wbs;
     return map;
   }, [wbsData?.data]);
-
-  const indicatorLabels = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const i of logframeData?.data ?? []) {
-      if (i.indicator_id) map[i.indicator_id] = `[${i.niveau_intervention}] ${i.description} — ${i.indicateur}`;
-    }
-    return map;
-  }, [logframeData?.data]);
 
   const responsableLabels = useMemo(() => {
     const map: Record<string, string> = {};
@@ -524,10 +516,6 @@ export default function PTBAPage() {
                 <ListTree className="h-3.5 w-3.5" />
                 Gantt &amp; Chronologie
               </TabsTrigger>
-              <TabsTrigger value="activities" className="flex items-center gap-1.5 text-xs sm:text-sm">
-                <ListChecks className="h-3.5 w-3.5" />
-                Activités
-              </TabsTrigger>
             </TabsList>
 
             {/* Matrix */}
@@ -543,7 +531,6 @@ export default function PTBAPage() {
                     onEditLigne={handleEditActivite}
                     onDeleteLigne={handleDeleteActiviteRequest}
                     wbsLabels={wbsLabels}
-                    indicatorLabels={indicatorLabels}
                     responsableLabels={responsableLabels}
                   />
                 </div>
@@ -558,15 +545,6 @@ export default function PTBAPage() {
             {/* Gantt */}
             <TabsContent value="gantt" className="flex-1 min-h-0 overflow-hidden mt-0">
               <PTBAGanttView annee={annee} activities={activities} />
-            </TabsContent>
-
-            {/* Activités */}
-            <TabsContent value="activities" className="flex-1 min-h-0 overflow-y-auto mt-0">
-              <div className="px-4 sm:px-6 lg:px-8 py-6">
-                <div className="mx-auto w-full max-w-layout">
-                  <ProjectActivitiesTab annee={annee} />
-                </div>
-              </div>
             </TabsContent>
 
           </Tabs>
