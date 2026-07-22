@@ -443,6 +443,15 @@ export function useCreateProjectWizard() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: CreateProjectWizardPayload) => {
+      // Connu dès la soumission du formulaire (pas besoin d'attendre l'étape
+      // 4) — envoyé directement à la création : projects.budget_total est
+      // l'enveloppe globale du projet (cf. ProjectEditModal.tsx, champ
+      // "Budget total"), lue telle quelle par le Dashboard portefeuille
+      // (dashboard-summary : SUM(budget_total)). Sans ça, un projet créé via
+      // l'assistant restait à 0 malgré des lignes budgétaires réelles déjà
+      // enregistrées dans budget_lignes.
+      const montantTotal = payload.budgetLignes.reduce((s, l) => s + l.montantPrevu, 0)
+
       // 1. Le projet lui-même — si ça échoue, rien d'autre n'a été tenté.
       const { data: project } = await invokeEdgeFunction<{ data: { id: string } }>('projects-create', {
         code: payload.code,
@@ -453,6 +462,7 @@ export function useCreateProjectWizard() {
         dateFinPrevue: payload.dateFinPrevue || undefined,
         managerId: payload.managerId || undefined,
         devise: payload.devise,
+        budgetTotal: montantTotal || undefined,
       })
       const projectId = project.id
 
@@ -492,9 +502,9 @@ export function useCreateProjectWizard() {
       }
 
       // 4. Budget initial — une version "Budget initial" + ses lignes
+      // (montantTotal déjà calculé plus haut et envoyé à projects-create)
       if (payload.budgetLignes.length > 0) {
         try {
-          const montantTotal = payload.budgetLignes.reduce((s, l) => s + l.montantPrevu, 0)
           const { data: version } = await invokeEdgeFunction<{ data: { id: string } }>('budget-versions-create', {
             projectId,
             nom: 'Budget initial',
