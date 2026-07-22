@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   LayoutList, Banknote, Plus, Loader2,
   AlertCircle, Network, Layers, Trash2,
 } from 'lucide-react';
-import { useWBS, useUpdateWBSOrder, useCreateWBSNode, useUpdateWBSNode, useDeleteWBSNode } from '@/hooks/useWBS';
+import { useWBS, useCreateWBSNode, useUpdateWBSNode, useDeleteWBSNode } from '@/hooks/useWBS';
 import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -55,22 +55,20 @@ export default function WBSPage() {
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
   const { data: wbsData, isLoading, error } = useWBS(resolvedProjectId);
-  const reorderMutation = useUpdateWBSOrder(resolvedProjectId);
   const createMutation  = useCreateWBSNode(resolvedProjectId);
   const updateMutation  = useUpdateWBSNode(resolvedProjectId);
   const deleteMutation  = useDeleteWBSNode(resolvedProjectId);
 
-  // Miroir des rôles serveur (requireRole) sur wbs-create/update/reorder
+  // Miroir des rôles serveur (requireRole) sur wbs-create/update
   // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et wbs-delete (ADMIN/SUPER_ADMIN).
   const currentRole = useAuthStore(s => s.user?.role);
   const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
   const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
-  const [wbsItems, setWbsItems] = useState<WBS[]>([]);
-
-  useEffect(() => {
-    if (wbsData?.data) setWbsItems(wbsData.data);
-  }, [wbsData?.data]);
+  // Pas de miroir d'état local (cf. audit WBS) : l'arborescence reflète
+  // directement les données du serveur, rafraîchies par l'invalidation de
+  // wbsKeys.all(projectId) après chaque mutation — même principe que PTBAPage.
+  const wbsItems = wbsData?.data ?? [];
 
   // Résolution de l'UUID responsable (aucune jointure côté hook) en nom
   // affichable — cf. même correctif déjà appliqué au module PTBA.
@@ -91,28 +89,10 @@ export default function WBSPage() {
   const [deleteTarget, setDeleteTarget] = useState<WBS | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Bannière d'erreur globale (réordonnancement — pas de modal/panel associé)
-  const [reorderError, setReorderError] = useState<string | null>(null);
-
   const extractErrorMessage = (err: unknown): string =>
     err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-
-  const handleReorder = (newItems: WBS[]) => {
-    const previousItems = wbsItems;
-    setReorderError(null);
-    setWbsItems(newItems);
-    reorderMutation.mutate(
-      newItems.map((item, index) => ({ id: item.id, parent_id: item.parent_id, ordre: index + 1 })),
-      {
-        onError: (err) => {
-          setWbsItems(previousItems);
-          setReorderError(extractErrorMessage(err));
-        },
-      }
-    );
-  };
 
   const handleEdit = (node: WBS) => {
     setEditingNode(node);
@@ -131,12 +111,7 @@ export default function WBSPage() {
     if (!deleteTarget) return;
     setDeleteError(null);
     deleteMutation.mutate(deleteTarget.id, {
-      onSuccess: () => {
-        setWbsItems(prev =>
-          prev.filter(item => item.id !== deleteTarget.id && item.parent_id !== deleteTarget.id)
-        );
-        setDeleteTarget(null);
-      },
+      onSuccess: () => setDeleteTarget(null),
       onError: (err) => setDeleteError(extractErrorMessage(err)),
     });
   };
@@ -158,47 +133,16 @@ export default function WBSPage() {
   const handleFormSubmit = (data: Partial<WBS>) => {
     setFormError(null);
     const onError = (err: unknown) => setFormError(extractErrorMessage(err));
-    const newNode: WBS = {
-      id: editingNode?.id || `wbs-new-${Date.now()}`,
-      projet_id: resolvedProjectId,
-      code_wbs: editingNode?.code_wbs || data.code_wbs || '',
-      titre: data.titre || '',
-      niveau: data.parent_id
-        ? (wbsItems.find(i => i.id === data.parent_id)?.niveau || 0) + 1
-        : 1,
-      ordre: editingNode?.ordre || wbsItems.length + 1,
-      parent_id: data.parent_id || null,
-      statut: data.statut || 'NON_COMMENCE',
-      responsable: data.responsable || '',
-      date_debut_prevue: data.date_debut_prevue,
-      date_fin_prevue: data.date_fin_prevue,
-      budget_alloue: data.budget_alloue || 0,
-      progression_physique: data.progression_physique || 0,
-      logframe_ref_id: data.logframe_ref_id,
-    };
+    // Pas de reconstruction locale du nœud créé/modifié (cf. audit WBS) :
+    // fermer le modal suffit, l'invalidation de wbsKeys.all(projectId) dans
+    // useCreateWBSNode/useUpdateWBSNode rafraîchit l'arborescence depuis la
+    // base — même principe que PTBAPage.
+    const onSuccess = () => { setIsFormOpen(false); setEditingNode(null); };
 
     if (editingNode) {
-      updateMutation.mutate(
-        { id: editingNode.id, data },
-        {
-          onSuccess: () => {
-            setWbsItems(prev => prev.map(item => (item.id === editingNode.id ? newNode : item)));
-            setIsFormOpen(false);
-          },
-          onError,
-        }
-      );
+      updateMutation.mutate({ id: editingNode.id, data }, { onSuccess, onError });
     } else {
-      createMutation.mutate(
-        { data },
-        {
-          onSuccess: () => {
-            setWbsItems(prev => [...prev, newNode]);
-            setIsFormOpen(false);
-          },
-          onError,
-        }
-      );
+      createMutation.mutate({ data }, { onSuccess, onError });
     }
   };
 
@@ -259,13 +203,6 @@ export default function WBSPage() {
         )}
       </div>
 
-      {reorderError && (
-        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
-          <span>{reorderError}</span>
-        </div>
-      )}
-
       {/* ── KPI STRIP ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <StatCard
@@ -319,7 +256,6 @@ export default function WBSPage() {
           ) : (
             <WBSTree
               data={wbsItems}
-              onReorder={handleReorder}
               onEdit={handleEdit}
               onDelete={handleDeleteRequest}
               onAddChild={handleAddChild}

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
+import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { WBS } from '@/types';
 import { flattenWBSTree } from '@/utils/tree';
 import { formatMoney } from '@/utils/format';
@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/data-display/Badge';
 
 interface WBSTreeProps {
   data: WBS[];
-  onReorder: (items: WBS[]) => void;
   onEdit: (node: WBS) => void;
   onDelete: (id: string) => void;
   onAddChild: (parentId: string) => void;
@@ -20,29 +19,7 @@ interface WBSTreeProps {
   responsableLabels?: Record<string, string>;
 }
 
-function getStatusBadgeVariant(statut: string): 'default' | 'info' | 'success' | 'destructive' | 'secondary' {
-  switch (statut) {
-    case 'NON_COMMENCE': return 'default';
-    case 'EN_COURS':     return 'info';
-    case 'TERMINE':      return 'success';
-    case 'EN_RETARD':    return 'destructive';
-    case 'ANNULE':       return 'secondary';
-    default:             return 'default';
-  }
-}
-
-function getStatusLabel(statut: string): string {
-  switch (statut) {
-    case 'NON_COMMENCE': return 'Non commencé';
-    case 'EN_COURS':     return 'En cours';
-    case 'TERMINE':      return 'Terminé';
-    case 'EN_RETARD':    return 'En retard';
-    case 'ANNULE':       return 'Annulé';
-    default:             return 'Non commencé';
-  }
-}
-
-export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canManage, canDelete, responsableLabels = {} }: WBSTreeProps) {
+export function WBSTree({ data, onEdit, onDelete, onAddChild, canManage, canDelete, responsableLabels = {} }: WBSTreeProps) {
   // Tri par défaut par Code WBS croissant (1, 2, 3...) — cf. audit WBS/PTBA,
   // même comparateur numeric-aware que PTBAMatrix.tsx (formatRootCode).
   const rootNodes = useMemo(
@@ -63,32 +40,6 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canMana
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const handleMoveUp = (node: WBS) => {
-    const siblings = flatItems.filter(item => item.parent_id === node.parent_id);
-    const currentIndex = siblings.findIndex(item => item.id === node.id);
-    if (currentIndex > 0) {
-      const prevSibling = siblings[currentIndex - 1];
-      const flatIndexCurrent = flatItems.findIndex(i => i.id === node.id);
-      const flatIndexPrev = flatItems.findIndex(i => i.id === prevSibling.id);
-      const newItems = [...flatItems];
-      [newItems[flatIndexCurrent], newItems[flatIndexPrev]] = [newItems[flatIndexPrev], newItems[flatIndexCurrent]];
-      onReorder(newItems);
-    }
-  };
-
-  const handleMoveDown = (node: WBS) => {
-    const siblings = flatItems.filter(item => item.parent_id === node.parent_id);
-    const currentIndex = siblings.findIndex(item => item.id === node.id);
-    if (currentIndex < siblings.length - 1) {
-      const nextSibling = siblings[currentIndex + 1];
-      const flatIndexCurrent = flatItems.findIndex(i => i.id === node.id);
-      const flatIndexNext = flatItems.findIndex(i => i.id === nextSibling.id);
-      const newItems = [...flatItems];
-      [newItems[flatIndexCurrent], newItems[flatIndexNext]] = [newItems[flatIndexNext], newItems[flatIndexCurrent]];
-      onReorder(newItems);
-    }
   };
 
   const visibleItems = useMemo(() => {
@@ -199,53 +150,15 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canMana
         },
       },
       {
-        accessorKey: 'statut',
-        header: 'STATUT',
-        size: 130,
-        cell: ({ row }) => {
-          const statut = row.original.statut || 'NON_COMMENCE';
-          return (
-            <Badge variant={getStatusBadgeVariant(statut)}>
-              {getStatusLabel(statut)}
-            </Badge>
-          );
-        },
-      },
-      {
         id: 'actions',
         header: 'ACTIONS',
         size: 130,
         meta: { align: 'right', isStickyRight: true },
         cell: ({ row }) => {
           const node = row.original;
-          const siblings = flatItems.filter(item => item.parent_id === node.parent_id);
-          const currentIndex = siblings.findIndex(item => item.id === node.id);
-          const canMoveUp = currentIndex > 0;
-          const canMoveDown = currentIndex < siblings.length - 1;
 
           return (
             <div className="flex items-center justify-end gap-1">
-              <div className="flex flex-col gap-0.5 mr-1">
-                <button
-                  onClick={e => { e.stopPropagation(); handleMoveUp(node); }}
-                  disabled={!canMoveUp}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors p-0.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
-                  aria-label="Monter"
-                  title="Monter"
-                >
-                  <ArrowUp size={12} strokeWidth={3} />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); handleMoveDown(node); }}
-                  disabled={!canMoveDown}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors p-0.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
-                  aria-label="Descendre"
-                  title="Descendre"
-                >
-                  <ArrowDown size={12} strokeWidth={3} />
-                </button>
-              </div>
-
               {/* Structure à 2 niveaux uniquement (composante racine + sous-
                   éléments) — cf. alignement WBS/Matrice PTBA : un sous-élément
                   ne peut pas avoir son propre sous-élément (cf. wbs-create/

@@ -158,8 +158,6 @@ export interface Risque {
   updatedAt: string;
 }
 
-export type StatutWBS = 'NON_COMMENCE' | 'EN_COURS' | 'TERMINE' | 'EN_RETARD' | 'ANNULE';
-
 export interface WBS {
   id: string;
   projet_id: string;
@@ -168,7 +166,6 @@ export interface WBS {
   titre: string;
   description?: string;
   niveau: number;
-  statut?: StatutWBS;
   responsable?: string;
   // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
   // — affiché à la place de responsable (l'id) quand renseigné.

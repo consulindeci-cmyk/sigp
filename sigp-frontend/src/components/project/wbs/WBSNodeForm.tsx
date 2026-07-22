@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
-import type { WBS, StatutWBS } from '@/types';
+import type { WBS } from '@/types';
 import { useLogframe } from '@/hooks/useLogframe';
 import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { Button } from '@/components/ui/forms/Button';
@@ -33,17 +33,32 @@ interface WBSNodeFormProps {
   error?: string | null;
 }
 
+// Prochain indice basé sur le MAXIMUM des suffixes numériques existants, pas
+// sur le nombre de nœuds (cf. audit WBS) : le Code WBS étant librement
+// modifiable, une séquence avec un trou (ex: "1", "3" après suppression du
+// "2") ferait suggérer "3" avec un simple compte — collision avec un code
+// déjà utilisé. Les suffixes non numériques sont ignorés (repli sur le
+// nombre d'éléments si aucun n'est exploitable).
+function nextIndex(existingSuffixes: string[]): number {
+  const nums = existingSuffixes.map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+  if (nums.length === 0) return existingSuffixes.length + 1;
+  return Math.max(...nums) + 1;
+}
+
 // Suggestion de code — l'utilisateur peut toujours la corriger, le champ
 // reste une saisie libre obligatoire (cf. demande d'alignement WBS/PTBA).
 function computeSuggestedCode(parentId: string | null | undefined, nodes: WBS[]): string {
   if (!parentId) {
-    const rootCount = nodes.filter(n => !n.parent_id).length;
-    return String(rootCount + 1);
+    const rootCodes = nodes.filter(n => !n.parent_id).map(n => n.code_wbs);
+    return String(nextIndex(rootCodes));
   }
   const parent = nodes.find(n => n.id === parentId);
   if (!parent) return '';
-  const siblingCount = nodes.filter(n => n.parent_id === parentId).length;
-  return `${parent.code_wbs}.${siblingCount + 1}`;
+  const prefix = `${parent.code_wbs}.`;
+  const siblingSuffixes = nodes
+    .filter(n => n.parent_id === parentId)
+    .map(n => (n.code_wbs.startsWith(prefix) ? n.code_wbs.slice(prefix.length) : n.code_wbs));
+  return `${parent.code_wbs}.${nextIndex(siblingSuffixes)}`;
 }
 
 interface FormState extends Partial<WBS> {
@@ -82,7 +97,6 @@ export function WBSNodeForm({
 
   const [formData, setFormData] = useState<FormState>({
     titre: '',
-    statut: 'NON_COMMENCE',
     budget_alloue: 0,
     progression_physique: 0,
     responsable: '',
@@ -101,7 +115,6 @@ export function WBSNodeForm({
       const effectiveParentId = initialData?.parent_id ?? parentId ?? null;
       setFormData({
         titre: '',
-        statut: 'NON_COMMENCE',
         budget_alloue: 0,
         progression_physique: 0,
         responsable: '',
@@ -256,19 +269,6 @@ export function WBSNodeForm({
                       />
                     )}
                   </>
-                )}
-                {field(
-                  'Statut',
-                  <Select
-                    value={formData.statut}
-                    onChange={e => setFormData(d => ({ ...d, statut: e.target.value as StatutWBS }))}
-                  >
-                    <option value="NON_COMMENCE">Non commencé</option>
-                    <option value="EN_COURS">En cours</option>
-                    <option value="TERMINE">Terminé</option>
-                    <option value="EN_RETARD">En retard</option>
-                    <option value="ANNULE">Annulé</option>
-                  </Select>
                 )}
                 {field(
                   'Date de début prévue',

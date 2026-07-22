@@ -55,7 +55,6 @@ function adaptNode(row: WbsNodeRow): WBS {
     titre: row.libelle,
     niveau: row.niveau,
     ordre: row.ordre,
-    statut: 'NON_COMMENCE',
     responsable: row.responsable_id ?? '',
     responsable_externe: row.responsable_externe ?? null,
     enveloppe_cible: row.enveloppe_cible ?? null,
@@ -203,18 +202,6 @@ export function useWBS(projectId: string) {
     queryKey: wbsKeys.all(projectId),
     queryFn: () => fetchWBSList(projectId).then(data => ({ data })),
     enabled: !!projectId,
-  });
-}
-
-export function useUpdateWBSOrder(projectId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (items: { id: string; parent_id?: string | null; ordre: number }[]) => {
-      await Promise.all(items.map(item =>
-        invokeEdgeFunction<{ data: unknown }>('wbs-update', { id: item.id, ordre: item.ordre }),
-      ));
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: wbsKeys.all(projectId) }),
   });
 }
 
