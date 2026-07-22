@@ -1,11 +1,10 @@
 import React, { useMemo } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import type { WBS } from '@/types';
 import { flattenWBSTree } from '@/utils/tree';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
-import { ProgressBar } from '@/components/ui/data-display/ProgressBar';
 
 interface WBSTreeProps {
   data: WBS[];
@@ -40,13 +39,6 @@ function getStatusLabel(statut: string): string {
     case 'ANNULE':       return 'Annulé';
     default:             return 'Non commencé';
   }
-}
-
-function getProgressColor(pct: number): 'success' | 'primary' | 'warning' | 'destructive' {
-  if (pct === 100) return 'success';
-  if (pct >= 60)   return 'primary';
-  if (pct >= 20)   return 'warning';
-  return 'destructive';
 }
 
 const formatMoney = (amount: number = 0) =>
@@ -182,30 +174,30 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canMana
       {
         accessorKey: 'budget_alloue',
         header: 'BUDGET (XOF)',
-        size: 140,
+        size: 180,
         meta: { align: 'right' },
-        cell: ({ row }) => (
-          <span className="font-semibold text-foreground text-sm tabular-nums">
-            {formatMoney(row.original.budget_alloue)}
-          </span>
-        ),
-      },
-      {
-        accessorKey: 'progression_physique',
-        header: 'PROGRESSION',
-        size: 160,
-        meta: { align: 'center' },
         cell: ({ row }) => {
-          const prog = Math.round(row.original.progression_physique || 0);
+          const node = row.original;
+          // Plafond bailleur : composantes racine uniquement (cf. WBSNodeForm).
+          const plafond = node.niveau === 1 ? node.enveloppe_cible ?? null : null;
+          const budget = node.budget_alloue ?? 0;
+          const isOverBudget = plafond != null && budget > plafond;
           return (
-            <div className="w-full max-w-[130px] mx-auto">
-              <ProgressBar
-                value={prog}
-                color={getProgressColor(prog)}
-                size="xs"
-                showLabel
-                aria-label={`Progression : ${prog}%`}
-              />
+            <div className="flex flex-col items-end gap-0.5">
+              <span className={`font-semibold text-sm tabular-nums ${isOverBudget ? 'text-destructive' : 'text-foreground'}`}>
+                {formatMoney(budget)}
+              </span>
+              {plafond != null && (
+                <span className={`text-[11px] tabular-nums ${isOverBudget ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+                  Plafond : {formatMoney(plafond)}
+                </span>
+              )}
+              {isOverBudget && (
+                <Badge variant="destructive" className="text-[9px] px-1.5 py-0 gap-1 font-normal mt-0.5">
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  Dépassement de {formatMoney(budget - plafond!)}
+                </Badge>
+              )}
             </div>
           );
         },
