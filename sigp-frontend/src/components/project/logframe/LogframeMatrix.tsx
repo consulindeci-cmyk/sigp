@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, LayoutList } from 'lucide-react';
+import { Edit2, Trash2, Plus, ListPlus, ChevronDown, ChevronRight, LayoutList } from 'lucide-react';
 import type { CadreLogique } from '@/types';
 import { flattenLogframeHierarchy } from '@/utils/tree';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -9,6 +9,7 @@ interface LogframeMatrixProps {
   onEdit: (item: CadreLogique) => void;
   onDelete: (id: string) => void;
   onAddChild: (parentId: string, parentLevel: string) => void;
+  onBulkAddChild: (parentId: string, parentLevel: string) => void;
   canManage: boolean;
   canDelete: boolean;
 }
@@ -44,7 +45,7 @@ function formatIovValue(value: number | null | undefined, unite: string | null |
   return unite ? `${value} ${unite}` : String(value);
 }
 
-export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, canManage, canDelete }: LogframeMatrixProps) {
+export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, onBulkAddChild, canManage, canDelete }: LogframeMatrixProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
@@ -191,6 +192,16 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, canManage, 
                     className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Plus size={14} />
+                  </button>
+                )}
+                {!isActivite && canManage && (
+                  <button
+                    onClick={() => onBulkAddChild(item.id, item.niveau_intervention)}
+                    title="Ajouter plusieurs sous-éléments"
+                    aria-label="Ajouter plusieurs sous-éléments"
+                    className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ListPlus size={14} />
                   </button>
                 )}
                 {canManage && (

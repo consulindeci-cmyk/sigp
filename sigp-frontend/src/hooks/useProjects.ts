@@ -413,7 +413,7 @@ export function useCreateProject() {
 // créé (pas de projets-delete ici) — l'erreur porte le projectId et le nom de
 // l'étape en échec pour que l'UI oriente l'utilisateur vers l'onglet concerné.
 
-export type ProjectWizardStep = 'objectif' | 'financement' | 'budget';
+export type ProjectWizardStep = 'objectif' | 'composantes' | 'financement' | 'budget';
 
 export class ProjectWizardStepError extends Error {
   step: ProjectWizardStep;
@@ -434,6 +434,10 @@ export interface CreateProjectWizardPayload {
   dateFinPrevue?: string;
   managerId?: string;
   objectifGlobalLibelle?: string;
+  // Composantes (C1..Cn) — deviennent des nœuds RESULTAT sous l'objectif
+  // global (cf. étape 2bis ci-dessous). Ignorées si objectifGlobalLibelle
+  // est vide (pas de parent à leur donner) — déjà bloqué côté UI.
+  composantes: string[];
   devise: string;
   fundingSources: { nom: string; montant: number }[];
   budgetLignes: { codeLigne: string; libelle: string; montantPrevu: number }[];
@@ -467,9 +471,10 @@ export function useCreateProjectWizard() {
       const projectId = project.id
 
       // 2. Objectif global du Cadre Logique (texte libre → niveau OBJECTIF_GLOBAL racine)
+      let objectifGlobalId: string | undefined
       if (payload.objectifGlobalLibelle?.trim()) {
         try {
-          await invokeEdgeFunction('logframe-objectives-create', {
+          const { data: objectifGlobal } = await invokeEdgeFunction<{ data: { id: string } }>('logframe-objectives-create', {
             projectId,
             niveau: 'OBJECTIF_GLOBAL',
             // niveauFe est le niveau réel côté frontend (cf. useLogframe.ts,
@@ -480,8 +485,30 @@ export function useCreateProjectWizard() {
             code: 'OG-1',
             libelle: payload.objectifGlobalLibelle.trim(),
           })
+          objectifGlobalId = objectifGlobal.id
         } catch (err) {
           throw new ProjectWizardStepError('objectif', projectId, err)
+        }
+      }
+
+      // 2bis. Composantes (C1..Cn) — un nœud RESULTAT par composante, enfant
+      // direct de l'objectif global qu'on vient de créer. Séquentiel (comme
+      // les sources/lignes ci-dessous) : simple, et l'ordre de création fixe
+      // l'ordre d'affichage sans avoir à gérer un champ `ordre` explicite.
+      if (objectifGlobalId) {
+        for (const [i, libelle] of payload.composantes.entries()) {
+          try {
+            await invokeEdgeFunction('logframe-objectives-create', {
+              projectId,
+              niveau: 'RESULTAT',
+              niveauFe: 'RESULTAT',
+              code: `RC-${i + 1}`,
+              libelle,
+              parentId: objectifGlobalId,
+            })
+          } catch (err) {
+            throw new ProjectWizardStepError('composantes', projectId, err)
+          }
         }
       }
 

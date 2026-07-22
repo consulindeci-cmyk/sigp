@@ -3,13 +3,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText, Download, Plus, Loader2, AlertCircle, Trash2,
-  Target, TrendingUp, ListTree, Zap, Activity, LayoutList,
+  Target, TrendingUp, ListTree, Zap, Activity, LayoutList, FolderInput,
 } from 'lucide-react';
 import { useLogframe, useCreateLogframe, useUpdateLogframe, useDeleteLogframe } from '@/hooks/useLogframe';
+import { useWBS, useUpdateWBSNode } from '@/hooks/useWBS';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { LogframeMatrix } from '@/components/project/logframe/LogframeMatrix';
-import { LogframeForm } from '@/components/project/logframe/LogframeForm';
+import { LogframeForm, getNiveauPropose } from '@/components/project/logframe/LogframeForm';
+import { LogframeBulkAddModal } from '@/components/project/logframe/LogframeBulkAddModal';
+import { LogframeImportWbsModal } from '@/components/project/logframe/LogframeImportWbsModal';
 import type { CadreLogique } from '@/types';
 import { Button } from '@/components/ui/forms/Button';
 import { StatCard } from '@/components/ui/data-display/StatCard';
@@ -61,6 +64,16 @@ export default function LogframePage() {
   const updateMutation = useUpdateLogframe(resolvedProjectId);
   const deleteMutation = useDeleteLogframe(resolvedProjectId);
 
+  // Composantes WBS (nœuds racine) pas encore reliées au Cadre Logique —
+  // cf. bouton "Importer les composantes" (WBS.logframe_ref_id === null).
+  const { data: wbsData } = useWBS(resolvedProjectId);
+  const wbsUpdateMutation = useUpdateWBSNode(resolvedProjectId);
+  const unlinkedWbsRoots = useMemo(
+    () => (wbsData?.data ?? []).filter(n => !n.parent_id && !n.logframe_ref_id),
+    [wbsData?.data],
+  );
+  const unlinkedWbsCount = unlinkedWbsRoots.length;
+
   // Miroir des rôles serveur (requireRole) sur logframe-objectives-create/update
   // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et -delete (ADMIN/SUPER_ADMIN).
   const currentRole = useAuthStore(s => s.user?.role);
@@ -84,6 +97,16 @@ export default function LogframePage() {
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<CadreLogique | null>(null);
   const [deleteError,  setDeleteError]  = useState<string | null>(null);
+
+  // Saisie groupée (Bulk Add) state
+  const [isBulkOpen,       setIsBulkOpen]       = useState(false);
+  const [bulkParentId,     setBulkParentId]     = useState<string | null>(null);
+  const [bulkParentLevel,  setBulkParentLevel]  = useState<string | undefined>(undefined);
+  const [bulkError,        setBulkError]        = useState<string | null>(null);
+  const [bulkSaving,       setBulkSaving]       = useState(false);
+
+  // Import des composantes WBS non reliées au Cadre Logique
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
@@ -153,6 +176,48 @@ export default function LogframePage() {
     setParentLevelForNew(undefined);
     setFormError(null);
     setIsFormOpen(true);
+  };
+
+  const handleBulkAddChild = (parentId: string | null, parentLevel?: string) => {
+    setBulkParentId(parentId);
+    setBulkParentLevel(parentLevel);
+    setBulkError(null);
+    setIsBulkOpen(true);
+  };
+
+  // Séquentiel (comme le wizard de création de projet) : chaque création
+  // invalide déjà le cache (cf. useCreateLogframe), donc pas besoin d'un
+  // Promise.all — l'échec d'un élément n'annule pas ceux déjà créés.
+  const handleBulkSubmit = async (libelles: string[]) => {
+    setBulkError(null);
+    setBulkSaving(true);
+    const niveau = getNiveauPropose(bulkParentLevel);
+    let created = 0;
+    try {
+      for (const libelle of libelles) {
+        const objective = await createMutation.mutateAsync({
+          niveau_intervention: niveau,
+          indicateur: libelle,
+          parent_id: bulkParentId,
+        });
+        created++;
+        setLocalData(prev => [...prev, {
+          id: objective.id,
+          projet_id: resolvedProjectId,
+          parent_id: bulkParentId,
+          niveau_intervention: niveau,
+          indicateur: libelle,
+        }]);
+      }
+      setIsBulkOpen(false);
+    } catch (err) {
+      setBulkError(
+        `${created}/${libelles.length} élément(s) créé(s) avant l'échec : ` +
+        (err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.'),
+      );
+    } finally {
+      setBulkSaving(false);
+    }
   };
 
   const handleSubmit = (data: Partial<CadreLogique>) => {
@@ -242,7 +307,41 @@ export default function LogframePage() {
     XLSX.writeFile(wb, `Cadre_Logique_${getExportName()}.xlsx`);
   };
 
-  const hasImpact = localData.some(i => i.niveau_intervention === 'IMPACT');
+  const impactNode = localData.find(i => i.niveau_intervention === 'IMPACT');
+  const hasImpact = !!impactNode;
+
+  const handleImportSubmit = async (nodes: { id: string; libelle: string }[]) => {
+    if (!impactNode) return;
+    setBulkError(null);
+    setBulkSaving(true);
+    let created = 0;
+    try {
+      for (const node of nodes) {
+        const objective = await createMutation.mutateAsync({
+          niveau_intervention: 'RESULTAT',
+          indicateur: node.libelle,
+          parent_id: impactNode.id,
+        });
+        await wbsUpdateMutation.mutateAsync({ id: node.id, data: { logframe_ref_id: objective.id } });
+        created++;
+        setLocalData(prev => [...prev, {
+          id: objective.id,
+          projet_id: resolvedProjectId,
+          parent_id: impactNode.id,
+          niveau_intervention: 'RESULTAT',
+          indicateur: node.libelle,
+        }]);
+      }
+      setIsImportOpen(false);
+    } catch (err) {
+      setBulkError(
+        `${created}/${nodes.length} composante(s) importée(s) avant l'échec : ` +
+        (err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.'),
+      );
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -275,6 +374,17 @@ export default function LogframePage() {
           >
             Excel
           </Button>
+          {hasImpact && canManage && unlinkedWbsCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<FolderInput className="h-3.5 w-3.5" />}
+              onClick={() => setIsImportOpen(true)}
+              className="h-8 text-xs"
+            >
+              Importer les composantes ({unlinkedWbsCount})
+            </Button>
+          )}
           {!hasImpact && canManage && (
             <Button
               variant="default"
@@ -354,6 +464,7 @@ export default function LogframePage() {
               onEdit={handleEdit}
               onDelete={handleDeleteRequest}
               onAddChild={handleAddChild}
+              onBulkAddChild={handleBulkAddChild}
               canManage={canManage}
               canDelete={canDelete}
             />
@@ -374,6 +485,33 @@ export default function LogframePage() {
         onSubmit={handleSubmit}
         isSaving={createMutation.isPending || updateMutation.isPending}
         error={formError}
+      />
+
+      {/* ── SAISIE GROUPÉE (Modal) ──────────────────────────────────────────── */}
+      <LogframeBulkAddModal
+        open={isBulkOpen}
+        onOpenChange={open => {
+          setIsBulkOpen(open);
+          if (!open) setBulkError(null);
+        }}
+        parentId={bulkParentId}
+        parentLevel={bulkParentLevel}
+        onSubmit={handleBulkSubmit}
+        isSaving={bulkSaving}
+        error={bulkError}
+      />
+
+      {/* ── IMPORT DES COMPOSANTES WBS (Modal) ──────────────────────────────── */}
+      <LogframeImportWbsModal
+        open={isImportOpen}
+        onOpenChange={open => {
+          setIsImportOpen(open);
+          if (!open) setBulkError(null);
+        }}
+        candidates={unlinkedWbsRoots}
+        onSubmit={handleImportSubmit}
+        isSaving={bulkSaving}
+        error={bulkError}
       />
 
       {/* ── MODAL DE CONFIRMATION DE SUPPRESSION ───────────────────────────── */}

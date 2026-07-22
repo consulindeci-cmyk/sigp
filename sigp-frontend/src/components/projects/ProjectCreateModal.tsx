@@ -35,6 +35,7 @@ interface InfosState {
 
 interface SourceRow { tempId: string; nom: string; montant: string }
 interface LigneRow { tempId: string; codeLigne: string; libelle: string; montantPrevu: string }
+interface ComposanteRow { tempId: string; libelle: string }
 
 const EMPTY_INFOS: InfosState = {
   code: '', name: '', description: '', startDate: '', endDate: '', managerId: '', objectifGlobalLibelle: '',
@@ -95,6 +96,7 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
   const [devise, setDevise] = useState('XOF');
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [lignes, setLignes] = useState<LigneRow[]>([]);
+  const [composantes, setComposantes] = useState<ComposanteRow[]>([]);
   const [errors, setErrors] = useState<Partial<Record<keyof InfosState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -124,6 +126,7 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
       setInfos(EMPTY_INFOS);
       setSources([]);
       setLignes([]);
+      setComposantes([]);
       setErrors({});
       setSubmitError(null);
       setDevise(organisation?.deviseDefaut || 'XOF');
@@ -139,6 +142,18 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
   function setInfo<K extends keyof InfosState>(k: K, v: string) {
     setInfos(prev => ({ ...prev, [k]: v }));
     if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
+  }
+
+  // ── Étape 1 : composantes (C1..Cn) — deviennent des nœuds RESULTAT sous
+  // l'objectif global à la création (cf. useCreateProjectWizard) ────────────
+  function addComposante() {
+    setComposantes(prev => [...prev, { tempId: uid(), libelle: '' }]);
+  }
+  function updateComposante(tempId: string, libelle: string) {
+    setComposantes(prev => prev.map(c => c.tempId === tempId ? { ...c, libelle } : c));
+  }
+  function removeComposante(tempId: string) {
+    setComposantes(prev => prev.filter(c => c.tempId !== tempId));
   }
 
   // ── Étape 2 : sources de financement ─────────────────────────────────────
@@ -221,6 +236,7 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
         dateFinPrevue: infos.endDate || undefined,
         managerId: infos.managerId || undefined,
         objectifGlobalLibelle: infos.objectifGlobalLibelle.trim() || undefined,
+        composantes: composantes.map(c => c.libelle.trim()).filter(Boolean),
         devise,
         fundingSources: sources.map(s => ({ nom: s.nom.trim(), montant: Number(s.montant) })),
         budgetLignes: lignes.map(l => ({ codeLigne: l.codeLigne.trim(), libelle: l.libelle.trim(), montantPrevu: Number(l.montantPrevu) })),
@@ -230,6 +246,7 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
       if (err instanceof ProjectWizardStepError) {
         const STEP_LABELS: Record<string, string> = {
           objectif: "l'objectif global (Cadre Logique)",
+          composantes: 'les composantes (Cadre Logique)',
           financement: 'les sources de financement',
           budget: 'le budget initial',
         };
@@ -320,6 +337,42 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
                   Deviendra l'objectif racine du Cadre Logique du projet — modifiable ensuite depuis cet onglet.
                 </p>
               </FieldRow>
+
+              <div className="sm:col-span-2 flex flex-col gap-3 border-t border-border pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Composantes (C1, C2…)</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Créées automatiquement comme Résultats sous l'objectif global — nécessite qu'il soit renseigné ci-dessus.
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={addComposante} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                    Ajouter
+                  </Button>
+                </div>
+
+                {composantes.map((c, i) => (
+                  <div key={c.tempId} className="flex items-center gap-2">
+                    <span className="w-8 shrink-0 text-xs font-mono text-muted-foreground">C{i + 1}</span>
+                    <Input
+                      value={c.libelle}
+                      onChange={e => updateComposante(c.tempId, e.target.value)}
+                      placeholder="Ex : Accès à l'eau potable"
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeComposante(c.tempId)} aria-label="Retirer cette composante">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+
+                {composantes.length > 0 && !infos.objectifGlobalLibelle.trim() && (
+                  <div className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    Renseignez l'objectif global ci-dessus pour que ces composantes soient créées.
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

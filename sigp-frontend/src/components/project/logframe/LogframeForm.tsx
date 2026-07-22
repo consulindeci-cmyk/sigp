@@ -25,10 +25,10 @@ interface LogframeFormProps {
   error?: string | null;
 }
 
-const NIVEAUX_HIERARCHIE = ['IMPACT', 'OBJECTIF', 'RESULTAT', 'PRODUIT', 'ACTIVITE'] as const;
-type NiveauIntervention = (typeof NIVEAUX_HIERARCHIE)[number];
+export const NIVEAUX_HIERARCHIE = ['IMPACT', 'OBJECTIF', 'RESULTAT', 'PRODUIT', 'ACTIVITE'] as const;
+export type NiveauIntervention = (typeof NIVEAUX_HIERARCHIE)[number];
 
-const NIVEAUX_LABELS: Record<NiveauIntervention, string> = {
+export const NIVEAUX_LABELS: Record<NiveauIntervention, string> = {
   IMPACT:   'Impact',
   OBJECTIF: 'Objectif',
   RESULTAT: 'Résultat',
@@ -36,7 +36,7 @@ const NIVEAUX_LABELS: Record<NiveauIntervention, string> = {
   ACTIVITE: 'Activité',
 };
 
-function getNiveauPropose(parentLevel?: string): NiveauIntervention {
+export function getNiveauPropose(parentLevel?: string): NiveauIntervention {
   if (parentLevel) {
     const idx = NIVEAUX_HIERARCHIE.indexOf(parentLevel as NiveauIntervention);
     if (idx >= 0 && idx < NIVEAUX_HIERARCHIE.length - 1) return NIVEAUX_HIERARCHIE[idx + 1];
