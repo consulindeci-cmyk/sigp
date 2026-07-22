@@ -215,7 +215,7 @@ export function WBSNodeForm({
                         )
                         .map(item => (
                           <option key={item.id} value={item.id}>
-                            [{item.niveau_intervention}] {item.indicateur}
+                            [{item.niveau_intervention}] {item.description}
                           </option>
                         ))}
                     </Select>,

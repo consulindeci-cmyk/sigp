@@ -29,7 +29,7 @@ interface PtbaActiviteRow {
   updated_at: string;
 }
 
-interface PtbaActiviteDto {
+export interface PtbaActiviteDto {
   id: string;
   projectId: string;
   wbsId: string | null;
@@ -224,6 +224,27 @@ export function usePTBA(projectId: string, annee: number) {
   });
 }
 
+
+// Ligne brute pour l'édition — PTBALigne (via usePTBA) est une synthèse à
+// perte (ex: wbs_id = dto.wbsId ?? dto.code, montants mensuels recalculés) :
+// un formulaire d'édition a besoin des vraies colonnes, pas de la version
+// affichée dans la matrice.
+export function usePtbaActivite(id: string) {
+  return useQuery({
+    queryKey: ptbaKeys.activite(id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ptba_activites')
+        .select(PTBA_ACTIVITE_SELECT)
+        .eq('id', id)
+        .is('deleted_at', null)
+        .single();
+      if (error) throw error;
+      return rowToDto(data as unknown as PtbaActiviteRow);
+    },
+    enabled: !!id,
+  });
+}
 
 // ─── Activity CRUD ────────────────────────────────────────────────────────────
 

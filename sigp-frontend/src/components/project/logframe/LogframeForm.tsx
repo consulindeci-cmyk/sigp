@@ -49,6 +49,7 @@ export function getNiveauPropose(parentLevel?: string): NiveauIntervention {
 // librement, converti en number|null uniquement à la soumission.
 interface FormState {
   niveau_intervention: NiveauIntervention;
+  description: string;
   indicateur: string;
   valeur_reference: string;
   cible: string;
@@ -60,6 +61,7 @@ interface FormState {
 function emptyForm(parentLevel?: string): FormState {
   return {
     niveau_intervention: getNiveauPropose(parentLevel),
+    description: '',
     indicateur: '',
     valeur_reference: '',
     cible: '',
@@ -74,6 +76,7 @@ function toFormState(parentLevel: string | undefined, initialData?: Partial<Cadr
   if (!initialData) return base;
   return {
     niveau_intervention: (initialData.niveau_intervention as NiveauIntervention) ?? base.niveau_intervention,
+    description:         initialData.description ?? base.description,
     indicateur:          initialData.indicateur ?? base.indicateur,
     valeur_reference:    initialData.valeur_reference != null ? String(initialData.valeur_reference) : '',
     cible:               initialData.cible != null ? String(initialData.cible) : '',
@@ -107,6 +110,7 @@ export function LogframeForm({
     e.preventDefault();
     onSubmit({
       niveau_intervention: formData.niveau_intervention,
+      description:         formData.description,
       indicateur:          formData.indicateur,
       valeur_reference:    formData.valeur_reference.trim() === '' ? null : Number(formData.valeur_reference),
       cible:               formData.cible.trim() === '' ? null : Number(formData.cible),
@@ -170,16 +174,16 @@ export function LogframeForm({
                   true
                 )}
                 {field(
-                  'Description / Indicateur (IOV) *',
+                  'Description *',
                   <Textarea
                     required
                     rows={3}
-                    value={formData.indicateur}
-                    onChange={e => setFormData(d => ({ ...d, indicateur: e.target.value }))}
+                    value={formData.description}
+                    onChange={e => setFormData(d => ({ ...d, description: e.target.value }))}
                     placeholder={
                       isActivite
                         ? "Description de l'activité..."
-                        : 'Objectif objectivement vérifiable...'
+                        : "Logique d'intervention / intitulé de l'élément..."
                     }
                     autoFocus
                   />,
@@ -195,6 +199,16 @@ export function LogframeForm({
                   Mesure & Vérification
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {field(
+                    'Indicateur (IOV)',
+                    <Textarea
+                      rows={2}
+                      value={formData.indicateur}
+                      onChange={e => setFormData(d => ({ ...d, indicateur: e.target.value }))}
+                      placeholder="Indicateur Objectivement Vérifiable..."
+                    />,
+                    true
+                  )}
                   {field(
                     'Baseline (Référence)',
                     <Input

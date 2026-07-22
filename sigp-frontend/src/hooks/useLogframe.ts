@@ -33,6 +33,7 @@ const FE_TO_BE: Record<FELevel, BELevel> = {
 
 interface LogframeIndicatorEmbed {
   id: string;
+  libelle: string | null;
   valeur_baseline: number | null;
   valeur_cible: number | null;
   unite: string | null;
@@ -58,7 +59,7 @@ interface LogframeObjectiveRow {
 const OBJECTIVE_SELECT = `
   id, project_id, niveau_intervention_fe, code, libelle, hypotheses, parent_id, ordre, actif,
   created_at, updated_at,
-  logframe_indicators(id, valeur_baseline, valeur_cible, unite, source_verification, deleted_at)
+  logframe_indicators(id, libelle, valeur_baseline, valeur_cible, unite, source_verification, deleted_at)
 `;
 
 // ── Adapter: ligne Supabase → CadreLogique ────────────────────────────────────
@@ -71,7 +72,8 @@ function adaptObjective(row: LogframeObjectiveRow): CadreLogique {
     projet_id:            row.project_id,
     parent_id:            row.parent_id ?? null,
     niveau_intervention:  row.niveau_intervention_fe,
-    indicateur:           row.libelle,
+    description:          row.libelle,
+    indicateur:           indicator?.libelle ?? undefined,
     indicator_id:         indicator?.id ?? null,
     valeur_reference:     indicator?.valeur_baseline ?? null,
     cible:                indicator?.valeur_cible ?? null,
@@ -122,6 +124,7 @@ function generateCode(prefix: string, feNiveau: FELevel, existingItems: CadreLog
 // LogframeForm.
 function hasIndicatorData(data: Partial<CadreLogique>): boolean {
   return (
+    !!data.indicateur?.trim() ||
     data.valeur_reference != null ||
     data.cible != null ||
     !!data.unite?.trim() ||
@@ -176,7 +179,7 @@ export function useCreateLogframe(projectId: string) {
           niveau:    FE_TO_BE[feNiveau],
           niveauFe:  feNiveau,
           code:      generateCode('OBJ', feNiveau, cached),
-          libelle:   dto.indicateur || '',
+          libelle:   dto.description || '',
           hypotheses: dto.hypotheses?.trim() || undefined,
           parentId:  isUUID(dto.parent_id) ? dto.parent_id : undefined,
         },
@@ -186,7 +189,7 @@ export function useCreateLogframe(projectId: string) {
         await invokeEdgeFunction('logframe-indicators-create', {
           objectiveId: objective.id,
           code: generateCode('IND', feNiveau, cached),
-          libelle: `IOV — ${dto.indicateur || objective.libelle}`.slice(0, 200),
+          libelle: (dto.indicateur?.trim() || dto.description || objective.libelle).slice(0, 200),
           type: NIVEAU_TO_INDICATOR_TYPE[feNiveau],
           ...buildIndicatorPayload(dto),
         });
@@ -214,7 +217,7 @@ export function useUpdateLogframe(projectId: string) {
           id,
           niveau:    feNiveau ? FE_TO_BE[feNiveau] : undefined,
           niveauFe:  feNiveau,
-          libelle:   data.indicateur,
+          libelle:   data.description,
           hypotheses: data.hypotheses !== undefined ? (data.hypotheses?.trim() || null) : undefined,
           parentId:  isUUID(data.parent_id) ? data.parent_id : undefined,
         },
@@ -227,14 +230,19 @@ export function useUpdateLogframe(projectId: string) {
           // Toujours réconcilié quand l'indicateur existe déjà — sinon vider
           // Baseline/Cible/Unité/Source dans le formulaire n'a aucun effet
           // observable : l'ancien indicateur garderait ses anciennes valeurs
-          // pour toujours faute d'appel de mise à jour.
-          await invokeEdgeFunction('logframe-indicators-update', { id: indicatorId, ...buildIndicatorPayload(data) });
+          // pour toujours faute d'appel de mise à jour. `libelle` inclus ici
+          // (auparavant jamais mis à jour après sa création initiale).
+          await invokeEdgeFunction('logframe-indicators-update', {
+            id: indicatorId,
+            libelle: data.indicateur !== undefined ? (data.indicateur.trim() || undefined) : undefined,
+            ...buildIndicatorPayload(data),
+          });
         } else if (hasIndicatorData(data)) {
           const createNiveau = effectiveNiveau ?? 'RESULTAT';
           await invokeEdgeFunction('logframe-indicators-create', {
             objectiveId: id,
             code: generateCode('IND', createNiveau, cached),
-            libelle: `IOV — ${data.indicateur || current?.indicateur || ''}`.slice(0, 200),
+            libelle: (data.indicateur?.trim() || data.description || current?.description || '').slice(0, 200),
             type: NIVEAU_TO_INDICATOR_TYPE[createNiveau],
             ...buildIndicatorPayload(data),
           });

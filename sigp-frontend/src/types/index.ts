@@ -205,10 +205,12 @@ export interface CadreLogique {
   projet_id: string;
   parent_id?: string | null;
   niveau_intervention: 'IMPACT' | 'OBJECTIF' | 'RESULTAT' | 'PRODUIT' | 'ACTIVITE';
-  indicateur: string;
-  // Indicateur IOV principal — persisté en base sur une ligne dédiée de
-  // logframe_indicators (identifiée par indicator_id), pas sur l'objectif
-  // lui-même. Modèle numérique (valeur + unité), pas de texte composite.
+  // Logique d'intervention / intitulé de l'élément (logframe_objectives.libelle).
+  description: string;
+  // Texte propre à l'Indicateur Objectivement Vérifiable (IOV) — persisté sur
+  // la ligne dédiée de logframe_indicators (identifiée par indicator_id),
+  // distinct de `description`. Absent pour ACTIVITE (pas d'indicateur).
+  indicateur?: string;
   indicator_id?: string | null;
   valeur_reference?: number | null;
   cible?: number | null;

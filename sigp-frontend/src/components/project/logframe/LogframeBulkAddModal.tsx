@@ -13,12 +13,14 @@ import {
 } from '@/components/ui/overlays/Modal';
 import { getNiveauPropose, NIVEAUX_LABELS } from './LogframeForm';
 
+export interface LogframeBulkRow { description: string; indicateur?: string }
+
 interface LogframeBulkAddModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   parentId?: string | null;
   parentLevel?: string;
-  onSubmit: (libelles: string[]) => void;
+  onSubmit: (rows: LogframeBulkRow[]) => void;
   isSaving?: boolean;
   error?: string | null;
 }
@@ -27,10 +29,13 @@ function uid(): string {
   return `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-interface Row { tempId: string; libelle: string }
+interface Row { tempId: string; description: string; indicateur: string }
 
 function emptyRows(): Row[] {
-  return [{ tempId: uid(), libelle: '' }, { tempId: uid(), libelle: '' }];
+  return [
+    { tempId: uid(), description: '', indicateur: '' },
+    { tempId: uid(), description: '', indicateur: '' },
+  ];
 }
 
 export function LogframeBulkAddModal({
@@ -44,32 +49,35 @@ export function LogframeBulkAddModal({
 }: LogframeBulkAddModalProps) {
   const [rows, setRows] = useState<Row[]>(emptyRows());
   const niveau = getNiveauPropose(parentLevel);
+  const isActivite = niveau === 'ACTIVITE';
 
   useEffect(() => {
     if (open) setRows(emptyRows());
   }, [open]);
 
   function addRow() {
-    setRows(prev => [...prev, { tempId: uid(), libelle: '' }]);
+    setRows(prev => [...prev, { tempId: uid(), description: '', indicateur: '' }]);
   }
-  function updateRow(tempId: string, libelle: string) {
-    setRows(prev => prev.map(r => r.tempId === tempId ? { ...r, libelle } : r));
+  function updateRow(tempId: string, patch: Partial<Row>) {
+    setRows(prev => prev.map(r => r.tempId === tempId ? { ...r, ...patch } : r));
   }
   function removeRow(tempId: string) {
     setRows(prev => prev.filter(r => r.tempId !== tempId));
   }
 
-  const libellesValides = rows.map(r => r.libelle.trim()).filter(Boolean);
+  const rowsValides: LogframeBulkRow[] = rows
+    .filter(r => r.description.trim())
+    .map(r => ({ description: r.description.trim(), indicateur: r.indicateur.trim() || undefined }));
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (libellesValides.length === 0) return;
-    onSubmit(libellesValides);
+    if (rowsValides.length === 0) return;
+    onSubmit(rowsValides);
   }
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-xl max-h-[90vh] flex flex-col p-0 gap-0">
+      <ModalContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
         <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
           <ModalTitle>Ajouter plusieurs éléments</ModalTitle>
           <ModalDescription>
@@ -79,16 +87,32 @@ export function LogframeBulkAddModal({
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <form id="logframe-bulk-form" onSubmit={handleSubmit} className="flex flex-col gap-3">
+            {!isActivite && (
+              <div className="flex items-center gap-2 px-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                <span className="w-6 shrink-0" />
+                <span className="flex-1">Description</span>
+                <span className="flex-1">Indicateur (IOV)</span>
+                <span className="w-9 shrink-0" />
+              </div>
+            )}
             {rows.map((r, i) => (
               <div key={r.tempId} className="flex items-center gap-2">
                 <span className="w-6 shrink-0 text-xs font-mono text-muted-foreground">{i + 1}.</span>
                 <Input
                   autoFocus={i === 0}
-                  value={r.libelle}
-                  onChange={e => updateRow(r.tempId, e.target.value)}
-                  placeholder={`Description / Indicateur (IOV)...`}
+                  value={r.description}
+                  onChange={e => updateRow(r.tempId, { description: e.target.value })}
+                  placeholder="Description..."
                   className="flex-1"
                 />
+                {!isActivite && (
+                  <Input
+                    value={r.indicateur}
+                    onChange={e => updateRow(r.tempId, { indicateur: e.target.value })}
+                    placeholder="Indicateur (IOV)..."
+                    className="flex-1"
+                  />
+                )}
                 <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(r.tempId)} aria-label="Retirer cette ligne">
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
@@ -112,8 +136,8 @@ export function LogframeBulkAddModal({
           <ModalClose asChild>
             <Button variant="outline" type="button">Annuler</Button>
           </ModalClose>
-          <Button variant="default" type="submit" form="logframe-bulk-form" disabled={isSaving || libellesValides.length === 0}>
-            {isSaving ? 'Création...' : `Créer ${libellesValides.length || ''} élément${libellesValides.length > 1 ? 's' : ''}`}
+          <Button variant="default" type="submit" form="logframe-bulk-form" disabled={isSaving || rowsValides.length === 0}>
+            {isSaving ? 'Création...' : `Créer ${rowsValides.length || ''} élément${rowsValides.length > 1 ? 's' : ''}`}
           </Button>
         </ModalFooter>
       </ModalContent>

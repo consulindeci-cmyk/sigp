@@ -99,11 +99,12 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, onBulkAddCh
       <div
         role="row"
         className="flex items-center px-3.5 py-2.5 bg-muted/30 border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-        style={{ minWidth: '1000px' }}
+        style={{ minWidth: '1150px' }}
       >
         <div role="columnheader" className="w-9 shrink-0" />
         <div role="columnheader" className="w-28 shrink-0">Niveau</div>
-        <div role="columnheader" className="flex-1 min-w-[200px]">Description / Indicateur (IOV)</div>
+        <div role="columnheader" className="flex-1 min-w-[180px]">Description</div>
+        <div role="columnheader" className="flex-1 min-w-[180px]">Indicateurs (IOV)</div>
         <div role="columnheader" className="w-28 shrink-0">Baseline</div>
         <div role="columnheader" className="w-28 shrink-0">Cible</div>
         <div role="columnheader" className="w-36 shrink-0">Source vérif.</div>
@@ -112,7 +113,7 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, onBulkAddCh
       </div>
 
       {/* Corps */}
-      <div role="rowgroup" style={{ minWidth: '1000px' }}>
+      <div role="rowgroup" style={{ minWidth: '1150px' }}>
         {visibleItems.map(item => {
           const hasChildren = data.some(n => n.parent_id === item.id);
           const isActivite  = item.niveau_intervention === 'ACTIVITE';
@@ -151,14 +152,21 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, onBulkAddCh
                 </Badge>
               </div>
 
-              {/* Indicateur / Description */}
-              <div role="cell" className="flex-1 min-w-[200px] pr-4">
+              {/* Description */}
+              <div role="cell" className="flex-1 min-w-[180px] pr-4">
                 <p
                   className={`text-sm leading-snug ${
                     isActivite ? 'text-muted-foreground' : 'font-medium text-foreground'
                   }`}
                 >
-                  {item.indicateur}
+                  {item.description}
+                </p>
+              </div>
+
+              {/* Indicateur (IOV) */}
+              <div role="cell" className="flex-1 min-w-[180px] pr-4">
+                <p className="text-sm text-muted-foreground leading-snug">
+                  {item.indicateur || <span className="text-muted-foreground/40">—</span>}
                 </p>
               </div>
 
@@ -208,7 +216,7 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, onBulkAddCh
                   <button
                     onClick={() => onEdit(item)}
                     title="Modifier"
-                    aria-label={`Modifier ${item.indicateur}`}
+                    aria-label={`Modifier ${item.description}`}
                     className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Edit2 size={14} />
@@ -218,7 +226,7 @@ export function LogframeMatrix({ data, onEdit, onDelete, onAddChild, onBulkAddCh
                   <button
                     onClick={() => onDelete(item.id)}
                     title="Supprimer"
-                    aria-label={`Supprimer ${item.indicateur}`}
+                    aria-label={`Supprimer ${item.description}`}
                     className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Trash2 size={14} />

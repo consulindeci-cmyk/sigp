@@ -11,7 +11,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { LogframeMatrix } from '@/components/project/logframe/LogframeMatrix';
 import { LogframeForm, getNiveauPropose } from '@/components/project/logframe/LogframeForm';
-import { LogframeBulkAddModal } from '@/components/project/logframe/LogframeBulkAddModal';
+import { LogframeBulkAddModal, type LogframeBulkRow } from '@/components/project/logframe/LogframeBulkAddModal';
 import { LogframeImportWbsModal } from '@/components/project/logframe/LogframeImportWbsModal';
 import type { CadreLogique } from '@/types';
 import { Button } from '@/components/ui/forms/Button';
@@ -188,16 +188,17 @@ export default function LogframePage() {
   // Séquentiel (comme le wizard de création de projet) : chaque création
   // invalide déjà le cache (cf. useCreateLogframe), donc pas besoin d'un
   // Promise.all — l'échec d'un élément n'annule pas ceux déjà créés.
-  const handleBulkSubmit = async (libelles: string[]) => {
+  const handleBulkSubmit = async (rows: LogframeBulkRow[]) => {
     setBulkError(null);
     setBulkSaving(true);
     const niveau = getNiveauPropose(bulkParentLevel);
     let created = 0;
     try {
-      for (const libelle of libelles) {
+      for (const row of rows) {
         const objective = await createMutation.mutateAsync({
           niveau_intervention: niveau,
-          indicateur: libelle,
+          description: row.description,
+          indicateur: row.indicateur,
           parent_id: bulkParentId,
         });
         created++;
@@ -206,13 +207,14 @@ export default function LogframePage() {
           projet_id: resolvedProjectId,
           parent_id: bulkParentId,
           niveau_intervention: niveau,
-          indicateur: libelle,
+          description: row.description,
+          indicateur: row.indicateur,
         }]);
       }
       setIsBulkOpen(false);
     } catch (err) {
       setBulkError(
-        `${created}/${libelles.length} élément(s) créé(s) avant l'échec : ` +
+        `${created}/${rows.length} élément(s) créé(s) avant l'échec : ` +
         (err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.'),
       );
     } finally {
@@ -241,7 +243,8 @@ export default function LogframePage() {
         projet_id: resolvedProjectId,
         parent_id: data.parent_id || null,
         niveau_intervention: data.niveau_intervention as CadreLogique['niveau_intervention'],
-        indicateur: data.indicateur || '',
+        description: data.description || '',
+        indicateur: data.indicateur || undefined,
         valeur_reference: data.valeur_reference,
         cible: data.cible,
         unite: data.unite,
@@ -275,10 +278,11 @@ export default function LogframePage() {
     doc.text(`Cadre Logique - ${projectName}`, 14, 15);
     (doc as any).autoTable({
       startY: 20,
-      head: [['Niveau', 'Description / Indicateur', 'Baseline', 'Cible', 'Vérification', 'Hypothèses']],
+      head: [['Niveau', 'Description', 'Indicateur (IOV)', 'Baseline', 'Cible', 'Vérification', 'Hypothèses']],
       body: localData.map(row => [
         row.niveau_intervention,
-        row.indicateur,
+        row.description,
+        row.indicateur || '',
         formatIov(row.valeur_reference, row.unite),
         formatIov(row.cible, row.unite),
         row.source_verification || '',
@@ -295,7 +299,8 @@ export default function LogframePage() {
     const ws = XLSX.utils.json_to_sheet(
       localData.map(row => ({
         Niveau: row.niveau_intervention,
-        Description: row.indicateur,
+        Description: row.description,
+        'Indicateur (IOV)': row.indicateur || '',
         Baseline: formatIov(row.valeur_reference, row.unite),
         Cible: formatIov(row.cible, row.unite),
         Vérification: row.source_verification || '',
@@ -319,7 +324,7 @@ export default function LogframePage() {
       for (const node of nodes) {
         const objective = await createMutation.mutateAsync({
           niveau_intervention: 'RESULTAT',
-          indicateur: node.libelle,
+          description: node.libelle,
           parent_id: impactNode.id,
         });
         await wbsUpdateMutation.mutateAsync({ id: node.id, data: { logframe_ref_id: objective.id } });
@@ -329,7 +334,7 @@ export default function LogframePage() {
           projet_id: resolvedProjectId,
           parent_id: impactNode.id,
           niveau_intervention: 'RESULTAT',
-          indicateur: node.libelle,
+          description: node.libelle,
         }]);
       }
       setIsImportOpen(false);
@@ -533,7 +538,7 @@ export default function LogframePage() {
           <p className="text-sm text-muted-foreground px-6 pb-2">
             Voulez-vous supprimer{' '}
             <span className="font-semibold text-foreground">
-              &ldquo;{deleteTarget?.indicateur}&rdquo;
+              &ldquo;{deleteTarget?.description}&rdquo;
             </span>{' '}
             et tous ses éléments subordonnés ?
           </p>

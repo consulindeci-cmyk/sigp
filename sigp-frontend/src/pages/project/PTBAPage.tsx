@@ -1,13 +1,18 @@
 import { PageHeader } from '@/components/layout/PageHeader';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText, Calendar, ListTree, CheckCircle2, AlertCircle,
-  LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet, ListChecks,
+  LayoutGrid, TrendingUp, Loader2, Flame, Banknote, Wallet, ListChecks, Plus, Trash2,
 } from 'lucide-react';
 import ProjectActivitiesTab from '@/components/project/ProjectActivitiesTab';
-import { usePTBA } from '@/hooks/usePTBA';
+import {
+  usePTBA, usePtbaActivite, useCreatePtbaActivite, useUpdatePtbaActivite, useDeletePtbaActivite,
+} from '@/hooks/usePTBA';
 import { useTasks } from '@/hooks/useTasks';
+import { useWBS } from '@/hooks/useWBS';
+import { useLogframe } from '@/hooks/useLogframe';
+import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { type Activity, type ActivityStatus } from '@/mocks/activitiesMocks';
@@ -41,6 +46,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/naviga
 import PTBAMatrix from '@/components/project/ptba/views/PTBAMatrix';
 import { PTBACalendarView } from '@/components/project/ptba/views/PTBACalendarView';
 import { PTBAGanttView } from '@/components/project/ptba/views/PTBAGanttView';
+import { PTBAActiviteForm, type PTBAActiviteFormPayload } from '@/components/project/ptba/PTBAActiviteForm';
+import {
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription, ModalFooter,
+} from '@/components/ui/overlays/Modal';
 import * as XLSX from 'xlsx';
 import type { PTBA } from '@/types';
 
@@ -175,7 +184,7 @@ function HeatmapWidget({ ptba }: { ptba: PTBA }) {
 // Matrix ribbon toolbar
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MatrixRibbon({ ptba }: { ptba: PTBA }) {
+function MatrixRibbon({ ptba, canManage, onNewActivite }: { ptba: PTBA; canManage: boolean; onNewActivite: () => void }) {
   function handleExportXlsx() {
     const lignes = ptba.lignes ?? [];
     const HEADERS = [
@@ -216,6 +225,18 @@ function MatrixRibbon({ ptba }: { ptba: PTBA }) {
 
   return (
     <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border flex-wrap">
+      {canManage && (
+        <Button
+          variant="default"
+          size="sm"
+          onClick={onNewActivite}
+          leftIcon={<Plus className="h-3 w-3" />}
+          className="text-xs h-7 px-2.5"
+        >
+          Nouvelle activité
+        </Button>
+      )}
+      <div className="w-px h-5 bg-border mx-0.5" />
       <Button variant="outline" size="sm" disabled className="text-xs h-7 px-2.5">
         Édition Multiple (Bulk)
       </Button>
@@ -262,6 +283,7 @@ export default function PTBAPage() {
   // de la matrice (cf. audit Rôles) doit être bloquée pour VIEWER/AUDITEUR.
   const currentRole = useAuthStore(s => s.user?.role);
   const canEditPtba = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const canDeletePtba = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   const [localPtba, setLocalPtba] = useState<PTBA | null>(null);
 
@@ -270,6 +292,88 @@ export default function PTBAPage() {
   }, [ptbaResponse?.data]);
 
   const ptba = localPtba;
+
+  // ── CRUD activité (formulaire réel — cf. audit Cadre Logique/PTBA :
+  // l'édition inline de la matrice ne persiste rien, aucune UI n'existait
+  // pour créer/éditer une activité ni choisir son indicateur lié) ──────────
+  const createActiviteMutation = useCreatePtbaActivite(resolvedProjectId, annee);
+  const updateActiviteMutation = useUpdatePtbaActivite(resolvedProjectId, annee);
+  const deleteActiviteMutation = useDeletePtbaActivite(resolvedProjectId, annee);
+
+  const [isActiviteFormOpen, setIsActiviteFormOpen] = useState(false);
+  const [editingActiviteId, setEditingActiviteId] = useState<string | null>(null);
+  const [activiteFormError, setActiviteFormError] = useState<string | null>(null);
+  const { data: editingActiviteData } = usePtbaActivite(editingActiviteId ?? '');
+
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Résolution des UUID bruts (wbs_id / logframe_ref_id / responsable_id)
+  // affichés jusqu'ici tels quels dans la matrice.
+  const { data: wbsData } = useWBS(resolvedProjectId);
+  const { data: logframeData } = useLogframe(resolvedProjectId);
+  const { data: orgMembers = [] } = useOrganisationMembersForPicker(resolvedProjectId);
+
+  const wbsLabels = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const n of wbsData?.data ?? []) map[n.id] = `${n.code_wbs} — ${n.titre}`;
+    return map;
+  }, [wbsData?.data]);
+
+  const indicatorLabels = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const i of logframeData?.data ?? []) {
+      if (i.indicator_id) map[i.indicator_id] = `[${i.niveau_intervention}] ${i.description} — ${i.indicateur}`;
+    }
+    return map;
+  }, [logframeData?.data]);
+
+  const responsableLabels = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of orgMembers) map[m.id] = m.displayName;
+    return map;
+  }, [orgMembers]);
+
+  const extractErrorMessage = (err: unknown): string =>
+    err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.';
+
+  const handleNewActivite = () => {
+    setEditingActiviteId(null);
+    setActiviteFormError(null);
+    setIsActiviteFormOpen(true);
+  };
+
+  const handleEditActivite = (id: string) => {
+    setEditingActiviteId(id);
+    setActiviteFormError(null);
+    setIsActiviteFormOpen(true);
+  };
+
+  const handleActiviteFormSubmit = (payload: PTBAActiviteFormPayload) => {
+    setActiviteFormError(null);
+    const onSuccess = () => setIsActiviteFormOpen(false);
+    const onError = (err: unknown) => setActiviteFormError(extractErrorMessage(err));
+    if (editingActiviteId) {
+      const { code: _code, ...updatePayload } = payload;
+      updateActiviteMutation.mutate({ id: editingActiviteId, ...updatePayload }, { onSuccess, onError });
+    } else {
+      createActiviteMutation.mutate({ projectId: resolvedProjectId, ...payload, code: payload.code ?? '' }, { onSuccess, onError });
+    }
+  };
+
+  const handleDeleteActiviteRequest = (id: string) => {
+    setDeleteError(null);
+    setDeleteTargetId(id);
+  };
+
+  const handleDeleteActiviteConfirm = () => {
+    if (!deleteTargetId) return;
+    setDeleteError(null);
+    deleteActiviteMutation.mutate(deleteTargetId, {
+      onSuccess: () => setDeleteTargetId(null),
+      onError: (err) => setDeleteError(extractErrorMessage(err)),
+    });
+  };
 
   if (!resolvedProjectId) {
     return (
@@ -429,9 +533,19 @@ export default function PTBAPage() {
             {/* Matrix */}
             <TabsContent value="matrix" className="flex-1 min-h-0 overflow-hidden mt-0">
               <div className="flex flex-col h-full">
-                <MatrixRibbon ptba={ptba} />
+                <MatrixRibbon ptba={ptba} canManage={canEditPtba} onNewActivite={handleNewActivite} />
                 <div className="flex-1 overflow-hidden">
-                  <PTBAMatrix ptba={ptba} onUpdatePTBA={setLocalPtba} canEdit={canEditPtba} />
+                  <PTBAMatrix
+                    ptba={ptba}
+                    onUpdatePTBA={setLocalPtba}
+                    canEdit={canEditPtba}
+                    canDelete={canDeletePtba}
+                    onEditLigne={handleEditActivite}
+                    onDeleteLigne={handleDeleteActiviteRequest}
+                    wbsLabels={wbsLabels}
+                    indicatorLabels={indicatorLabels}
+                    responsableLabels={responsableLabels}
+                  />
                 </div>
               </div>
             </TabsContent>
@@ -459,6 +573,57 @@ export default function PTBAPage() {
 
         </>
       )}
+
+      {/* ── FORMULAIRE ACTIVITÉ (Modal) ─────────────────────────────────────── */}
+      <PTBAActiviteForm
+        open={isActiviteFormOpen}
+        onOpenChange={open => {
+          setIsActiviteFormOpen(open);
+          if (!open) { setEditingActiviteId(null); setActiviteFormError(null); }
+        }}
+        projectId={resolvedProjectId}
+        annee={annee}
+        initialData={editingActiviteId ? editingActiviteData : null}
+        onSubmit={handleActiviteFormSubmit}
+        isSaving={createActiviteMutation.isPending || updateActiviteMutation.isPending}
+        error={activiteFormError}
+      />
+
+      {/* ── MODAL DE CONFIRMATION DE SUPPRESSION ────────────────────────────── */}
+      <Modal open={!!deleteTargetId} onOpenChange={open => { if (!open) { setDeleteTargetId(null); setDeleteError(null); } }}>
+        <ModalContent>
+          <ModalHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 shrink-0">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <ModalTitle>Confirmer la suppression</ModalTitle>
+                <ModalDescription className="mt-0.5">
+                  Cette action est irréversible.
+                </ModalDescription>
+              </div>
+            </div>
+          </ModalHeader>
+          <p className="text-sm text-muted-foreground px-6 pb-2">
+            Voulez-vous supprimer cette activité PTBA ?
+          </p>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
+          <ModalFooter>
+            <Button variant="outline" onClick={() => { setDeleteTargetId(null); setDeleteError(null); }}>
+              Annuler
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteActiviteConfirm} disabled={deleteActiviteMutation.isPending}>
+              {deleteActiviteMutation.isPending ? 'Suppression...' : 'Supprimer'}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
     </div>
   );

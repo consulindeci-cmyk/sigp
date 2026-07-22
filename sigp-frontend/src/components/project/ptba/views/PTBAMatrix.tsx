@@ -1,5 +1,5 @@
 import { useState, useEffect, memo, Fragment, type KeyboardEvent } from 'react';
-import { ChevronRight, ChevronDown, Activity } from 'lucide-react';
+import { ChevronRight, ChevronDown, Activity, Pencil, Trash2 } from 'lucide-react';
 import type { PTBA, PTBALigne } from '@/types';
 import { formatMoney } from '@/utils/format';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -12,9 +12,20 @@ interface PTBAMatrixRowProps {
   expandedQuarters: Record<string, boolean>;
   onLigneChange: (updatedLigne: PTBALigne) => void;
   canEdit: boolean;
+  canDelete: boolean;
+  onEditLigne: (id: string) => void;
+  onDeleteLigne: (id: string) => void;
+  /** Résout wbs_id / logframe_ref_id / responsable_id (des UUID bruts sans
+   * jointure côté hook) en libellés lisibles — cf. audit Cadre Logique. */
+  wbsLabels: Record<string, string>;
+  indicatorLabels: Record<string, string>;
+  responsableLabels: Record<string, string>;
 }
 
-const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange, canEdit }: PTBAMatrixRowProps) => {
+const PTBAMatrixRow = memo(({
+  initialLigne, expandedQuarters, onLigneChange, canEdit, canDelete,
+  onEditLigne, onDeleteLigne, wbsLabels, indicatorLabels, responsableLabels,
+}: PTBAMatrixRowProps) => {
   const [ligne, setLigne] = useState<PTBALigne>(initialLigne);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
@@ -128,8 +139,10 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange, can
             <Activity className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{ligne.activite_nom}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground pl-5">
-            WBS: {ligne.wbs_id} | Ref: {ligne.logframe_ref_id || 'N/A'}
+          <div className="text-[11px] text-muted-foreground pl-5 truncate">
+            WBS: {(ligne.wbs_id && wbsLabels[ligne.wbs_id]) || ligne.wbs_id || 'N/A'}
+            {' | '}
+            Ind: {(ligne.logframe_ref_id && indicatorLabels[ligne.logframe_ref_id]) || 'N/A'}
           </div>
           {ligne.is_procurement && (
             <div className="pl-5">
@@ -143,7 +156,7 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange, can
 
       {/* Info columns */}
       <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
-        {ligne.responsable_id || 'Non assigné'}
+        {(ligne.responsable_id && responsableLabels[ligne.responsable_id]) || 'Non assigné'}
       </td>
       <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
         {ligne.bailleur_id || '-'}
@@ -159,6 +172,34 @@ const PTBAMatrixRow = memo(({ initialLigne, expandedQuarters, onLigneChange, can
       {renderQuarterGroup('Q2', 'q2_montant', ['m4_montant', 'm5_montant', 'm6_montant'])}
       {renderQuarterGroup('Q3', 'q3_montant', ['m7_montant', 'm8_montant', 'm9_montant'])}
       {renderQuarterGroup('Q4', 'q4_montant', ['m10_montant', 'm11_montant', 'm12_montant'])}
+
+      {/* Actions */}
+      {(canEdit || canDelete) && (
+      <td className="px-2 py-1.5 border-l border-border bg-card">
+        <div className="flex items-center justify-end gap-0.5">
+          {canEdit && (
+            <button
+              onClick={() => onEditLigne(initialLigne.id)}
+              title="Modifier l'activité"
+              aria-label={`Modifier ${initialLigne.activite_nom}`}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => onDeleteLigne(initialLigne.id)}
+              title="Supprimer l'activité"
+              aria-label={`Supprimer ${initialLigne.activite_nom}`}
+              className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      </td>
+      )}
     </tr>
   );
 });
@@ -173,9 +214,18 @@ interface PTBAMatrixProps {
   onUpdatePTBA?: (updatedPTBA: PTBA) => void;
   /** Autorise la saisie inline des cellules mensuelles (cf. audit Rôles — VIEWER/AUDITEUR en lecture seule). */
   canEdit?: boolean;
+  canDelete?: boolean;
+  onEditLigne?: (id: string) => void;
+  onDeleteLigne?: (id: string) => void;
+  wbsLabels?: Record<string, string>;
+  indicatorLabels?: Record<string, string>;
+  responsableLabels?: Record<string, string>;
 }
 
-export default function PTBAMatrix({ ptba, onUpdatePTBA, canEdit = false }: PTBAMatrixProps) {
+export default function PTBAMatrix({
+  ptba, onUpdatePTBA, canEdit = false, canDelete = false,
+  onEditLigne, onDeleteLigne, wbsLabels = {}, indicatorLabels = {}, responsableLabels = {},
+}: PTBAMatrixProps) {
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({
     Q1: false, Q2: false, Q3: false, Q4: false,
   });
@@ -250,6 +300,11 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA, canEdit = false }: PTBA
             {renderQuarterHeader('Q2', ['Avr', 'Mai', 'Juin'])}
             {renderQuarterHeader('Q3', ['Juil', 'Août', 'Sept'])}
             {renderQuarterHeader('Q4', ['Oct', 'Nov', 'Déc'])}
+            {(canEdit || canDelete) && (
+              <th className="w-20 shrink-0 bg-card border-l border-border px-2 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-right">
+                Actions
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -260,6 +315,12 @@ export default function PTBAMatrix({ ptba, onUpdatePTBA, canEdit = false }: PTBA
               expandedQuarters={expandedQuarters}
               onLigneChange={handleLigneChange}
               canEdit={canEdit}
+              canDelete={canDelete}
+              onEditLigne={onEditLigne ?? (() => {})}
+              onDeleteLigne={onDeleteLigne ?? (() => {})}
+              wbsLabels={wbsLabels}
+              indicatorLabels={indicatorLabels}
+              responsableLabels={responsableLabels}
             />
           ))}
         </tbody>
