@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions';
 import { dashboardKeys } from '@/hooks/useDashboard';
 import { taskKeys } from '@/hooks/useTasks';
+import { wbsKeys } from '@/hooks/useWBS';
 import type { PTBA, PTBALigne, StatutPTBA } from '@/types/ptba';
 
 // ─── Ligne Supabase (colonnes snake_case de la table `ptba_activites`) ────────
@@ -295,6 +296,12 @@ export function useCreatePtbaActivite(projectId: string, annee: number) {
       // restaient figées après une création/modification/suppression faite
       // depuis la Matrice Financière (seul point de saisie désormais).
       qc.invalidateQueries({ queryKey: taskKeys.all(projectId) });
+      // useWBS (module Structure WBS) agrège budget_alloue à partir des
+      // ptba_activites liées (cf. useWBS.ts aggregateBudgetProgression) — sans
+      // ceci, le rollup budgétaire et l'alerte de dépassement affichés sur
+      // l'arborescence WBS restaient figés après une création/modification/
+      // suppression d'activité faite depuis la Matrice Financière.
+      qc.invalidateQueries({ queryKey: wbsKeys.all(projectId) });
     },
   });
 }
@@ -335,6 +342,12 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
       // restaient figées après une création/modification/suppression faite
       // depuis la Matrice Financière (seul point de saisie désormais).
       qc.invalidateQueries({ queryKey: taskKeys.all(projectId) });
+      // useWBS (module Structure WBS) agrège budget_alloue à partir des
+      // ptba_activites liées (cf. useWBS.ts aggregateBudgetProgression) — sans
+      // ceci, le rollup budgétaire et l'alerte de dépassement affichés sur
+      // l'arborescence WBS restaient figés après une création/modification/
+      // suppression d'activité faite depuis la Matrice Financière.
+      qc.invalidateQueries({ queryKey: wbsKeys.all(projectId) });
     },
   });
 }
@@ -353,6 +366,12 @@ export function useDeletePtbaActivite(projectId: string, annee: number) {
       // restaient figées après une création/modification/suppression faite
       // depuis la Matrice Financière (seul point de saisie désormais).
       qc.invalidateQueries({ queryKey: taskKeys.all(projectId) });
+      // useWBS (module Structure WBS) agrège budget_alloue à partir des
+      // ptba_activites liées (cf. useWBS.ts aggregateBudgetProgression) — sans
+      // ceci, le rollup budgétaire et l'alerte de dépassement affichés sur
+      // l'arborescence WBS restaient figés après une création/modification/
+      // suppression d'activité faite depuis la Matrice Financière.
+      qc.invalidateQueries({ queryKey: wbsKeys.all(projectId) });
     },
   });
 }
