@@ -98,13 +98,14 @@ export function LogframeForm({
 }: LogframeFormProps) {
   const [formData, setFormData] = useState<FormState>(() => emptyForm(parentLevel));
 
+  const isEditing = !!initialData?.id;
+
   useEffect(() => {
     if (open) setFormData(toFormState(parentLevel, initialData));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, initialData]);
 
   const isActivite = formData.niveau_intervention === 'ACTIVITE';
-  const isEditing  = !!initialData?.id;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,7 +152,7 @@ export function LogframeForm({
                   <>
                     <Select
                       required
-                      disabled={!!parentId}
+                      disabled={!!parentId || isEditing}
                       value={formData.niveau_intervention}
                       onChange={e =>
                         setFormData(d => ({
@@ -164,10 +165,12 @@ export function LogframeForm({
                         <option key={n} value={n}>{NIVEAUX_LABELS[n]}</option>
                       ))}
                     </Select>
-                    {parentId && (
+                    {(parentId || isEditing) && (
                       <span className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                         <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        Niveau défini automatiquement par rapport au parent.
+                        {isEditing
+                          ? 'Non modifiable après création (la hiérarchie des éléments existants en dépend).'
+                          : 'Niveau défini automatiquement par rapport au parent.'}
                       </span>
                     )}
                   </>,

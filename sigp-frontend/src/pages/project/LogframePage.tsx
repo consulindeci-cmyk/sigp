@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/layout/PageHeader';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText, Download, Plus, Loader2, AlertCircle, Trash2,
@@ -80,12 +80,11 @@ export default function LogframePage() {
   const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
   const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
+  // Pas de miroir d'état local (cf. audit Cadre Logique) : la Matrice et les
+  // exports lisent directement la source de vérité, rafraîchie par
+  // l'invalidation de logframeKeys.all(projectId) après chaque mutation —
+  // même principe que PTBAPage/WBSPage.
   const elements = logframeData?.data ?? [];
-  const [localData, setLocalData] = useState<CadreLogique[]>([]);
-
-  useEffect(() => {
-    if (elements.length > 0) setLocalData(elements);
-  }, [elements]);
 
   // Form Modal state
   const [isFormOpen,        setIsFormOpen]        = useState(false);
@@ -111,13 +110,13 @@ export default function LogframePage() {
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
   const kpis = useMemo(() => ({
-    impacts:   localData.filter(i => i.niveau_intervention === 'IMPACT').length,
-    objectifs: localData.filter(i => i.niveau_intervention === 'OBJECTIF').length,
-    resultats: localData.filter(i => i.niveau_intervention === 'RESULTAT').length,
-    produits:  localData.filter(i => i.niveau_intervention === 'PRODUIT').length,
-    activites: localData.filter(i => i.niveau_intervention === 'ACTIVITE').length,
-    total:     localData.length,
-  }), [localData]);
+    impacts:   elements.filter(i => i.niveau_intervention === 'IMPACT').length,
+    objectifs: elements.filter(i => i.niveau_intervention === 'OBJECTIF').length,
+    resultats: elements.filter(i => i.niveau_intervention === 'RESULTAT').length,
+    produits:  elements.filter(i => i.niveau_intervention === 'PRODUIT').length,
+    activites: elements.filter(i => i.niveau_intervention === 'ACTIVITE').length,
+    total:     elements.length,
+  }), [elements]);
 
   // ── Guards ────────────────────────────────────────────────────────────────
 
@@ -143,7 +142,7 @@ export default function LogframePage() {
   };
 
   const handleDeleteRequest = (id: string) => {
-    const item = localData.find(i => i.id === id) || null;
+    const item = elements.find(i => i.id === id) || null;
     setDeleteError(null);
     setDeleteTarget(item);
   };
@@ -152,12 +151,7 @@ export default function LogframePage() {
     if (!deleteTarget) return;
     setDeleteError(null);
     deleteMutation.mutate(deleteTarget.id, {
-      onSuccess: () => {
-        setLocalData(prev =>
-          prev.filter(i => i.id !== deleteTarget.id && i.parent_id !== deleteTarget.id)
-        );
-        setDeleteTarget(null);
-      },
+      onSuccess: () => setDeleteTarget(null),
       onError: (err) => setDeleteError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.'),
     });
   };
@@ -195,21 +189,13 @@ export default function LogframePage() {
     let created = 0;
     try {
       for (const row of rows) {
-        const objective = await createMutation.mutateAsync({
+        await createMutation.mutateAsync({
           niveau_intervention: niveau,
           description: row.description,
           indicateur: row.indicateur,
           parent_id: bulkParentId,
         });
         created++;
-        setLocalData(prev => [...prev, {
-          id: objective.id,
-          projet_id: resolvedProjectId,
-          parent_id: bulkParentId,
-          niveau_intervention: niveau,
-          description: row.description,
-          indicateur: row.indicateur,
-        }]);
       }
       setIsBulkOpen(false);
     } catch (err) {
@@ -225,39 +211,16 @@ export default function LogframePage() {
   const handleSubmit = (data: Partial<CadreLogique>) => {
     setFormError(null);
     const onError = (err: unknown) => setFormError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
+    // Pas de reconstruction locale (cf. audit Cadre Logique) : fermer le
+    // modal suffit, l'invalidation de logframeKeys.all(projectId) dans
+    // useCreateLogframe/useUpdateLogframe rafraîchit la Matrice depuis la
+    // base — même principe que PTBAPage/WBSPage.
+    const onSuccess = () => { setIsFormOpen(false); setEditingItem(null); };
+
     if (editingItem) {
-      const updated = { ...editingItem, ...data };
-      updateMutation.mutate(
-        { id: editingItem.id, ...data },
-        {
-          onSuccess: () => {
-            setLocalData(prev => prev.map(i => (i.id === editingItem.id ? updated : i)));
-            setIsFormOpen(false);
-          },
-          onError,
-        }
-      );
+      updateMutation.mutate({ id: editingItem.id, ...data }, { onSuccess, onError });
     } else {
-      const newItem: CadreLogique = {
-        id: `lf-new-${Date.now()}`,
-        projet_id: resolvedProjectId,
-        parent_id: data.parent_id || null,
-        niveau_intervention: data.niveau_intervention as CadreLogique['niveau_intervention'],
-        description: data.description || '',
-        indicateur: data.indicateur || undefined,
-        valeur_reference: data.valeur_reference,
-        cible: data.cible,
-        unite: data.unite,
-        source_verification: data.source_verification,
-        hypotheses: data.hypotheses,
-      };
-      createMutation.mutate(newItem, {
-        onSuccess: () => {
-          setLocalData(prev => [...prev, newItem]);
-          setIsFormOpen(false);
-        },
-        onError,
-      });
+      createMutation.mutate(data, { onSuccess, onError });
     }
   };
 
@@ -279,7 +242,7 @@ export default function LogframePage() {
     (doc as any).autoTable({
       startY: 20,
       head: [['Niveau', 'Description', 'Indicateur (IOV)', 'Baseline', 'Cible', 'Vérification', 'Hypothèses']],
-      body: localData.map(row => [
+      body: elements.map(row => [
         row.niveau_intervention,
         row.description,
         row.indicateur || '',
@@ -297,7 +260,7 @@ export default function LogframePage() {
 
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
-      localData.map(row => ({
+      elements.map(row => ({
         Niveau: row.niveau_intervention,
         Description: row.description,
         'Indicateur (IOV)': row.indicateur || '',
@@ -312,7 +275,7 @@ export default function LogframePage() {
     XLSX.writeFile(wb, `Cadre_Logique_${getExportName()}.xlsx`);
   };
 
-  const impactNode = localData.find(i => i.niveau_intervention === 'IMPACT');
+  const impactNode = elements.find(i => i.niveau_intervention === 'IMPACT');
   const hasImpact = !!impactNode;
 
   const handleImportSubmit = async (nodes: { id: string; libelle: string }[]) => {
@@ -329,13 +292,6 @@ export default function LogframePage() {
         });
         await wbsUpdateMutation.mutateAsync({ id: node.id, data: { logframe_ref_id: objective.id } });
         created++;
-        setLocalData(prev => [...prev, {
-          id: objective.id,
-          projet_id: resolvedProjectId,
-          parent_id: impactNode.id,
-          niveau_intervention: 'RESULTAT',
-          description: node.libelle,
-        }]);
       }
       setIsImportOpen(false);
     } catch (err) {
@@ -465,7 +421,7 @@ export default function LogframePage() {
             <ErrorView />
           ) : (
             <LogframeMatrix
-              data={localData}
+              data={elements}
               onEdit={handleEdit}
               onDelete={handleDeleteRequest}
               onAddChild={handleAddChild}
