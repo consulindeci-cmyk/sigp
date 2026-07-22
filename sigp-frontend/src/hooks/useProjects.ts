@@ -393,10 +393,14 @@ export function useCreateProject() {
       const { data } = await invokeEdgeFunction<{ data: unknown }>('projects-create', { ...payload })
       return data
     },
+    // projectKeys.list()/.kpis() sans arguments produisent ['projects','list',
+    // undefined]/['projects','kpis',undefined], qui ne matchent jamais la vraie
+    // clé active (['projects','list',{...params réels...}] — cf. ProjectsPage.tsx
+    // useProjects({...queryParams, includeOrganisation})) : invalider sur
+    // projectKeys.all (['projects']) couvre list/kpis/detail/referenceOptions
+    // en un seul appel, par préfixe, quels que soient les paramètres réels.
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: projectKeys.list() })
-      qc.invalidateQueries({ queryKey: projectKeys.kpis() })
-      qc.invalidateQueries({ queryKey: projectKeys.referenceOptions() })
+      qc.invalidateQueries({ queryKey: projectKeys.all })
     },
   })
 }
@@ -510,9 +514,7 @@ export function useCreateProjectWizard() {
       return { projectId }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: projectKeys.list() })
-      qc.invalidateQueries({ queryKey: projectKeys.kpis() })
-      qc.invalidateQueries({ queryKey: projectKeys.referenceOptions() })
+      qc.invalidateQueries({ queryKey: projectKeys.all })
     },
   })
 }
@@ -528,17 +530,11 @@ export function useUpdateProject(hookId?: string) {
       const { data } = await invokeEdgeFunction<{ data: unknown }>('projects-update', { id: targetId, ...payload });
       return { id: targetId, data };
     },
-    onSuccess: (result) => {
-      if (result?.id) {
-        qc.invalidateQueries({ queryKey: projectKeys.detail(result.id) });
-        qc.invalidateQueries({ queryKey: projectKeys.detailSummary(result.id) });
-      } else if (hookId) {
-        qc.invalidateQueries({ queryKey: projectKeys.detail(hookId) });
-        qc.invalidateQueries({ queryKey: projectKeys.detailSummary(hookId) });
-      }
-      qc.invalidateQueries({ queryKey: projectKeys.list() });
-      qc.invalidateQueries({ queryKey: projectKeys.kpis() });
-      qc.invalidateQueries({ queryKey: projectKeys.referenceOptions() });
+    // projectKeys.all est un préfixe de detail(id)/detailSummary(id) : plus
+    // besoin de résoudre result.id vs hookId séparément, un seul appel couvre
+    // la fiche projet ET la liste/les KPIs/les options de référence.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
     },
   })
 }
@@ -551,10 +547,8 @@ export function useDeleteProject() {
       await invokeEdgeFunction<{ message: string }>('projects-delete', { id })
       return id
     },
-    onSuccess: (deletedId) => {
-      qc.invalidateQueries({ queryKey: projectKeys.list() })
-      qc.invalidateQueries({ queryKey: projectKeys.kpis() })
-      qc.invalidateQueries({ queryKey: projectKeys.detail(deletedId) })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
     },
   })
 }
