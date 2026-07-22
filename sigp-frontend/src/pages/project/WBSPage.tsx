@@ -5,6 +5,7 @@ import {
   AlertCircle, Network, Layers, Trash2,
 } from 'lucide-react';
 import { useWBS, useUpdateWBSOrder, useCreateWBSNode, useUpdateWBSNode, useDeleteWBSNode } from '@/hooks/useWBS';
+import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { WBSTree } from '@/components/project/wbs/WBSTree';
@@ -80,6 +81,15 @@ export default function WBSPage() {
   useEffect(() => {
     if (wbsData?.data) setWbsItems(wbsData.data);
   }, [wbsData?.data]);
+
+  // Résolution de l'UUID responsable (aucune jointure côté hook) en nom
+  // affichable — cf. même correctif déjà appliqué au module PTBA.
+  const { data: orgMembers = [] } = useOrganisationMembersForPicker(resolvedProjectId);
+  const responsableLabels = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of orgMembers) map[m.id] = m.displayName;
+    return map;
+  }, [orgMembers]);
 
   // Form SlideOver state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -161,11 +171,7 @@ export default function WBSPage() {
     const newNode: WBS = {
       id: editingNode?.id || `wbs-new-${Date.now()}`,
       projet_id: resolvedProjectId,
-      code_wbs:
-        editingNode?.code_wbs ||
-        (data.parent_id
-          ? '?.?'
-          : `${wbsItems.filter(i => !i.parent_id).length + 1}`),
+      code_wbs: editingNode?.code_wbs || data.code_wbs || '',
       titre: data.titre || '',
       niveau: data.parent_id
         ? (wbsItems.find(i => i.id === data.parent_id)?.niveau || 0) + 1
@@ -194,7 +200,7 @@ export default function WBSPage() {
       );
     } else {
       createMutation.mutate(
-        { data, existingNodes: wbsItems },
+        { data },
         {
           onSuccess: () => {
             setWbsItems(prev => [...prev, newNode]);
@@ -337,6 +343,7 @@ export default function WBSPage() {
               onAddChild={handleAddChild}
               canManage={canManage}
               canDelete={canDelete}
+              responsableLabels={responsableLabels}
             />
           )}
         </div>
@@ -352,6 +359,7 @@ export default function WBSPage() {
         initialData={editingNode || undefined}
         parentId={parentIdForNew}
         projectId={resolvedProjectId}
+        existingNodes={wbsItems}
         onSubmit={handleFormSubmit}
         isSaving={createMutation.isPending || updateMutation.isPending}
         error={formError}

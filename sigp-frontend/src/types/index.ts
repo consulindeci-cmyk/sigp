@@ -170,6 +170,9 @@ export interface WBS {
   niveau: number;
   statut?: StatutWBS;
   responsable?: string;
+  // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
+  // — affiché à la place de responsable (l'id) quand renseigné.
+  responsable_externe?: string | null;
   date_debut_prevue?: string;
   date_fin_prevue?: string;
   budget_alloue?: number;

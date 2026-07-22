@@ -10,6 +10,9 @@ interface CreateWbsNodeBody {
   type: 'PHASE' | 'LOT' | 'ACTIVITE' | 'LIVRABLE';
   ordre?: number;
   responsableId?: string;
+  // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
+  // — mutuellement exclusif avec responsableId côté formulaire.
+  responsableExterne?: string;
   dateDebut?: string;
   dateFin?: string;
 }
@@ -96,6 +99,7 @@ Deno.serve(async (req: Request) => {
         niveau,
         ordre: body.ordre ?? 0,
         responsable_id: body.responsableId ?? null,
+        responsable_externe: body.responsableExterne?.trim() || null,
         date_debut: body.dateDebut ?? null,
         date_fin: body.dateFin ?? null,
         created_by: profile.id,

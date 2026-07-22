@@ -22,11 +22,14 @@ interface WbsNodeRow {
   ordre: number;
   niveau: number;
   responsable_id: string | null;
+  // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
+  // — mutuellement exclusif avec responsable_id côté formulaire.
+  responsable_externe: string | null;
   date_debut: string | null;
   date_fin: string | null;
 }
 
-const WBS_SELECT = 'id, project_id, parent_id, objective_id, code, libelle, type, ordre, niveau, responsable_id, date_debut, date_fin';
+const WBS_SELECT = 'id, project_id, parent_id, objective_id, code, libelle, type, ordre, niveau, responsable_id, responsable_externe, date_debut, date_fin';
 
 // ── Ligne Supabase (colonnes utiles de `ptba_activites` pour l'agrégation) ────
 
@@ -51,6 +54,7 @@ function adaptNode(row: WbsNodeRow): WBS {
     ordre: row.ordre,
     statut: 'NON_COMMENCE',
     responsable: row.responsable_id ?? '',
+    responsable_externe: row.responsable_externe ?? null,
     logframe_ref_id: row.objective_id ?? null,
     date_debut_prevue: row.date_debut ?? undefined,
     date_fin_prevue: row.date_fin ?? undefined,
@@ -145,41 +149,38 @@ function deriveNodeType(parentId?: string | null): 'PHASE' | 'LOT' | 'ACTIVITE' 
   return parentId ? 'ACTIVITE' : 'PHASE';
 }
 
-function buildCreatePayload(
-  projectId: string,
-  data: Partial<WBS>,
-  existingNodes: WBS[],
-) {
-  let code: string;
-  if (!data.parent_id) {
-    const rootCount = existingNodes.filter(n => !n.parent_id).length;
-    code = String(rootCount + 1);
-  } else {
-    const parent = existingNodes.find(n => n.id === data.parent_id);
-    const siblingCount = existingNodes.filter(n => n.parent_id === data.parent_id).length;
-    code = parent ? `${parent.code_wbs}.${siblingCount + 1}` : `A${siblingCount + 1}`;
-  }
-
+// Le code n'est plus auto-généré ici à partir du nombre de frères/sœurs — le
+// formulaire (WBSNodeForm) le pré-remplit à titre de suggestion mais laisse
+// l'utilisateur le saisir/corriger librement (obligatoire), cf. alignement
+// WBS/Matrice PTBA. On fait simplement confiance à la valeur fournie.
+function buildCreatePayload(projectId: string, data: Partial<WBS>) {
   return {
     projectId,
-    code: code.substring(0, 30).toUpperCase(),
+    code: (data.code_wbs || '').trim().substring(0, 30).toUpperCase(),
     libelle: data.titre || '',
     type: deriveNodeType(data.parent_id),
     parentId:     isUUID(data.parent_id)      ? data.parent_id      : undefined,
     objectiveId:  isUUID(data.logframe_ref_id) ? data.logframe_ref_id : undefined,
-    responsableId: isUUID(data.responsable)   ? data.responsable    : undefined,
+    // string | null (pas juste optionnel) : le formulaire garantit
+    // l'exclusivité mutuelle utilisateur/externe (un seul des deux renseigné).
+    responsableId: isUUID(data.responsable) ? data.responsable : null,
+    responsableExterne: data.responsable_externe?.trim() || null,
     ordre: data.ordre,
     dateDebut: data.date_debut_prevue || undefined,
     dateFin:   data.date_fin_prevue   || undefined,
   };
 }
 
+// parentId/code volontairement absents ici : la structure (rattachement +
+// code) est fixée à la création et immuable ensuite (cf. WBSNodeForm — mêmes
+// champs désactivés en édition) pour éviter d'invalider silencieusement les
+// codes des enfants d'un nœud déplacé/renommé.
 function buildUpdatePayload(data: Partial<WBS>) {
   return {
     libelle:      data.titre || undefined,
-    parentId:     isUUID(data.parent_id)       ? data.parent_id       : undefined,
     objectiveId:  isUUID(data.logframe_ref_id)  ? data.logframe_ref_id : undefined,
-    responsableId: isUUID(data.responsable)    ? data.responsable     : undefined,
+    responsableId: isUUID(data.responsable)    ? data.responsable     : null,
+    responsableExterne: data.responsable_externe?.trim() || null,
     dateDebut: data.date_debut_prevue || undefined,
     dateFin:   data.date_fin_prevue   || undefined,
   };
@@ -210,14 +211,8 @@ export function useUpdateWBSOrder(projectId: string) {
 export function useCreateWBSNode(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      data,
-      existingNodes,
-    }: {
-      data: Partial<WBS>;
-      existingNodes: WBS[];
-    }) => {
-      const payload = buildCreatePayload(projectId, data, existingNodes);
+    mutationFn: async ({ data }: { data: Partial<WBS> }) => {
+      const payload = buildCreatePayload(projectId, data);
       const { data: resp } = await invokeEdgeFunction<{ data: unknown }>('wbs-create', payload);
       return resp;
     },

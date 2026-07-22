@@ -8,7 +8,10 @@ interface UpdateWbsNodeBody {
   libelle?: string;
   type?: 'PHASE' | 'LOT' | 'ACTIVITE' | 'LIVRABLE';
   ordre?: number;
-  responsableId?: string;
+  // string | null (pas juste optionnel) : le formulaire envoie toujours les
+  // deux pour garantir l'exclusivité mutuelle utilisateur/externe.
+  responsableId?: string | null;
+  responsableExterne?: string | null;
   dateDebut?: string;
   dateFin?: string;
   actif?: boolean;
@@ -97,6 +100,9 @@ Deno.serve(async (req: Request) => {
     if (niveau !== undefined) updatePayload.niveau = niveau;
     if (body.ordre !== undefined) updatePayload.ordre = body.ordre;
     if (body.responsableId !== undefined) updatePayload.responsable_id = body.responsableId;
+    if (body.responsableExterne !== undefined) {
+      updatePayload.responsable_externe = body.responsableExterne?.trim() || null;
+    }
     if (body.dateDebut !== undefined) updatePayload.date_debut = body.dateDebut;
     if (body.dateFin !== undefined) updatePayload.date_fin = body.dateFin;
     if (body.actif !== undefined) updatePayload.actif = body.actif;

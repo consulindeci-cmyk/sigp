@@ -16,15 +16,38 @@ import {
   SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 
+const RESPONSABLE_EXTERNE_VALUE = '__externe__';
+
 interface WBSNodeFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialData?: Partial<WBS>;
   parentId?: string | null;
   projectId: string;
+  /** Tous les nœuds WBS du projet — sert à suggérer le code (1, 1.1, 1.2...)
+   * et à peupler le sélecteur "Élément Parent" (racines uniquement, cf.
+   * alignement WBS/Matrice PTBA : structure à 2 niveaux). */
+  existingNodes: WBS[];
   onSubmit: (data: Partial<WBS>) => void;
   isSaving?: boolean;
   error?: string | null;
+}
+
+// Suggestion de code — l'utilisateur peut toujours la corriger, le champ
+// reste une saisie libre obligatoire (cf. demande d'alignement WBS/PTBA).
+function computeSuggestedCode(parentId: string | null | undefined, nodes: WBS[]): string {
+  if (!parentId) {
+    const rootCount = nodes.filter(n => !n.parent_id).length;
+    return String(rootCount + 1);
+  }
+  const parent = nodes.find(n => n.id === parentId);
+  if (!parent) return '';
+  const siblingCount = nodes.filter(n => n.parent_id === parentId).length;
+  return `${parent.code_wbs}.${siblingCount + 1}`;
+}
+
+interface FormState extends Partial<WBS> {
+  responsableMode: 'user' | 'externe';
 }
 
 export function WBSNodeForm({
@@ -33,6 +56,7 @@ export function WBSNodeForm({
   initialData,
   parentId,
   projectId,
+  existingNodes,
   onSubmit,
   isSaving,
   error,
@@ -40,13 +64,15 @@ export function WBSNodeForm({
   const { data: logframeData } = useLogframe(projectId);
   const logframeItems = logframeData?.data || [];
 
-  // responsable stocke désormais un UUID réel (users.id) — plus de saisie
-  // libre silencieusement ignorée par buildCreatePayload/buildUpdatePayload
-  // (cf. isUUID guard dans useWBS.ts).
+  // responsable stocke un UUID réel (users.id) quand responsableMode==='user' ;
+  // responsable_externe porte le texte libre sinon — mutuellement exclusifs.
   const { data: orgMembers = [], isLoading: isLoadingMembers } = useOrganisationMembersForPicker(projectId);
 
-  const isParent = !parentId && !initialData?.parent_id;
   const isEditing = !!initialData?.id;
+  // Racines uniquement — un sous-élément (niveau 2) ne peut pas devenir parent
+  // (cf. wbs-create/wbs-update, structure à 2 niveaux). On exclut aussi le
+  // nœud en cours d'édition de sa propre liste de parents possibles.
+  const rootOptions = existingNodes.filter(n => !n.parent_id && n.id !== initialData?.id);
 
   const getTitle = () => {
     if (isEditing) return "Modifier l'élément WBS";
@@ -54,36 +80,61 @@ export function WBSNodeForm({
     return 'Nouvelle composante principale';
   };
 
-  const [formData, setFormData] = useState<Partial<WBS>>({
+  const [formData, setFormData] = useState<FormState>({
     titre: '',
     statut: 'NON_COMMENCE',
     budget_alloue: 0,
     progression_physique: 0,
     responsable: '',
+    responsable_externe: '',
+    responsableMode: 'user',
     logframe_ref_id: '',
     date_debut_prevue: '',
     date_fin_prevue: '',
+    code_wbs: '',
+    parent_id: null,
   });
 
   useEffect(() => {
     if (open) {
+      const effectiveParentId = initialData?.parent_id ?? parentId ?? null;
       setFormData({
         titre: '',
         statut: 'NON_COMMENCE',
         budget_alloue: 0,
         progression_physique: 0,
         responsable: '',
+        responsable_externe: '',
+        responsableMode: initialData?.responsable_externe ? 'externe' : 'user',
         logframe_ref_id: '',
         date_debut_prevue: '',
         date_fin_prevue: '',
+        code_wbs: initialData?.code_wbs ?? computeSuggestedCode(effectiveParentId, existingNodes),
+        parent_id: effectiveParentId,
         ...initialData,
       });
     }
-  }, [open, initialData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialData, parentId]);
+
+  const isParent = !formData.parent_id;
+
+  const handleParentChange = (newParentId: string) => {
+    setFormData(d => ({
+      ...d,
+      parent_id: newParentId || null,
+      code_wbs: computeSuggestedCode(newParentId || null, existingNodes),
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ ...formData, parent_id: parentId ?? undefined });
+    onSubmit({
+      ...formData,
+      responsable: formData.responsableMode === 'user' ? (formData.responsable || undefined) : undefined,
+      responsable_externe: formData.responsableMode === 'externe' ? (formData.responsable_externe?.trim() || undefined) : null,
+      parent_id: formData.parent_id ?? undefined,
+    });
   };
 
   const field = (label: string, children: React.ReactNode, span?: boolean) => (
@@ -108,8 +159,55 @@ export function WBSNodeForm({
         <SlideOverBody>
           <form id="wbs-node-form" onSubmit={handleSubmit} className="flex flex-col gap-6">
 
-            {/* Informations générales */}
+            {/* Structure WBS */}
             <section className="flex flex-col gap-4">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Structure WBS
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {field(
+                  'Code WBS *',
+                  <>
+                    <Input
+                      required
+                      disabled={isEditing}
+                      value={formData.code_wbs || ''}
+                      onChange={e => setFormData(d => ({ ...d, code_wbs: e.target.value }))}
+                      placeholder="Ex: 1, 1.1, 1.2..."
+                    />
+                    {isEditing && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Non modifiable après création (les sous-éléments existants en dépendent).
+                      </span>
+                    )}
+                  </>
+                )}
+                {field(
+                  'Élément Parent',
+                  <>
+                    <Select
+                      disabled={isEditing}
+                      value={formData.parent_id || ''}
+                      onChange={e => handleParentChange(e.target.value)}
+                    >
+                      <option value="">— Aucun (composante racine) —</option>
+                      {rootOptions.map(n => (
+                        <option key={n.id} value={n.id}>{n.code_wbs} — {n.titre}</option>
+                      ))}
+                    </Select>
+                    <span className="text-[11px] text-muted-foreground">
+                      {isEditing
+                        ? 'Non modifiable après création.'
+                        : "Choisissez une composante racine pour créer un sous-élément (ex: Parent \"1\" → Code \"1.1\"), ou laissez vide pour créer une nouvelle composante racine."}
+                    </span>
+                  </>,
+                  true
+                )}
+              </div>
+            </section>
+
+            {/* Informations générales */}
+            <section className="flex flex-col gap-4 pt-5 border-t border-border">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Informations générales
               </h3>
@@ -128,16 +226,34 @@ export function WBSNodeForm({
                 )}
                 {field(
                   'Responsable',
-                  <Select
-                    value={formData.responsable || ''}
-                    onChange={e => setFormData(d => ({ ...d, responsable: e.target.value }))}
-                    disabled={isLoadingMembers}
-                  >
-                    <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
-                    {orgMembers.map(m => (
-                      <option key={m.id} value={m.id}>{m.displayName}</option>
-                    ))}
-                  </Select>
+                  <>
+                    <Select
+                      value={formData.responsableMode === 'externe' ? RESPONSABLE_EXTERNE_VALUE : (formData.responsable || '')}
+                      onChange={e => {
+                        const value = e.target.value;
+                        if (value === RESPONSABLE_EXTERNE_VALUE) {
+                          setFormData(d => ({ ...d, responsableMode: 'externe' }));
+                        } else {
+                          setFormData(d => ({ ...d, responsableMode: 'user', responsable: value }));
+                        }
+                      }}
+                      disabled={isLoadingMembers}
+                    >
+                      <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
+                      {orgMembers.map(m => (
+                        <option key={m.id} value={m.id}>{m.displayName}</option>
+                      ))}
+                      <option value={RESPONSABLE_EXTERNE_VALUE}>Externe / texte libre…</option>
+                    </Select>
+                    {formData.responsableMode === 'externe' && (
+                      <Input
+                        className="mt-2"
+                        value={formData.responsable_externe || ''}
+                        onChange={e => setFormData(d => ({ ...d, responsable_externe: e.target.value }))}
+                        placeholder="Ex: Entreprise de construction XYZ, Fournisseur Équipement..."
+                      />
+                    )}
+                  </>
                 )}
                 {field(
                   'Statut',

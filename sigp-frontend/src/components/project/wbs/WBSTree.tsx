@@ -15,6 +15,9 @@ interface WBSTreeProps {
   onAddChild: (parentId: string) => void;
   canManage: boolean;
   canDelete: boolean;
+  /** Résout l'UUID responsable (aucune jointure côté hook) en nom affichable
+   * — cf. même correctif déjà appliqué au module PTBA. */
+  responsableLabels?: Record<string, string>;
 }
 
 function getStatusBadgeVariant(statut: string): 'default' | 'info' | 'success' | 'destructive' | 'secondary' {
@@ -53,7 +56,7 @@ const formatMoney = (amount: number = 0) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
-export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canManage, canDelete }: WBSTreeProps) {
+export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canManage, canDelete, responsableLabels = {} }: WBSTreeProps) {
   const rootNodes = useMemo(
     () => data.filter(n => !n.parent_id).sort((a, b) => a.ordre - b.ordre),
     [data]
@@ -166,11 +169,15 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canMana
         accessorKey: 'responsable',
         header: 'RESPONSABLE',
         size: 150,
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground truncate">
-            {row.original.responsable || '—'}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const node = row.original;
+          const label = node.responsable_externe || (node.responsable && responsableLabels[node.responsable]) || '—';
+          return (
+            <span className="text-sm text-muted-foreground truncate">
+              {label}
+            </span>
+          );
+        },
       },
       {
         accessorKey: 'budget_alloue',
@@ -290,7 +297,7 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canMana
         },
       },
     ],
-    [data, expanded, flatItems, canManage, canDelete]
+    [data, expanded, flatItems, canManage, canDelete, responsableLabels]
   );
 
   return (
