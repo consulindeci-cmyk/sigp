@@ -23,7 +23,6 @@ export interface PTBAActiviteFormPayload {
   code?: string;
   libelle: string;
   description?: string;
-  statut: string;
   annee: number;
   /** Une activité peut être cochée sur plusieurs trimestres (ex: Q1+Q2+Q3) —
    * le montant est alors ventilé également sur tous les mois concernés. */
@@ -37,8 +36,6 @@ export interface PTBAActiviteFormPayload {
   dateDebutPrevue?: string;
   dateFinPrevue?: string;
   montantPrevu?: number;
-  montantRealise?: number;
-  tauxRealisation?: number;
 }
 
 const RESPONSABLE_EXTERNE_VALUE = '__externe__';
@@ -58,7 +55,6 @@ interface FormState {
   code: string;
   libelle: string;
   description: string;
-  statut: string;
   annee: string;
   trimestres: number[];
   wbsId: string;
@@ -69,17 +65,15 @@ interface FormState {
   dateDebutPrevue: string;
   dateFinPrevue: string;
   montantPrevu: string;
-  montantRealise: string;
-  tauxRealisation: string;
 }
 
 function emptyForm(annee: number): FormState {
   return {
-    code: '', libelle: '', description: '', statut: 'NON_DEMARRE',
+    code: '', libelle: '', description: '',
     annee: String(annee), trimestres: [1], wbsId: '', logframeIndicatorId: '',
     responsableMode: 'user', responsableId: '', responsableExterne: '',
     dateDebutPrevue: '', dateFinPrevue: '',
-    montantPrevu: '', montantRealise: '', tauxRealisation: '',
+    montantPrevu: '',
   };
 }
 
@@ -90,7 +84,6 @@ function toFormState(annee: number, initialData?: PtbaActiviteDto | null): FormS
     code: initialData.code,
     libelle: initialData.libelle,
     description: initialData.description ?? '',
-    statut: initialData.statut,
     annee: String(initialData.annee),
     trimestres: initialData.trimestres,
     wbsId: initialData.wbsId ?? '',
@@ -101,8 +94,6 @@ function toFormState(annee: number, initialData?: PtbaActiviteDto | null): FormS
     dateDebutPrevue: initialData.dateDebutPrevue ?? '',
     dateFinPrevue: initialData.dateFinPrevue ?? '',
     montantPrevu: initialData.montantPrevu != null ? String(initialData.montantPrevu) : '',
-    montantRealise: initialData.montantRealise != null ? String(initialData.montantRealise) : '',
-    tauxRealisation: initialData.tauxRealisation != null ? String(initialData.tauxRealisation) : '',
   };
 }
 
@@ -186,7 +177,6 @@ export function PTBAActiviteForm({
       code: isEditing ? undefined : formData.code.trim(),
       libelle: formData.libelle.trim(),
       description: formData.description.trim() || undefined,
-      statut: formData.statut,
       annee: Number(formData.annee),
       trimestres: formData.trimestres,
       wbsId: formData.wbsId || undefined,
@@ -198,8 +188,6 @@ export function PTBAActiviteForm({
       dateDebutPrevue: formData.dateDebutPrevue || undefined,
       dateFinPrevue: formData.dateFinPrevue || undefined,
       montantPrevu: formData.montantPrevu.trim() === '' ? undefined : Number(formData.montantPrevu),
-      montantRealise: formData.montantRealise.trim() === '' ? undefined : Number(formData.montantRealise),
-      tauxRealisation: formData.tauxRealisation.trim() === '' ? undefined : Number(formData.tauxRealisation),
     });
   };
 
@@ -322,19 +310,6 @@ export function PTBAActiviteForm({
                   </>
                 )}
                 {field(
-                  'Statut',
-                  <Select
-                    value={formData.statut}
-                    onChange={e => setFormData(d => ({ ...d, statut: e.target.value }))}
-                  >
-                    <option value="NON_DEMARRE">Non démarré</option>
-                    <option value="EN_COURS">En cours</option>
-                    <option value="TERMINE">Terminé</option>
-                    <option value="EN_RETARD">En retard</option>
-                    <option value="ANNULE">Annulé</option>
-                  </Select>
-                )}
-                {field(
                   'Responsable',
                   <>
                     <Select
@@ -392,7 +367,7 @@ export function PTBAActiviteForm({
 
             <section className="flex flex-col gap-4 pt-5 border-t border-border">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Planification & Réalisation
+                Planification
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {field(
@@ -418,27 +393,6 @@ export function PTBAActiviteForm({
                     min={0}
                     value={formData.montantPrevu}
                     onChange={e => setFormData(d => ({ ...d, montantPrevu: e.target.value }))}
-                    placeholder="0"
-                  />
-                )}
-                {field(
-                  'Montant réalisé',
-                  <Input
-                    type="number"
-                    min={0}
-                    value={formData.montantRealise}
-                    onChange={e => setFormData(d => ({ ...d, montantRealise: e.target.value }))}
-                    placeholder="0"
-                  />
-                )}
-                {field(
-                  'Taux de réalisation (%)',
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={formData.tauxRealisation}
-                    onChange={e => setFormData(d => ({ ...d, tauxRealisation: e.target.value }))}
                     placeholder="0"
                   />
                 )}

@@ -111,41 +111,6 @@ const MONTH_KEYS = [
   'm9_montant', 'm10_montant', 'm11_montant', 'm12_montant',
 ] as const;
 
-function SCurveWidget({ ptba }: { ptba: PTBA }) {
-  const lignes = ptba.lignes ?? [];
-  const budget = ptba.budget_total || 1;
-  let cumul = 0;
-  const points = MONTH_KEYS.map(k => {
-    const monthly = lignes.reduce((s, l) => s + l[k], 0);
-    cumul += monthly;
-    return Math.min(100, Math.round((cumul / budget) * 100));
-  });
-  return (
-    <Card className="flex-1 min-w-[160px]" role="figure" aria-label="Courbe en S d'absorption budgétaire">
-      <CardContent className="pt-3 pb-2 h-full flex flex-col">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          <TrendingUp className="h-3 w-3" />
-          Absorption (S-Curve)
-        </div>
-        <div className="flex-1 flex items-end gap-[2px] min-h-[48px]">
-          {points.map((h, i) => (
-            <div key={i} className="flex-1 flex items-end relative h-full">
-              <div
-                className="w-full bg-primary/20 rounded-t-sm"
-                style={{ height: `${h}%` }}
-              />
-              <div
-                className="absolute left-1/2 w-1.5 h-1.5 rounded-full bg-primary"
-                style={{ bottom: `${h}%`, transform: 'translate(-50%, 50%)' }}
-              />
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Heatmap mini widget
 // ─────────────────────────────────────────────────────────────────────────────
@@ -381,9 +346,17 @@ export default function PTBAPage() {
 
   // KPIs (réel-time via localPtba)
   const totalBudget = ptba?.budget_total || 0;
-  const totalEngage = ptba?.lignes?.reduce((acc, l) => acc + (l.montant_engage || 0), 0) || 0;
-  const totalDecaisse = ptba?.lignes?.reduce((acc, l) => acc + (l.montant_decaisse || 0), 0) || 0;
-  const pctAbsorption = totalBudget > 0 ? Math.round((totalDecaisse / totalBudget) * 100) : 0;
+
+  // Plafond bailleur global du projet — somme des enveloppe_cible des
+  // composantes racine WBS (cf. Enveloppe Bailleur, WBSNodeForm). Phase de
+  // planification : Engagements/Décaissements/Taux Absorption restent à 0
+  // tant qu'aucun décaissement réel n'existe — remplacés ici par une vue
+  // synthétique plafond vs. planifié, plus utile à ce stade du projet.
+  const rootWbsNodes = (wbsData?.data ?? []).filter(n => !n.parent_id && n.enveloppe_cible != null);
+  const plafondGlobal = rootWbsNodes.reduce((s, n) => s + (n.enveloppe_cible ?? 0), 0);
+  const hasPlafondGlobal = rootWbsNodes.length > 0;
+  const resteAPlanifier = plafondGlobal - totalBudget;
+  const isPlafondDepasse = hasPlafondGlobal && resteAPlanifier < 0;
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
@@ -467,7 +440,10 @@ export default function PTBAPage() {
           {/* ── KPI STRIP + WIDGETS ─────────────────────────────────────── */}
           <div className="shrink-0 flex flex-wrap gap-3 px-4 py-3 border-b border-border bg-muted/10 items-stretch">
 
-            {/* 4 KPI StatCards */}
+            {/* KPI StatCards — phase de planification : Budget Planifié + vue
+                synthétique Plafond Global / Reste à planifier, à la place des
+                cartes d'exécution (Engagements/Décaissements/Absorption)
+                systématiquement à 0 tant qu'aucun décaissement réel n'existe. */}
             <div className="flex-1 min-w-[280px] grid grid-cols-2 gap-3">
               <StatCard
                 title="Budget Planifié"
@@ -476,27 +452,22 @@ export default function PTBAPage() {
                 iconVariant="primary"
               />
               <StatCard
-                title="Engagements"
-                value={formatMoney(totalEngage)}
-                icon={<Banknote className="h-4 w-4 text-warning" />}
-                iconVariant="warning"
+                title="Plafond Global (Bailleur)"
+                value={hasPlafondGlobal ? formatMoney(plafondGlobal) : 'Non défini'}
+                icon={<Banknote className="h-4 w-4 text-secondary-foreground" />}
+                iconVariant="default"
+                description="Somme des enveloppes cibles WBS"
               />
               <StatCard
-                title="Décaissements"
-                value={formatMoney(totalDecaisse)}
-                icon={<CheckCircle2 className="h-4 w-4 text-success" />}
-                iconVariant="success"
-              />
-              <StatCard
-                title="Taux Absorption"
-                value={`${pctAbsorption}%`}
-                icon={<TrendingUp className="h-4 w-4 text-info" />}
-                iconVariant="info"
+                title={isPlafondDepasse ? 'Dépassement' : 'Reste à planifier'}
+                value={hasPlafondGlobal ? formatMoney(Math.abs(resteAPlanifier)) : '—'}
+                icon={<TrendingUp className="h-4 w-4" />}
+                iconVariant={isPlafondDepasse ? 'destructive' : 'success'}
+                description={hasPlafondGlobal ? 'Plafond global − Budget planifié' : 'Aucune enveloppe WBS renseignée'}
               />
             </div>
 
-            {/* Mini charts */}
-            <SCurveWidget ptba={ptba} />
+            {/* Mini chart */}
             <HeatmapWidget ptba={ptba} />
 
           </div>
