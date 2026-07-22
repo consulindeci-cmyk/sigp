@@ -1,6 +1,6 @@
-import { useState, useEffect, memo, Fragment, type KeyboardEvent } from 'react';
-import { ChevronRight, ChevronDown, Activity, Pencil, Trash2 } from 'lucide-react';
-import type { PTBA, PTBALigne } from '@/types';
+import { useState, useEffect, useMemo, memo, Fragment, type KeyboardEvent } from 'react';
+import { ChevronRight, ChevronDown, Activity, Pencil, Trash2, Layers } from 'lucide-react';
+import type { PTBA, PTBALigne, WBS } from '@/types';
 import { formatMoney } from '@/utils/format';
 import { Badge } from '@/components/ui/data-display/Badge';
 
@@ -20,11 +20,14 @@ interface PTBAMatrixRowProps {
    * code du nœud (ex: "1.1"), pas son titre — colonne dédiée "Code WBS". */
   wbsLabels: Record<string, string>;
   responsableLabels: Record<string, string>;
+  /** Indente visuellement la ligne quand elle est regroupée sous une
+   * composante WBS racine (cf. PTBAComponentSubtotalRow au-dessus). */
+  indented?: boolean;
 }
 
 const PTBAMatrixRow = memo(({
   initialLigne, expandedQuarters, onLigneChange, canEdit, canDelete,
-  onEditLigne, onDeleteLigne, wbsLabels, responsableLabels,
+  onEditLigne, onDeleteLigne, wbsLabels, responsableLabels, indented = false,
 }: PTBAMatrixRowProps) => {
   const [ligne, setLigne] = useState<PTBALigne>(initialLigne);
   const [editingCell, setEditingCell] = useState<string | null>(null);
@@ -139,12 +142,12 @@ const PTBAMatrixRow = memo(({
 
       {/* Composante / Activité */}
       <td className="px-3 py-1.5">
-        <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm">
+        <div className={`flex items-center gap-1.5 font-semibold text-foreground text-sm ${indented ? 'pl-4' : ''}`}>
           <Activity className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{ligne.activite_nom}</span>
         </div>
         {ligne.is_procurement && (
-          <div className="pl-5 mt-1">
+          <div className={`mt-1 ${indented ? 'pl-9' : 'pl-5'}`}>
             <Badge variant="warning" className="text-[10px] px-1 py-0">
               Achat: {ligne.type_marche}
             </Badge>
@@ -202,6 +205,77 @@ const PTBAMatrixRow = memo(({
 PTBAMatrixRow.displayName = 'PTBAMatrixRow';
 
 // ============================================================================
+// SOUS-COMPOSANT : Ligne de sous-total par composante WBS racine
+// ============================================================================
+// Ligne synthétique (pas une vraie ptba_activites) : jamais éditable inline,
+// pas d'actions — juste l'agrégation des activités filles regroupées dessous.
+
+function sumBy(lignes: PTBALigne[], key: keyof PTBALigne): number {
+  return lignes.reduce((s, l) => s + ((l[key] as number) || 0), 0);
+}
+
+// Nos codes WBS racine sont générés sans suffixe ("1", "2"...) — affichage
+// uniquement aligné sur la convention Excel de l'utilisateur ("1.0", "2.0"),
+// sans toucher à la vraie donnée code_wbs.
+function formatRootCode(code: string): string {
+  return code.includes('.') ? code : `${code}.0`;
+}
+
+interface PTBAComponentSubtotalRowProps {
+  root: WBS;
+  lignes: PTBALigne[];
+  expandedQuarters: Record<string, boolean>;
+  showActionsColumn: boolean;
+}
+
+const PTBAComponentSubtotalRow = memo(({ root, lignes, expandedQuarters, showActionsColumn }: PTBAComponentSubtotalRowProps) => {
+  const renderQuarterSubtotal = (q: string, qKey: keyof PTBALigne, mKeys: (keyof PTBALigne)[]) => {
+    const isExpanded = expandedQuarters[q];
+    return (
+      <Fragment key={q}>
+        <td className={`px-3 py-2 font-bold border-l border-border text-right font-mono text-xs ${isExpanded ? 'bg-primary/10 text-primary' : 'text-foreground'}`}>
+          {formatMoney(sumBy(lignes, qKey))}
+        </td>
+        {isExpanded && mKeys.map(mKey => (
+          <td key={mKey} className="px-3 py-2 text-right font-mono text-xs font-semibold text-foreground bg-background">
+            {formatMoney(sumBy(lignes, mKey))}
+          </td>
+        ))}
+      </Fragment>
+    );
+  };
+
+  return (
+    <tr role="row" className="border-b-2 border-border bg-muted/40">
+      <td className="px-3 py-2 text-xs font-mono font-bold text-foreground whitespace-nowrap bg-muted/40 border-r border-border">
+        {formatRootCode(root.code_wbs)}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5 font-bold text-foreground text-sm">
+          <Layers className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="truncate">{root.titre}</span>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-xs text-muted-foreground italic whitespace-nowrap">
+        {lignes.length} activité{lignes.length > 1 ? 's' : ''}
+      </td>
+
+      {renderQuarterSubtotal('Q1', 'q1_montant', ['m1_montant', 'm2_montant', 'm3_montant'])}
+      {renderQuarterSubtotal('Q2', 'q2_montant', ['m4_montant', 'm5_montant', 'm6_montant'])}
+      {renderQuarterSubtotal('Q3', 'q3_montant', ['m7_montant', 'm8_montant', 'm9_montant'])}
+      {renderQuarterSubtotal('Q4', 'q4_montant', ['m10_montant', 'm11_montant', 'm12_montant'])}
+
+      <td className="px-3 py-2 text-right font-bold text-foreground font-mono text-sm bg-primary/5 border-l border-border">
+        {formatMoney(sumBy(lignes, 'montant_total'))}
+      </td>
+      {showActionsColumn && <td className="px-2 py-2 border-l border-border bg-muted/40" />}
+    </tr>
+  );
+});
+
+PTBAComponentSubtotalRow.displayName = 'PTBAComponentSubtotalRow';
+
+// ============================================================================
 // COMPOSANT PRINCIPAL : Matrice PTBA
 // ============================================================================
 interface PTBAMatrixProps {
@@ -214,15 +288,57 @@ interface PTBAMatrixProps {
   onDeleteLigne?: (id: string) => void;
   wbsLabels?: Record<string, string>;
   responsableLabels?: Record<string, string>;
+  /** Arbre WBS complet du projet — sert à remonter chaque activité jusqu'à sa
+   * composante racine (parent_id null) pour le regroupement hiérarchique de
+   * la matrice (cf. validation fonctionnement hiérarchique Composantes/Activités). */
+  wbsNodes?: WBS[];
 }
 
 export default function PTBAMatrix({
   ptba, onUpdatePTBA, canEdit = false, canDelete = false,
-  onEditLigne, onDeleteLigne, wbsLabels = {}, responsableLabels = {},
+  onEditLigne, onDeleteLigne, wbsLabels = {}, responsableLabels = {}, wbsNodes = [],
 }: PTBAMatrixProps) {
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({
     Q1: false, Q2: false, Q3: false, Q4: false,
   });
+
+  // Regroupe chaque ligne sous sa composante WBS racine (parent_id null —
+  // indépendant du champ `niveau`, auxiliaire). Une activité dont le wbs_id
+  // ne résout à aucun nœud réel (jamais rattachée, ou wbs_id = code de repli,
+  // cf. adaptActivite) tombe dans `unassigned`, affichée à part.
+  const { groups, unassigned } = useMemo(() => {
+    const nodesById = new Map<string, WBS>();
+    for (const n of wbsNodes) nodesById.set(n.id, n);
+
+    const findRoot = (nodeId: string): WBS | null => {
+      let current = nodesById.get(nodeId);
+      if (!current) return null;
+      const visited = new Set<string>();
+      while (current.parent_id && nodesById.has(current.parent_id) && !visited.has(current.id)) {
+        visited.add(current.id);
+        current = nodesById.get(current.parent_id)!;
+      }
+      return current;
+    };
+
+    const groupMap = new Map<string, { root: WBS; lignes: PTBALigne[] }>();
+    const order: string[] = [];
+    const unassignedLignes: PTBALigne[] = [];
+
+    for (const ligne of ptba.lignes ?? []) {
+      const root = ligne.wbs_id ? findRoot(ligne.wbs_id) : null;
+      if (!root) { unassignedLignes.push(ligne); continue; }
+      let g = groupMap.get(root.id);
+      if (!g) { g = { root, lignes: [] }; groupMap.set(root.id, g); order.push(root.id); }
+      g.lignes.push(ligne);
+    }
+
+    const sortedGroups = order
+      .map(id => groupMap.get(id)!)
+      .sort((a, b) => a.root.code_wbs.localeCompare(b.root.code_wbs, undefined, { numeric: true }));
+
+    return { groups: sortedGroups, unassigned: unassignedLignes };
+  }, [ptba.lignes, wbsNodes]);
 
   const toggleQuarter = (q: string) => {
     setExpandedQuarters(prev => ({ ...prev, [q]: !prev[q] }));
@@ -275,6 +391,8 @@ export default function PTBAMatrix({
     );
   }
 
+  const showActionsColumn = canEdit || canDelete;
+
   return (
     <div className="overflow-x-auto scrollbar-thin h-full bg-background">
       <table className="border-collapse w-full text-xs" role="table">
@@ -298,7 +416,7 @@ export default function PTBAMatrix({
             <th className="min-w-[130px] text-right px-3 py-1.5 text-[11px] uppercase text-foreground font-semibold border-b-2 border-b-border border-l border-border bg-muted/10">
               Budget Prévu ($)
             </th>
-            {(canEdit || canDelete) && (
+            {showActionsColumn && (
               <th className="w-20 shrink-0 bg-card border-l border-border px-2 py-1.5 text-[11px] uppercase text-muted-foreground font-semibold border-b-2 border-b-border text-right">
                 Actions
               </th>
@@ -306,20 +424,55 @@ export default function PTBAMatrix({
           </tr>
         </thead>
         <tbody>
-          {ptba.lignes.map(ligne => (
-            <PTBAMatrixRow
-              key={ligne.id}
-              initialLigne={ligne}
-              expandedQuarters={expandedQuarters}
-              onLigneChange={handleLigneChange}
-              canEdit={canEdit}
-              canDelete={canDelete}
-              onEditLigne={onEditLigne ?? (() => {})}
-              onDeleteLigne={onDeleteLigne ?? (() => {})}
-              wbsLabels={wbsLabels}
-              responsableLabels={responsableLabels}
-            />
+          {groups.map(group => (
+            <Fragment key={group.root.id}>
+              <PTBAComponentSubtotalRow
+                root={group.root}
+                lignes={group.lignes}
+                expandedQuarters={expandedQuarters}
+                showActionsColumn={showActionsColumn}
+              />
+              {group.lignes.map(ligne => (
+                <PTBAMatrixRow
+                  key={ligne.id}
+                  initialLigne={ligne}
+                  expandedQuarters={expandedQuarters}
+                  onLigneChange={handleLigneChange}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  onEditLigne={onEditLigne ?? (() => {})}
+                  onDeleteLigne={onDeleteLigne ?? (() => {})}
+                  wbsLabels={wbsLabels}
+                  responsableLabels={responsableLabels}
+                  indented
+                />
+              ))}
+            </Fragment>
           ))}
+
+          {unassigned.length > 0 && (
+            <Fragment>
+              <tr role="row" className="border-b border-border bg-muted/10">
+                <td colSpan={20} className="px-3 py-1.5 text-[11px] uppercase font-semibold text-muted-foreground tracking-wide">
+                  Sans composante WBS ({unassigned.length})
+                </td>
+              </tr>
+              {unassigned.map(ligne => (
+                <PTBAMatrixRow
+                  key={ligne.id}
+                  initialLigne={ligne}
+                  expandedQuarters={expandedQuarters}
+                  onLigneChange={handleLigneChange}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  onEditLigne={onEditLigne ?? (() => {})}
+                  onDeleteLigne={onDeleteLigne ?? (() => {})}
+                  wbsLabels={wbsLabels}
+                  responsableLabels={responsableLabels}
+                />
+              ))}
+            </Fragment>
+          )}
         </tbody>
       </table>
     </div>

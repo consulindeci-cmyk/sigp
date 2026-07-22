@@ -532,6 +532,7 @@ export default function PTBAPage() {
                     onDeleteLigne={handleDeleteActiviteRequest}
                     wbsLabels={wbsLabels}
                     responsableLabels={responsableLabels}
+                    wbsNodes={wbsData?.data ?? []}
                   />
                 </div>
               </div>

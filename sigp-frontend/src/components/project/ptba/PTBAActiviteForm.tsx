@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { PtbaActiviteDto } from '@/hooks/usePTBA';
 import { useWBS } from '@/hooks/useWBS';
+import { flattenWBSTree } from '@/utils/tree';
 import { useLogframe } from '@/hooks/useLogframe';
 import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 import { Button } from '@/components/ui/forms/Button';
@@ -120,6 +121,17 @@ export function PTBAActiviteForm({
 
   const { data: wbsData } = useWBS(projectId);
   const wbsNodes = wbsData?.data ?? [];
+
+  // Une activité doit se rattacher à un nœud NON racine — cf. regroupement
+  // hiérarchique de la Matrice Financière (PTBAMatrix.tsx) : chaque ligne
+  // remonte à sa composante racine via parent_id. Rattacher une activité
+  // directement à la racine la ferait apparaître comme sa propre composante
+  // parente (auto-référence). Ordre hiérarchique + indentation pour
+  // visualiser à quelle composante chaque nœud appartient.
+  const attachableWbsNodes = useMemo(() => {
+    const roots = wbsNodes.filter(n => !n.parent_id);
+    return flattenWBSTree(roots, wbsNodes).filter(n => !!n.parent_id);
+  }, [wbsNodes]);
 
   // logframe_ref_id d'une activité PTBA pointe vers logframe_indicators.id
   // (l'IOV), pas vers logframe_objectives.id (contrairement à wbs_nodes.
@@ -310,15 +322,23 @@ export function PTBAActiviteForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {field(
                   'Nœud WBS',
-                  <Select
-                    value={formData.wbsId}
-                    onChange={e => setFormData(d => ({ ...d, wbsId: e.target.value }))}
-                  >
-                    <option value="">— Aucune liaison —</option>
-                    {wbsNodes.map(n => (
-                      <option key={n.id} value={n.id}>{n.code_wbs} — {n.titre}</option>
-                    ))}
-                  </Select>
+                  <>
+                    <Select
+                      value={formData.wbsId}
+                      onChange={e => setFormData(d => ({ ...d, wbsId: e.target.value }))}
+                    >
+                      <option value="">— Aucune liaison —</option>
+                      {attachableWbsNodes.map(n => (
+                        <option key={n.id} value={n.id}>
+                          {'  '.repeat(Math.max(0, n.niveau - 2))}{n.code_wbs} — {n.titre}
+                        </option>
+                      ))}
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Les composantes racine (1, 2, 3…) ne sont pas proposées ici — une activité
+                      se rattache à un sous-élément, le sous-total de sa composante est calculé automatiquement.
+                    </p>
+                  </>
                 )}
                 {field(
                   'Indicateur (Cadre Logique)',
