@@ -287,35 +287,13 @@ export function WBSNodeForm({
               </div>
             </section>
 
-            {/* Budget & Progression (sous-éléments uniquement) */}
+            {/* Rattachement Cadre Logique (sous-éléments uniquement) */}
             {!isParent && (
               <section className="flex flex-col gap-4 pt-5 border-t border-border">
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Budget & Progression
+                  Rattachement Cadre Logique
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {field(
-                    'Budget alloué (XOF)',
-                    <Input
-                      type="number"
-                      min={0}
-                      value={formData.budget_alloue || ''}
-                      onChange={e => setFormData(d => ({ ...d, budget_alloue: Number(e.target.value) }))}
-                      placeholder="0"
-                    />
-                  )}
-                  {field(
-                    'Progression physique (%)',
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={formData.progression_physique ?? 0}
-                      onChange={e =>
-                        setFormData(d => ({ ...d, progression_physique: Number(e.target.value) }))
-                      }
-                    />
-                  )}
+                <div className="grid grid-cols-1 gap-4">
                   {field(
                     'Liaison Cadre Logique (Activité / Produit)',
                     <Select
@@ -334,9 +312,21 @@ export function WBSNodeForm({
                             [{item.niveau_intervention}] {item.description}
                           </option>
                         ))}
-                    </Select>,
-                    true
+                    </Select>
                   )}
+                </div>
+                {/* Ni budget_alloue ni progression_physique ne sont des champs
+                    de saisie réels : ce sont des valeurs calculées (rollup)
+                    depuis les activités PTBA rattachées via wbs_id — jamais
+                    transmises par buildCreatePayload/buildUpdatePayload
+                    (cf. useWBS.ts). Un champ de saisie ici aurait été
+                    silencieusement ignoré, source de confusion. */}
+                <div className="flex items-start gap-3 p-3 bg-muted/30 border border-border rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+                  <p className="text-xs text-muted-foreground">
+                    Le budget alloué et la progression physique de ce sous-élément sont calculés
+                    automatiquement à partir des activités PTBA qui lui sont rattachées — non saisissables ici.
+                  </p>
                 </div>
               </section>
             )}

@@ -146,6 +146,30 @@ export function PTBAActiviteForm({
     if (open) setFormData(toFormState(annee, initialData));
   }, [open, annee, initialData]);
 
+  // Auto-remplissage depuis le nœud WBS sélectionné (Code/Libellé/Responsable)
+  // — uniquement à la création : en édition, Code est de toute façon verrouillé
+  // et re-déclencher l'auto-remplissage sur un rattachement déjà en place
+  // écraserait silencieusement des valeurs que l'utilisateur a pu modifier
+  // volontairement depuis la création initiale.
+  const handleWbsChange = (newWbsId: string) => {
+    setFormData(d => {
+      const next = { ...d, wbsId: newWbsId };
+      if (isEditing || !newWbsId) return next;
+      const node = attachableWbsNodes.find(n => n.id === newWbsId);
+      if (!node) return next;
+      next.code = node.code_wbs;
+      next.libelle = node.titre;
+      if (node.responsable_externe) {
+        next.responsableMode = 'externe';
+        next.responsableExterne = node.responsable_externe;
+      } else if (node.responsable) {
+        next.responsableMode = 'user';
+        next.responsableId = node.responsable;
+      }
+      return next;
+    });
+  };
+
   const toggleTrimestre = (t: number) => {
     setFormData(d => ({
       ...d,
@@ -198,6 +222,36 @@ export function PTBAActiviteForm({
 
             <section className="flex flex-col gap-4">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Rattachement WBS
+              </h3>
+              <div className="grid grid-cols-1 gap-4">
+                {field(
+                  'Nœud WBS',
+                  <>
+                    <Select
+                      autoFocus
+                      value={formData.wbsId}
+                      onChange={e => handleWbsChange(e.target.value)}
+                    >
+                      <option value="">— Aucune liaison —</option>
+                      {attachableWbsNodes.map(n => (
+                        <option key={n.id} value={n.id}>
+                          {'  '.repeat(Math.max(0, n.niveau - 2))}{n.code_wbs} — {n.titre}
+                        </option>
+                      ))}
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      {isEditing
+                        ? "Les composantes racine (1, 2, 3…) ne sont pas proposées ici — une activité se rattache à un sous-élément."
+                        : "Sélectionnez d'abord le sous-élément concerné : Code, Libellé et Responsable se pré-remplissent automatiquement ci-dessous (modifiables ensuite si besoin) — il ne restera plus qu'à cocher le(s) trimestre(s) et saisir le montant prévu."}
+                    </p>
+                  </>
+                )}
+              </div>
+            </section>
+
+            <section className="flex flex-col gap-4 pt-5 border-t border-border">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Informations générales
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -215,7 +269,6 @@ export function PTBAActiviteForm({
                   'Libellé *',
                   <Input
                     required
-                    autoFocus
                     value={formData.libelle}
                     onChange={e => setFormData(d => ({ ...d, libelle: e.target.value }))}
                     placeholder="Intitulé de l'activité"
@@ -317,29 +370,9 @@ export function PTBAActiviteForm({
 
             <section className="flex flex-col gap-4 pt-5 border-t border-border">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Rattachements
+                Rattachement Cadre Logique
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {field(
-                  'Nœud WBS',
-                  <>
-                    <Select
-                      value={formData.wbsId}
-                      onChange={e => setFormData(d => ({ ...d, wbsId: e.target.value }))}
-                    >
-                      <option value="">— Aucune liaison —</option>
-                      {attachableWbsNodes.map(n => (
-                        <option key={n.id} value={n.id}>
-                          {'  '.repeat(Math.max(0, n.niveau - 2))}{n.code_wbs} — {n.titre}
-                        </option>
-                      ))}
-                    </Select>
-                    <p className="text-[11px] text-muted-foreground">
-                      Les composantes racine (1, 2, 3…) ne sont pas proposées ici — une activité
-                      se rattache à un sous-élément, le sous-total de sa composante est calculé automatiquement.
-                    </p>
-                  </>
-                )}
+              <div className="grid grid-cols-1 gap-4">
                 {field(
                   'Indicateur (Cadre Logique)',
                   <Select
