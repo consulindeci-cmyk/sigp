@@ -27,6 +27,9 @@ interface PtbaActiviteRow {
   montant_realise: number | null;
   taux_realisation: number | null;
   responsable_id: string | null;
+  // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
+  // — mutuellement exclusif avec responsable_id côté formulaire.
+  responsable_externe: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -50,6 +53,7 @@ export interface PtbaActiviteDto {
   montantRealise: number | null;
   tauxRealisation: number | null;
   responsableId: string | null;
+  responsableExterne: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,7 +62,7 @@ const PTBA_ACTIVITE_SELECT = `
   id, project_id, wbs_id, logframe_ref_id, code, libelle, description, statut,
   annee, trimestres, date_debut_prevue, date_fin_prevue, date_debut_reelle,
   date_fin_reelle, montant_prevu, montant_realise, taux_realisation,
-  responsable_id, created_at, updated_at
+  responsable_id, responsable_externe, created_at, updated_at
 `;
 
 function rowToDto(row: PtbaActiviteRow): PtbaActiviteDto {
@@ -81,6 +85,7 @@ function rowToDto(row: PtbaActiviteRow): PtbaActiviteDto {
     montantRealise: row.montant_realise,
     tauxRealisation: row.taux_realisation,
     responsableId: row.responsable_id,
+    responsableExterne: row.responsable_externe,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -168,6 +173,7 @@ function adaptActivite(dto: PtbaActiviteDto, ptbaId: string): PTBALigne {
     logframe_ref_id: dto.logframeIndicatorId,
     activite_nom:    dto.libelle,
     responsable_id:  dto.responsableId,
+    responsable_externe: dto.responsableExterne,
     devise:          'XOF',
     taux_change_ref: 1,
     is_procurement:  false,
@@ -272,7 +278,8 @@ export function useCreatePtbaActivite(projectId: string, annee: number) {
       trimestres: number[];
       wbsId?:           string;
       logframeIndicatorId?: string;
-      responsableId?:   string;
+      responsableId?:   string | null;
+      responsableExterne?: string | null;
       dateDebutPrevue?: string;
       dateFinPrevue?:   string;
       montantPrevu?:    number;
@@ -304,7 +311,10 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
       dateFinReelle?:   string;
       wbsId?:           string;
       logframeIndicatorId?: string;
-      responsableId?:   string;
+      // string | null (pas juste optionnel) : le formulaire envoie toujours
+      // les deux pour garantir l'exclusivité mutuelle utilisateur/externe.
+      responsableId?:   string | null;
+      responsableExterne?: string | null;
     }) => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', { id, ...payload }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });

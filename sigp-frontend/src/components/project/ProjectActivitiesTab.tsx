@@ -672,13 +672,21 @@ function buildActivityColumns(
 // Composant principal
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ProjectActivitiesTab() {
+interface ProjectActivitiesTabProps {
+  /** Année actuellement sélectionnée dans PTBAPage — doit rester identique à
+   * celle utilisée par la Matrice Financière/Calendrier/Gantt (même hook
+   * usePTBA/useTasks, même filtre), sinon une activité créée ici peut
+   * atterrir sous une année invisible ailleurs dans le PTBA. */
+  annee: number;
+}
+
+export default function ProjectActivitiesTab({ annee }: ProjectActivitiesTabProps) {
   const { id: urlProjectId } = useParams<{ id: string }>();
   const activeProjectId      = useUIStore(s => s.activeProjectId);
   const projectId            = urlProjectId || activeProjectId || '';
 
-  const { data: apiData, isLoading } = useTasks(projectId, { limit: 100 });
-  const createMutation = useCreateTask(projectId);
+  const { data: apiData, isLoading } = useTasks(projectId, { annee, limit: 100 });
+  const createMutation = useCreateTask(projectId, annee);
   const updateMutation = useUpdateTask(projectId);
   const deleteMutation = useDeleteTask(projectId);
 

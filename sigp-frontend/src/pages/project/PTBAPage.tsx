@@ -564,7 +564,7 @@ export default function PTBAPage() {
             <TabsContent value="activities" className="flex-1 min-h-0 overflow-y-auto mt-0">
               <div className="px-4 sm:px-6 lg:px-8 py-6">
                 <div className="mx-auto w-full max-w-layout">
-                  <ProjectActivitiesTab />
+                  <ProjectActivitiesTab annee={annee} />
                 </div>
               </div>
             </TabsContent>

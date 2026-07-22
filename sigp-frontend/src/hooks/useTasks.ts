@@ -66,12 +66,17 @@ function feStatutToBe(s: StatutTache): string {
   }
 }
 
-// ── Année/trimestre : ptba_activites les exige, Tache n'a pas cette notion —
-// dérivés depuis date_debut (ou la date du jour à défaut).
+// ── Trimestre : ptba_activites l'exige, Tache n'a pas cette notion — dérivé
+// depuis date_debut (ou la date du jour à défaut). L'année n'est PLUS dérivée
+// ici : elle doit être celle actuellement sélectionnée dans PTBAPage (cf.
+// useCreateTask ci-dessous) — sinon une activité créée depuis l'onglet
+// Activités atterrissait sous une année différente de celle affichée par la
+// Matrice Financière/Calendrier/Gantt, la rendant invisible ailleurs que dans
+// la liste des Activités (qui, elle, ne filtrait par aucune année).
 
-function deriveAnneeTrimestre(dateDebut?: string | null): { annee: number; trimestre: number } {
+function deriveTrimestre(dateDebut?: string | null): number {
   const d = dateDebut ? new Date(dateDebut) : new Date();
-  return { annee: d.getFullYear(), trimestre: Math.ceil((d.getMonth() + 1) / 3) };
+  return Math.ceil((d.getMonth() + 1) / 3);
 }
 
 // ── Adapter: ligne ptba_activites → Tache ─────────────────────────────────────
@@ -150,12 +155,15 @@ export function useTasks(projectId: string, params?: {
   })
 }
 
-// Créer une tâche
-export function useCreateTask(projectId: string) {
+// Créer une tâche — annee est celle actuellement sélectionnée dans PTBAPage
+// (partagée avec la Matrice/Calendrier/Gantt), pas dérivée de date_debut :
+// une activité créée depuis l'onglet Activités doit atterrir sous la même
+// année que ce que l'utilisateur regarde déjà ailleurs dans le PTBA.
+export function useCreateTask(projectId: string, annee: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (dto: Partial<Tache>) => {
-      const { annee, trimestre } = deriveAnneeTrimestre(dto.date_debut);
+      const trimestre = deriveTrimestre(dto.date_debut);
       const { data } = await invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-create', {
         projectId,
         code: dto.code_tache,

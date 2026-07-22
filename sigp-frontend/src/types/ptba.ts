@@ -59,6 +59,9 @@ export interface PTBALigne {
   
   // 2. Organisation
   responsable_id?: string | null;
+  // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
+  // — affiché à la place de responsable_id quand renseigné.
+  responsable_externe?: string | null;
   partenaire_execution_id?: string | null;
   centre_cout_id?: string | null;
   

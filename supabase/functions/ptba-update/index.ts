@@ -10,7 +10,11 @@ interface UpdatePtbaActiviteBody {
   statut?: 'NON_DEMARRE' | 'EN_COURS' | 'TERMINE' | 'ANNULE' | 'EN_RETARD';
   annee?: number;
   trimestres?: number[];
-  responsableId?: string;
+  // string | null (pas juste optionnel) : le formulaire envoie toujours les
+  // deux champs pour garantir l'exclusivité mutuelle (choisir un utilisateur
+  // système doit explicitement vider le texte externe, et inversement).
+  responsableId?: string | null;
+  responsableExterne?: string | null;
   dateDebutPrevue?: string;
   dateFinPrevue?: string;
   dateDebutReelle?: string;
@@ -123,6 +127,9 @@ Deno.serve(async (req: Request) => {
     if (body.annee !== undefined) updatePayload.annee = body.annee;
     if (body.trimestres !== undefined) updatePayload.trimestres = body.trimestres;
     if (body.responsableId !== undefined) updatePayload.responsable_id = body.responsableId;
+    if (body.responsableExterne !== undefined) {
+      updatePayload.responsable_externe = body.responsableExterne?.trim() || null;
+    }
     if (body.dateDebutPrevue !== undefined) updatePayload.date_debut_prevue = body.dateDebutPrevue;
     if (body.dateFinPrevue !== undefined) updatePayload.date_fin_prevue = body.dateFinPrevue;
     if (body.dateDebutReelle !== undefined) updatePayload.date_debut_reelle = body.dateDebutReelle;

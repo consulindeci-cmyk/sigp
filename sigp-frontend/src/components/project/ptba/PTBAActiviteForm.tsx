@@ -29,13 +29,18 @@ export interface PTBAActiviteFormPayload {
   trimestres: number[];
   wbsId?: string;
   logframeIndicatorId?: string;
-  responsableId?: string;
+  /** Toujours envoyés ensemble (l'un explicitement null quand l'autre est
+   * choisi) pour garantir l'exclusivité mutuelle utilisateur/externe. */
+  responsableId?: string | null;
+  responsableExterne?: string | null;
   dateDebutPrevue?: string;
   dateFinPrevue?: string;
   montantPrevu?: number;
   montantRealise?: number;
   tauxRealisation?: number;
 }
+
+const RESPONSABLE_EXTERNE_VALUE = '__externe__';
 
 interface PTBAActiviteFormProps {
   open: boolean;
@@ -57,7 +62,9 @@ interface FormState {
   trimestres: number[];
   wbsId: string;
   logframeIndicatorId: string;
+  responsableMode: 'user' | 'externe';
   responsableId: string;
+  responsableExterne: string;
   dateDebutPrevue: string;
   dateFinPrevue: string;
   montantPrevu: string;
@@ -69,7 +76,8 @@ function emptyForm(annee: number): FormState {
   return {
     code: '', libelle: '', description: '', statut: 'NON_DEMARRE',
     annee: String(annee), trimestres: [1], wbsId: '', logframeIndicatorId: '',
-    responsableId: '', dateDebutPrevue: '', dateFinPrevue: '',
+    responsableMode: 'user', responsableId: '', responsableExterne: '',
+    dateDebutPrevue: '', dateFinPrevue: '',
     montantPrevu: '', montantRealise: '', tauxRealisation: '',
   };
 }
@@ -86,7 +94,9 @@ function toFormState(annee: number, initialData?: PtbaActiviteDto | null): FormS
     trimestres: initialData.trimestres,
     wbsId: initialData.wbsId ?? '',
     logframeIndicatorId: initialData.logframeIndicatorId ?? '',
+    responsableMode: initialData.responsableExterne ? 'externe' : 'user',
     responsableId: initialData.responsableId ?? '',
+    responsableExterne: initialData.responsableExterne ?? '',
     dateDebutPrevue: initialData.dateDebutPrevue ?? '',
     dateFinPrevue: initialData.dateFinPrevue ?? '',
     montantPrevu: initialData.montantPrevu != null ? String(initialData.montantPrevu) : '',
@@ -145,7 +155,10 @@ export function PTBAActiviteForm({
       trimestres: formData.trimestres,
       wbsId: formData.wbsId || undefined,
       logframeIndicatorId: formData.logframeIndicatorId || undefined,
-      responsableId: formData.responsableId || undefined,
+      // Toujours les deux, explicitement — passer d'un mode à l'autre doit
+      // vider l'ancien choix, pas juste omettre le nouveau.
+      responsableId: formData.responsableMode === 'user' ? (formData.responsableId || null) : null,
+      responsableExterne: formData.responsableMode === 'externe' ? (formData.responsableExterne.trim() || null) : null,
       dateDebutPrevue: formData.dateDebutPrevue || undefined,
       dateFinPrevue: formData.dateFinPrevue || undefined,
       montantPrevu: formData.montantPrevu.trim() === '' ? undefined : Number(formData.montantPrevu),
@@ -257,16 +270,35 @@ export function PTBAActiviteForm({
                 )}
                 {field(
                   'Responsable',
-                  <Select
-                    value={formData.responsableId}
-                    onChange={e => setFormData(d => ({ ...d, responsableId: e.target.value }))}
-                    disabled={isLoadingMembers}
-                  >
-                    <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
-                    {orgMembers.map(m => (
-                      <option key={m.id} value={m.id}>{m.displayName}</option>
-                    ))}
-                  </Select>
+                  <>
+                    <Select
+                      value={formData.responsableMode === 'externe' ? RESPONSABLE_EXTERNE_VALUE : formData.responsableId}
+                      onChange={e => {
+                        const value = e.target.value;
+                        if (value === RESPONSABLE_EXTERNE_VALUE) {
+                          setFormData(d => ({ ...d, responsableMode: 'externe' }));
+                        } else {
+                          setFormData(d => ({ ...d, responsableMode: 'user', responsableId: value }));
+                        }
+                      }}
+                      disabled={isLoadingMembers}
+                    >
+                      <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
+                      {orgMembers.map(m => (
+                        <option key={m.id} value={m.id}>{m.displayName}</option>
+                      ))}
+                      <option value={RESPONSABLE_EXTERNE_VALUE}>Externe / texte libre…</option>
+                    </Select>
+                    {formData.responsableMode === 'externe' && (
+                      <Input
+                        className="mt-2"
+                        value={formData.responsableExterne}
+                        onChange={e => setFormData(d => ({ ...d, responsableExterne: e.target.value }))}
+                        placeholder="Ex: Entreprise de construction XYZ, Fournisseur Équipement..."
+                        autoFocus
+                      />
+                    )}
+                  </>
                 )}
               </div>
             </section>

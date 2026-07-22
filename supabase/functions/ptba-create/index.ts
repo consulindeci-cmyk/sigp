@@ -15,6 +15,9 @@ interface CreatePtbaActiviteBody {
   wbsId?: string;
   logframeIndicatorId?: string;
   responsableId?: string;
+  // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
+  // — mutuellement exclusif avec responsableId côté formulaire.
+  responsableExterne?: string;
   dateDebutPrevue?: string;
   dateFinPrevue?: string;
   dateDebutReelle?: string;
@@ -130,6 +133,7 @@ Deno.serve(async (req: Request) => {
         annee: body.annee,
         trimestres: body.trimestres,
         responsable_id: body.responsableId ?? null,
+        responsable_externe: body.responsableExterne?.trim() || null,
         date_debut_prevue: body.dateDebutPrevue ?? null,
         date_fin_prevue: body.dateFinPrevue ?? null,
         date_debut_reelle: body.dateDebutReelle ?? null,

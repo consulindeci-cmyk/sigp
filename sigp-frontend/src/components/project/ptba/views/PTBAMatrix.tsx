@@ -156,7 +156,7 @@ const PTBAMatrixRow = memo(({
 
       {/* Info columns */}
       <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
-        {(ligne.responsable_id && responsableLabels[ligne.responsable_id]) || 'Non assigné'}
+        {ligne.responsable_externe || (ligne.responsable_id && responsableLabels[ligne.responsable_id]) || 'Non assigné'}
       </td>
       <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
         {ligne.bailleur_id || '-'}
