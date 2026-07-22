@@ -462,6 +462,11 @@ export function useCreateProjectWizard() {
           await invokeEdgeFunction('logframe-objectives-create', {
             projectId,
             niveau: 'OBJECTIF_GLOBAL',
+            // niveauFe est le niveau réel côté frontend (cf. useLogframe.ts,
+            // FE_TO_BE) — IMPACT est le seul niveau qui compresse sur
+            // OBJECTIF_GLOBAL ; sans lui, logframe-objectives-create rejette
+            // la requête ("niveauFe est obligatoire").
+            niveauFe: 'IMPACT',
             code: 'OG-1',
             libelle: payload.objectifGlobalLibelle.trim(),
           })
