@@ -322,8 +322,13 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
       responsableId?:   string | null;
       responsableExterne?: string | null;
     }) => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', { id, ...payload }),
-    onSuccess: () => {
+    onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ptbaKeys.list(projectId, annee) });
+      // usePtbaActivite(id) (préremplissage du formulaire d'édition) a sa
+      // propre clé de cache, distincte de ptbaKeys.list — sans ceci, rouvrir
+      // immédiatement l'édition de la même activité réaffichait les valeurs
+      // d'avant la modification (cf. audit PTBA, cache non invalidé).
+      qc.invalidateQueries({ queryKey: ptbaKeys.activite(id) });
       qc.invalidateQueries({ queryKey: dashboardKeys.global() });
       // useTasks (Calendrier/Gantt de PTBAPage) lit la même table via une clé
       // de cache distincte ('tasks', pas 'ptba') — sans ceci, ces deux vues

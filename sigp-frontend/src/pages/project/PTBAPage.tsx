@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/layout/PageHeader';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText, Calendar, ListTree, CheckCircle2, AlertCircle,
@@ -147,7 +147,7 @@ function HeatmapWidget({ ptba }: { ptba: PTBA }) {
 // Matrix ribbon toolbar
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MatrixRibbon({ ptba, canManage, onNewActivite }: { ptba: PTBA; canManage: boolean; onNewActivite: () => void }) {
+function MatrixRibbon({ ptba, canManage, onNewActivite, wbsLabels }: { ptba: PTBA; canManage: boolean; onNewActivite: () => void; wbsLabels: Record<string, string> }) {
   function handleExportXlsx() {
     const lignes = ptba.lignes ?? [];
     const HEADERS = [
@@ -159,7 +159,9 @@ function MatrixRibbon({ ptba, canManage, onNewActivite }: { ptba: PTBA; canManag
       'Engagé', 'Décaissé', 'Progression %',
     ];
     const rows = lignes.map(l => [
-      l.activite_nom, l.wbs_id, l.bailleur_id ?? '', l.montant_total,
+      // Code WBS lisible (ex: "1.1"), pas l'UUID brut — cohérent avec la
+      // colonne "Code WBS" affichée à l'écran dans la Matrice (cf. audit).
+      l.activite_nom, (l.wbs_id && wbsLabels[l.wbs_id]) || l.wbs_id, l.bailleur_id ?? '', l.montant_total,
       l.q1_montant, l.m1_montant, l.m2_montant, l.m3_montant,
       l.q2_montant, l.m4_montant, l.m5_montant, l.m6_montant,
       l.q3_montant, l.m7_montant, l.m8_montant, l.m9_montant,
@@ -200,16 +202,6 @@ function MatrixRibbon({ ptba, canManage, onNewActivite }: { ptba: PTBA; canManag
         </Button>
       )}
       <div className="w-px h-5 bg-border mx-0.5" />
-      <Button variant="outline" size="sm" disabled className="text-xs h-7 px-2.5">
-        Édition Multiple (Bulk)
-      </Button>
-      <Button variant="outline" size="sm" disabled className="text-xs h-7 px-2.5">
-        Lissage Auto
-      </Button>
-      <Button variant="outline" size="sm" disabled className="text-xs h-7 px-2.5">
-        Copier Trim.
-      </Button>
-      <div className="w-px h-5 bg-border mx-0.5" />
       <Button
         variant="outline"
         size="sm"
@@ -233,7 +225,6 @@ export default function PTBAPage() {
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
   const [annee, setAnnee] = useState<number>(new Date().getFullYear());
-  const [versionSelectionnee, setVersionSelectionnee] = useState<string>('latest');
 
   const { data: ptbaResponse, isLoading, error } = usePTBA(resolvedProjectId, annee);
 
@@ -248,13 +239,9 @@ export default function PTBAPage() {
   const canEditPtba = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
   const canDeletePtba = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
-  const [localPtba, setLocalPtba] = useState<PTBA | null>(null);
-
-  useEffect(() => {
-    if (ptbaResponse?.data) setLocalPtba(ptbaResponse.data);
-  }, [ptbaResponse?.data]);
-
-  const ptba = localPtba;
+  // La Matrice est en lecture seule (cf. audit PTBA) : plus besoin de miroir
+  // d'état local ici, `ptba` reflète directement les données du serveur.
+  const ptba = ptbaResponse?.data ?? null;
 
   // ── CRUD activité (formulaire réel — cf. audit Cadre Logique/PTBA :
   // l'édition inline de la matrice ne persiste rien, aucune UI n'existait
@@ -308,7 +295,7 @@ export default function PTBAPage() {
 
   const handleActiviteFormSubmit = (payload: PTBAActiviteFormPayload) => {
     setActiviteFormError(null);
-    const onSuccess = () => setIsActiviteFormOpen(false);
+    const onSuccess = () => { setIsActiviteFormOpen(false); setEditingActiviteId(null); };
     const onError = (err: unknown) => setActiviteFormError(extractErrorMessage(err));
     if (editingActiviteId) {
       const { code: _code, ...updatePayload } = payload;
@@ -370,26 +357,6 @@ export default function PTBAPage() {
             {ptba && renderStatusBadge(ptba.statut)}
           </div>
 
-          <div className="w-px h-4 bg-border hidden sm:block" />
-
-          <Select
-            wrapperClassName="w-auto"
-            className="h-8 text-xs"
-            value={versionSelectionnee}
-            onChange={e => setVersionSelectionnee(e.target.value)}
-            aria-label="Sélectionner la version PTBA"
-          >
-            <option value="latest">{ptba?.nom_version || 'Version Actuelle'} (Active)</option>
-            <option value="v1.0">PTBA {annee} v1.0</option>
-          </Select>
-
-          <div className="w-px h-4 bg-border hidden sm:block" />
-
-          <p className="text-xs text-muted-foreground hidden sm:block">
-            Resp: <span className="font-semibold text-foreground">
-              {ptba?.cree_par || '—'}
-            </span>
-          </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -492,11 +459,10 @@ export default function PTBAPage() {
             {/* Matrix */}
             <TabsContent value="matrix" className="flex-1 min-h-0 overflow-hidden mt-0">
               <div className="flex flex-col h-full">
-                <MatrixRibbon ptba={ptba} canManage={canEditPtba} onNewActivite={handleNewActivite} />
+                <MatrixRibbon ptba={ptba} canManage={canEditPtba} onNewActivite={handleNewActivite} wbsLabels={wbsLabels} />
                 <div className="flex-1 overflow-hidden">
                   <PTBAMatrix
                     ptba={ptba}
-                    onUpdatePTBA={setLocalPtba}
                     canEdit={canEditPtba}
                     canDelete={canDeletePtba}
                     onEditLigne={handleEditActivite}

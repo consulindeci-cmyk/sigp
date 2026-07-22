@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo, Fragment, type KeyboardEvent } from 'react';
+import { useState, useMemo, memo, Fragment } from 'react';
 import { ChevronRight, ChevronDown, Activity, Pencil, Trash2, Layers, AlertTriangle } from 'lucide-react';
 import type { PTBA, PTBALigne, WBS } from '@/types';
 import { formatMoney } from '@/utils/format';
@@ -7,10 +7,14 @@ import { Badge } from '@/components/ui/data-display/Badge';
 // ============================================================================
 // SOUS-COMPOSANT : Ligne de Matrice
 // ============================================================================
+// Purement lecture seule : la Matrice n'est plus un point de saisie (cf.
+// audit PTBA — l'ancienne édition inline des cellules mensuelles ne
+// persistait jamais en base, `usePTBA` resynthétisant systématiquement les
+// montants depuis montant_prevu/trimestres au rechargement). La seule porte
+// d'entrée pour modifier une activité est le bouton Crayon → PTBAActiviteForm.
 interface PTBAMatrixRowProps {
-  initialLigne: PTBALigne;
+  ligne: PTBALigne;
   expandedQuarters: Record<string, boolean>;
-  onLigneChange: (updatedLigne: PTBALigne) => void;
   canEdit: boolean;
   canDelete: boolean;
   onEditLigne: (id: string) => void;
@@ -26,99 +30,15 @@ interface PTBAMatrixRowProps {
 }
 
 const PTBAMatrixRow = memo(({
-  initialLigne, expandedQuarters, onLigneChange, canEdit, canDelete,
+  ligne, expandedQuarters, canEdit, canDelete,
   onEditLigne, onDeleteLigne, wbsLabels, responsableLabels, indented = false,
 }: PTBAMatrixRowProps) => {
-  const [ligne, setLigne] = useState<PTBALigne>(initialLigne);
-  const [editingCell, setEditingCell] = useState<string | null>(null);
-  const [tempValue, setTempValue] = useState<string>('');
-  const [cellError, setCellError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setLigne(initialLigne);
-  }, [initialLigne]);
-
-  const handleCellClick = (monthKey: keyof PTBALigne) => {
-    // VIEWER/AUDITEUR (lecture seule) : la cellule ne bascule jamais en mode
-    // édition — évite l'illusion d'un champ modifiable pour un rôle qui ne
-    // peut de toute façon rien persister (cf. audit Rôles).
-    if (!canEdit) return;
-    setEditingCell(monthKey);
-    setTempValue(String(ligne[monthKey] || 0));
-    setCellError(null);
-  };
-
-  const handleBlur = (monthKey: keyof PTBALigne) => {
-    commitChange(monthKey);
-  };
-
-  const handleKeyDown = (e: KeyboardEvent, monthKey: keyof PTBALigne) => {
-    if (e.key === 'Enter') commitChange(monthKey);
-    if (e.key === 'Escape') {
-      setEditingCell(null);
-      setCellError(null);
-    }
-  };
-
-  const commitChange = (monthKey: keyof PTBALigne) => {
-    const val = parseFloat(tempValue);
-    if (isNaN(val) || val < 0) {
-      setCellError('Montant invalide');
-      return;
-    }
-
-    const updated = { ...ligne, [monthKey]: val };
-
-    updated.q1_montant = updated.m1_montant + updated.m2_montant + updated.m3_montant;
-    updated.q2_montant = updated.m4_montant + updated.m5_montant + updated.m6_montant;
-    updated.q3_montant = updated.m7_montant + updated.m8_montant + updated.m9_montant;
-    updated.q4_montant = updated.m10_montant + updated.m11_montant + updated.m12_montant;
-    updated.montant_total = updated.q1_montant + updated.q2_montant + updated.q3_montant + updated.q4_montant;
-
-    setLigne(updated);
-    setEditingCell(null);
-    setCellError(null);
-    onLigneChange(updated);
-  };
-
-  const renderEditableMonth = (mKey: keyof PTBALigne) => {
-    const isEditing = editingCell === mKey;
-    return (
-      <td
-        key={mKey}
-        className="p-0 bg-background text-right relative font-mono text-xs"
-        onClick={() => !isEditing && handleCellClick(mKey)}
-      >
-        {isEditing ? (
-          <div className="absolute inset-0 z-50 bg-card flex items-center px-2 border-2 border-primary shadow-sm">
-            <input
-              autoFocus
-              type="number"
-              value={tempValue}
-              onChange={e => setTempValue(e.target.value)}
-              onBlur={() => handleBlur(mKey)}
-              onKeyDown={e => handleKeyDown(e, mKey)}
-              className="w-full border-none outline-none text-right bg-transparent text-sm font-semibold text-foreground font-mono"
-              aria-label="Montant mensuel"
-            />
-            {cellError && (
-              <div className="absolute -top-5 right-0 bg-destructive text-destructive-foreground text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10">
-                {cellError}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div
-            className={`px-3 py-1.5 flex items-center justify-end text-muted-foreground min-h-[32px] transition-colors ${
-              canEdit ? 'cursor-text hover:bg-muted/30 hover:text-foreground' : 'cursor-default'
-            }`}
-          >
-            {formatMoney(ligne[mKey] as number)}
-          </div>
-        )}
-      </td>
-    );
-  };
+  const renderMonth = (mKey: keyof PTBALigne) => (
+    <td key={mKey} className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground bg-background">
+      {formatMoney(ligne[mKey] as number)}
+    </td>
+  );
 
   const renderQuarterGroup = (q: string, qKey: keyof PTBALigne, mKeys: (keyof PTBALigne)[]) => {
     const isExpanded = expandedQuarters[q];
@@ -127,7 +47,7 @@ const PTBAMatrixRow = memo(({
         <td className={`px-3 py-1.5 font-semibold border-l border-border text-right font-mono text-xs ${isExpanded ? 'bg-primary/10 text-primary' : 'text-foreground'}`}>
           {formatMoney(ligne[qKey] as number)}
         </td>
-        {isExpanded && mKeys.map(mKey => renderEditableMonth(mKey))}
+        {isExpanded && mKeys.map(mKey => renderMonth(mKey))}
       </Fragment>
     );
   };
@@ -177,9 +97,9 @@ const PTBAMatrixRow = memo(({
         <div className="flex items-center justify-end gap-0.5">
           {canEdit && (
             <button
-              onClick={() => onEditLigne(initialLigne.id)}
+              onClick={() => onEditLigne(ligne.id)}
               title="Modifier l'activité"
-              aria-label={`Modifier ${initialLigne.activite_nom}`}
+              aria-label={`Modifier ${ligne.activite_nom}`}
               className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Pencil size={14} />
@@ -187,9 +107,9 @@ const PTBAMatrixRow = memo(({
           )}
           {canDelete && (
             <button
-              onClick={() => onDeleteLigne(initialLigne.id)}
+              onClick={() => onDeleteLigne(ligne.id)}
               title="Supprimer l'activité"
-              aria-label={`Supprimer ${initialLigne.activite_nom}`}
+              aria-label={`Supprimer ${ligne.activite_nom}`}
               className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Trash2 size={14} />
@@ -302,8 +222,7 @@ PTBAComponentSubtotalRow.displayName = 'PTBAComponentSubtotalRow';
 // ============================================================================
 interface PTBAMatrixProps {
   ptba: PTBA;
-  onUpdatePTBA?: (updatedPTBA: PTBA) => void;
-  /** Autorise la saisie inline des cellules mensuelles (cf. audit Rôles — VIEWER/AUDITEUR en lecture seule). */
+  /** Affiche les boutons Modifier/Supprimer (cf. audit Rôles — VIEWER/AUDITEUR n'y ont pas accès). */
   canEdit?: boolean;
   canDelete?: boolean;
   onEditLigne?: (id: string) => void;
@@ -317,7 +236,7 @@ interface PTBAMatrixProps {
 }
 
 export default function PTBAMatrix({
-  ptba, onUpdatePTBA, canEdit = false, canDelete = false,
+  ptba, canEdit = false, canDelete = false,
   onEditLigne, onDeleteLigne, wbsLabels = {}, responsableLabels = {}, wbsNodes = [],
 }: PTBAMatrixProps) {
   const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({
@@ -364,13 +283,6 @@ export default function PTBAMatrix({
 
   const toggleQuarter = (q: string) => {
     setExpandedQuarters(prev => ({ ...prev, [q]: !prev[q] }));
-  };
-
-  const handleLigneChange = (updatedLigne: PTBALigne) => {
-    if (!ptba.lignes) return;
-    const newLignes = ptba.lignes.map(l => l.id === updatedLigne.id ? updatedLigne : l);
-    const newTotal = newLignes.reduce((acc, curr) => acc + curr.montant_total, 0);
-    onUpdatePTBA?.({ ...ptba, lignes: newLignes, budget_total: newTotal });
   };
 
   const renderQuarterHeader = (q: string, months: string[], monthRange: string) => {
@@ -457,9 +369,8 @@ export default function PTBAMatrix({
               {group.lignes.map(ligne => (
                 <PTBAMatrixRow
                   key={ligne.id}
-                  initialLigne={ligne}
+                  ligne={ligne}
                   expandedQuarters={expandedQuarters}
-                  onLigneChange={handleLigneChange}
                   canEdit={canEdit}
                   canDelete={canDelete}
                   onEditLigne={onEditLigne ?? (() => {})}
@@ -482,9 +393,8 @@ export default function PTBAMatrix({
               {unassigned.map(ligne => (
                 <PTBAMatrixRow
                   key={ligne.id}
-                  initialLigne={ligne}
+                  ligne={ligne}
                   expandedQuarters={expandedQuarters}
-                  onLigneChange={handleLigneChange}
                   canEdit={canEdit}
                   canDelete={canDelete}
                   onEditLigne={onEditLigne ?? (() => {})}
