@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
 import { Textarea } from '@/components/ui/forms/Textarea';
+import { Checkbox } from '@/components/ui/forms/Checkbox';
 import {
   Modal,
   ModalContent,
@@ -23,7 +24,9 @@ export interface PTBAActiviteFormPayload {
   description?: string;
   statut: string;
   annee: number;
-  trimestre: number;
+  /** Une activité peut être cochée sur plusieurs trimestres (ex: Q1+Q2+Q3) —
+   * le montant est alors ventilé également sur tous les mois concernés. */
+  trimestres: number[];
   wbsId?: string;
   logframeIndicatorId?: string;
   responsableId?: string;
@@ -51,7 +54,7 @@ interface FormState {
   description: string;
   statut: string;
   annee: string;
-  trimestre: string;
+  trimestres: number[];
   wbsId: string;
   logframeIndicatorId: string;
   responsableId: string;
@@ -65,7 +68,7 @@ interface FormState {
 function emptyForm(annee: number): FormState {
   return {
     code: '', libelle: '', description: '', statut: 'NON_DEMARRE',
-    annee: String(annee), trimestre: '1', wbsId: '', logframeIndicatorId: '',
+    annee: String(annee), trimestres: [1], wbsId: '', logframeIndicatorId: '',
     responsableId: '', dateDebutPrevue: '', dateFinPrevue: '',
     montantPrevu: '', montantRealise: '', tauxRealisation: '',
   };
@@ -80,7 +83,7 @@ function toFormState(annee: number, initialData?: PtbaActiviteDto | null): FormS
     description: initialData.description ?? '',
     statut: initialData.statut,
     annee: String(initialData.annee),
-    trimestre: String(initialData.trimestre),
+    trimestres: initialData.trimestres,
     wbsId: initialData.wbsId ?? '',
     logframeIndicatorId: initialData.logframeIndicatorId ?? '',
     responsableId: initialData.responsableId ?? '',
@@ -121,15 +124,25 @@ export function PTBAActiviteForm({
     if (open) setFormData(toFormState(annee, initialData));
   }, [open, annee, initialData]);
 
+  const toggleTrimestre = (t: number) => {
+    setFormData(d => ({
+      ...d,
+      trimestres: d.trimestres.includes(t)
+        ? d.trimestres.filter(x => x !== t)
+        : [...d.trimestres, t].sort((a, b) => a - b),
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.trimestres.length === 0) return;
     onSubmit({
       code: isEditing ? undefined : formData.code.trim(),
       libelle: formData.libelle.trim(),
       description: formData.description.trim() || undefined,
       statut: formData.statut,
       annee: Number(formData.annee),
-      trimestre: Number(formData.trimestre),
+      trimestres: formData.trimestres,
       wbsId: formData.wbsId || undefined,
       logframeIndicatorId: formData.logframeIndicatorId || undefined,
       responsableId: formData.responsableId || undefined,
@@ -203,17 +216,31 @@ export function PTBAActiviteForm({
                   />
                 )}
                 {field(
-                  'Trimestre *',
-                  <Select
-                    required
-                    value={formData.trimestre}
-                    onChange={e => setFormData(d => ({ ...d, trimestre: e.target.value }))}
-                  >
-                    <option value="1">T1</option>
-                    <option value="2">T2</option>
-                    <option value="3">T3</option>
-                    <option value="4">T4</option>
-                  </Select>
+                  'Trimestre(s) *',
+                  <>
+                    <div className="flex items-center gap-4 h-9">
+                      {[1, 2, 3, 4].map(t => (
+                        <label key={t} className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <Checkbox
+                            checked={formData.trimestres.includes(t)}
+                            onCheckedChange={() => toggleTrimestre(t)}
+                          />
+                          <span className="text-sm text-foreground">T{t}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {formData.trimestres.length === 0 && (
+                      <span className="flex items-center gap-1.5 text-xs text-destructive mt-0.5">
+                        <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        Sélectionnez au moins un trimestre.
+                      </span>
+                    )}
+                    {formData.trimestres.length > 1 && (
+                      <span className="text-[11px] text-muted-foreground mt-0.5">
+                        Le montant prévu sera réparti également sur les {formData.trimestres.length} trimestres cochés.
+                      </span>
+                    )}
+                  </>
                 )}
                 {field(
                   'Statut',
@@ -346,7 +373,7 @@ export function PTBAActiviteForm({
           <ModalClose asChild>
             <Button variant="outline" type="button">Annuler</Button>
           </ModalClose>
-          <Button variant="default" type="submit" form="ptba-activite-form" disabled={isSaving}>
+          <Button variant="default" type="submit" form="ptba-activite-form" disabled={isSaving || formData.trimestres.length === 0}>
             {isSaving ? 'Enregistrement...' : isEditing ? 'Enregistrer les modifications' : "Créer l'activité"}
           </Button>
         </ModalFooter>

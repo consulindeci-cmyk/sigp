@@ -166,7 +166,7 @@ export function useCreateTask(projectId: string) {
         dateFinPrevue: dto.date_fin ?? undefined,
         montantPrevu: dto.cout_prevu ? Number(dto.cout_prevu) : undefined,
         statut: dto.statut ? feStatutToBe(dto.statut) : undefined,
-        annee, trimestre,
+        annee, trimestres: [trimestre],
       });
       // Nom du responsable non résolu ici (une seule ligne, pas besoin d'un
       // aller-retour dédié) — la liste se rafraîchit de toute façon via

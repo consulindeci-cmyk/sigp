@@ -16,7 +16,9 @@ interface PtbaActiviteRow {
   description: string | null;
   statut: string; // NON_DEMARRE | EN_COURS | TERMINE | ANNULE | EN_RETARD
   annee: number;
-  trimestre: number;
+  // Une activité peut s'étaler sur plusieurs trimestres (ex: Q1+Q2+Q3, modèle
+  // Excel d'origine) — trimestres integer[] en base, jamais vide.
+  trimestres: number[];
   date_debut_prevue: string | null;
   date_fin_prevue: string | null;
   date_debut_reelle: string | null;
@@ -39,7 +41,7 @@ export interface PtbaActiviteDto {
   description: string | null;
   statut: string;
   annee: number;
-  trimestre: number;
+  trimestres: number[];
   dateDebutPrevue: string | null;
   dateFinPrevue: string | null;
   dateDebutReelle: string | null;
@@ -54,7 +56,7 @@ export interface PtbaActiviteDto {
 
 const PTBA_ACTIVITE_SELECT = `
   id, project_id, wbs_id, logframe_ref_id, code, libelle, description, statut,
-  annee, trimestre, date_debut_prevue, date_fin_prevue, date_debut_reelle,
+  annee, trimestres, date_debut_prevue, date_fin_prevue, date_debut_reelle,
   date_fin_reelle, montant_prevu, montant_realise, taux_realisation,
   responsable_id, created_at, updated_at
 `;
@@ -70,7 +72,7 @@ function rowToDto(row: PtbaActiviteRow): PtbaActiviteDto {
     description: row.description,
     statut: row.statut,
     annee: row.annee,
-    trimestre: row.trimestre,
+    trimestres: row.trimestres,
     dateDebutPrevue: row.date_debut_prevue,
     dateFinPrevue: row.date_fin_prevue,
     dateDebutReelle: row.date_debut_reelle,
@@ -110,16 +112,25 @@ const ALL_MONTH_KEYS: MonthKey[] = [
   'm10_montant','m11_montant','m12_montant',
 ];
 
-function distributeMonthly(montant: number, trimestre: number): Record<MonthKey, number> {
-  const base = Math.floor(montant / 3);
-  const extra = montant - base * 2; // last month of quarter gets the remainder
+// Répartit le montant total également sur TOUS les mois de TOUS les
+// trimestres cochés (ex: Q1+Q2+Q3 → 9 mois se partagent le montant), pas
+// seulement sur les 3 mois d'un trimestre unique — cf. modèle Excel d'origine
+// où une même activité peut être cochée sur plusieurs trimestres.
+function distributeMonthly(montant: number, trimestres: number[]): Record<MonthKey, number> {
   const result = {} as Record<MonthKey, number>;
   ALL_MONTH_KEYS.forEach(k => (result[k] = 0));
-  const startMonth = (trimestre - 1) * 3; // 0-indexed offset
-  for (let i = 0; i < 3; i++) {
-    const key = ALL_MONTH_KEYS[startMonth + i];
-    result[key] = i < 2 ? base : extra;
+  if (trimestres.length === 0) return result;
+
+  const monthKeys: MonthKey[] = [];
+  for (const t of [...trimestres].sort((a, b) => a - b)) {
+    const startMonth = (t - 1) * 3;
+    for (let i = 0; i < 3; i++) monthKeys.push(ALL_MONTH_KEYS[startMonth + i]);
   }
+
+  const base = Math.floor(montant / monthKeys.length);
+  const lastKey = monthKeys[monthKeys.length - 1];
+  monthKeys.forEach(key => (result[key] = base));
+  result[lastKey] = montant - base * (monthKeys.length - 1); // reste sur le dernier mois chronologique
   return result;
 }
 
@@ -129,15 +140,17 @@ type CibleKey =
   | 'm7_cible' | 'm8_cible'  | 'm9_cible'
   | 'm10_cible'| 'm11_cible' | 'm12_cible';
 
-function distributeCibles(trimestre: number): Record<CibleKey, boolean> {
+// Un point cible (cible physique) par trimestre coché, sur son dernier mois.
+function distributeCibles(trimestres: number[]): Record<CibleKey, boolean> {
   const cibles: Record<CibleKey, boolean> = {
     m1_cible: false,  m2_cible: false,  m3_cible: false,
     m4_cible: false,  m5_cible: false,  m6_cible: false,
     m7_cible: false,  m8_cible: false,  m9_cible: false,
     m10_cible: false, m11_cible: false, m12_cible: false,
   };
-  const lastMonthOfQuarter = `m${trimestre * 3}_cible` as CibleKey;
-  cibles[lastMonthOfQuarter] = true;
+  for (const t of trimestres) {
+    cibles[`m${t * 3}_cible` as CibleKey] = true;
+  }
   return cibles;
 }
 
@@ -145,8 +158,8 @@ function distributeCibles(trimestre: number): Record<CibleKey, boolean> {
 
 function adaptActivite(dto: PtbaActiviteDto, ptbaId: string): PTBALigne {
   const montant = dto.montantPrevu ?? 0;
-  const monthly = distributeMonthly(montant, dto.trimestre);
-  const cibles  = distributeCibles(dto.trimestre);
+  const monthly = distributeMonthly(montant, dto.trimestres);
+  const cibles  = distributeCibles(dto.trimestres);
 
   return {
     id:              dto.id,
@@ -256,7 +269,7 @@ export function useCreatePtbaActivite(projectId: string, annee: number) {
       code:       string;
       libelle:    string;
       annee:      number;
-      trimestre:  number;
+      trimestres: number[];
       wbsId?:           string;
       logframeIndicatorId?: string;
       responsableId?:   string;
@@ -281,7 +294,7 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
       libelle?:        string;
       description?:    string;
       statut?:         string;
-      trimestre?:      number;
+      trimestres?:     number[];
       montantPrevu?:   number;
       montantRealise?: number;
       tauxRealisation?: number;
@@ -290,6 +303,7 @@ export function useUpdatePtbaActivite(projectId: string, annee: number) {
       dateDebutReelle?: string;
       dateFinReelle?:   string;
       wbsId?:           string;
+      logframeIndicatorId?: string;
       responsableId?:   string;
     }) => invokeEdgeFunction<{ data: PtbaActiviteRow }>('ptba-update', { id, ...payload }),
     onSuccess: () => {

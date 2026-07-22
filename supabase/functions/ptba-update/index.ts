@@ -9,7 +9,7 @@ interface UpdatePtbaActiviteBody {
   description?: string;
   statut?: 'NON_DEMARRE' | 'EN_COURS' | 'TERMINE' | 'ANNULE' | 'EN_RETARD';
   annee?: number;
-  trimestre?: number;
+  trimestres?: number[];
   responsableId?: string;
   dateDebutPrevue?: string;
   dateFinPrevue?: string;
@@ -30,8 +30,16 @@ Deno.serve(async (req: Request) => {
 
     const body: UpdatePtbaActiviteBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
-    if (body.trimestre !== undefined && (body.trimestre < 1 || body.trimestre > 4)) {
-      return json({ error: 'trimestre doit être compris entre 1 et 4' }, 400);
+    if (body.trimestres !== undefined) {
+      if (!Array.isArray(body.trimestres) || body.trimestres.length === 0) {
+        return json({ error: 'trimestres doit contenir au moins un trimestre' }, 400);
+      }
+      if (body.trimestres.some(t => !Number.isInteger(t) || t < 1 || t > 4)) {
+        return json({ error: 'Chaque trimestre doit être un entier compris entre 1 et 4' }, 400);
+      }
+      if (new Set(body.trimestres).size !== body.trimestres.length) {
+        return json({ error: 'Un trimestre ne peut pas être sélectionné plusieurs fois' }, 400);
+      }
     }
     // taux_realisation alimente directement calculate_project_evm() (EV du
     // projet entier) — une valeur hors [0,100] fausse silencieusement tout
@@ -113,7 +121,7 @@ Deno.serve(async (req: Request) => {
     if (body.description !== undefined) updatePayload.description = body.description?.trim() ?? null;
     if (body.statut !== undefined) updatePayload.statut = body.statut;
     if (body.annee !== undefined) updatePayload.annee = body.annee;
-    if (body.trimestre !== undefined) updatePayload.trimestre = body.trimestre;
+    if (body.trimestres !== undefined) updatePayload.trimestres = body.trimestres;
     if (body.responsableId !== undefined) updatePayload.responsable_id = body.responsableId;
     if (body.dateDebutPrevue !== undefined) updatePayload.date_debut_prevue = body.dateDebutPrevue;
     if (body.dateFinPrevue !== undefined) updatePayload.date_fin_prevue = body.dateFinPrevue;

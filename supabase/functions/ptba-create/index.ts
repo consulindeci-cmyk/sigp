@@ -8,7 +8,10 @@ interface CreatePtbaActiviteBody {
   description?: string;
   statut?: 'NON_DEMARRE' | 'EN_COURS' | 'TERMINE' | 'ANNULE' | 'EN_RETARD';
   annee: number;
-  trimestre: number;
+  // Une activité peut s'étaler sur plusieurs trimestres (ex: Q1+Q2+Q3) — cf.
+  // modèle Excel d'origine. Le montant total est ventilé également sur tous
+  // les trimestres cochés (côté frontend, cf. usePTBA.ts distributeMonthly).
+  trimestres: number[];
   wbsId?: string;
   logframeIndicatorId?: string;
   responsableId?: string;
@@ -34,9 +37,14 @@ Deno.serve(async (req: Request) => {
     if (!body.code?.trim()) return json({ error: 'code est obligatoire' }, 400);
     if (!body.libelle?.trim()) return json({ error: 'libelle est obligatoire' }, 400);
     if (body.annee === undefined) return json({ error: 'annee est obligatoire' }, 400);
-    if (body.trimestre === undefined) return json({ error: 'trimestre est obligatoire' }, 400);
-    if (body.trimestre < 1 || body.trimestre > 4) {
-      return json({ error: 'trimestre doit être compris entre 1 et 4' }, 400);
+    if (!Array.isArray(body.trimestres) || body.trimestres.length === 0) {
+      return json({ error: 'trimestres est obligatoire (au moins un trimestre)' }, 400);
+    }
+    if (body.trimestres.some(t => !Number.isInteger(t) || t < 1 || t > 4)) {
+      return json({ error: 'Chaque trimestre doit être un entier compris entre 1 et 4' }, 400);
+    }
+    if (new Set(body.trimestres).size !== body.trimestres.length) {
+      return json({ error: 'Un trimestre ne peut pas être sélectionné plusieurs fois' }, 400);
     }
     // taux_realisation alimente directement calculate_project_evm() (EV du
     // projet entier) — une valeur hors [0,100] fausse silencieusement tout
@@ -120,7 +128,7 @@ Deno.serve(async (req: Request) => {
         description: body.description?.trim() ?? null,
         statut: body.statut ?? 'NON_DEMARRE',
         annee: body.annee,
-        trimestre: body.trimestre,
+        trimestres: body.trimestres,
         responsable_id: body.responsableId ?? null,
         date_debut_prevue: body.dateDebutPrevue ?? null,
         date_fin_prevue: body.dateFinPrevue ?? null,
