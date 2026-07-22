@@ -251,7 +251,11 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canMana
                 </button>
               </div>
 
-              {canManage && (
+              {/* Structure à 2 niveaux uniquement (composante racine + sous-
+                  éléments) — cf. alignement WBS/Matrice PTBA : un sous-élément
+                  ne peut pas avoir son propre sous-élément (cf. wbs-create/
+                  wbs-update, qui refusent désormais cette création). */}
+              {canManage && node.niveau === 1 && (
                 <button
                   onClick={e => { e.stopPropagation(); onAddChild(node.id); }}
                   className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

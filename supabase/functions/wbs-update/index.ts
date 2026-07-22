@@ -75,6 +75,14 @@ Deno.serve(async (req: Request) => {
       if (parent.project_id !== existing.project_id) {
         return json({ error: 'Le nœud parent appartient à un autre projet' }, 409);
       }
+      // Structure à 2 niveaux uniquement (composante racine + sous-éléments) —
+      // cf. alignement WBS/Matrice PTBA : un sous-élément (niveau 2) ne peut
+      // pas avoir son propre sous-élément.
+      if (parent.niveau >= 2) {
+        return json({
+          error: "Structure limitée à 2 niveaux : composante racine + sous-éléments. Un sous-élément ne peut pas avoir son propre sous-élément.",
+        }, 409);
+      }
       niveau = parent.niveau + 1;
     }
 
