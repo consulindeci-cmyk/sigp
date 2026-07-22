@@ -220,13 +220,14 @@ export function PTBAActiviteForm({
                   true
                 )}
                 {field(
-                  'Année *',
-                  <Input
-                    required
-                    type="number"
-                    value={formData.annee}
-                    onChange={e => setFormData(d => ({ ...d, annee: e.target.value }))}
-                  />
+                  'Année',
+                  <>
+                    <Input type="number" value={formData.annee} disabled />
+                    <p className="text-[11px] text-muted-foreground">
+                      Toujours celle actuellement affichée dans le PTBA — non modifiable ici pour éviter
+                      qu'une activité ne devienne invisible dans une autre année (cf. Matrice Financière/Calendrier/Gantt).
+                    </p>
+                  </>
                 )}
                 {field(
                   'Trimestre(s) *',
@@ -238,7 +239,7 @@ export function PTBAActiviteForm({
                             checked={formData.trimestres.includes(t)}
                             onCheckedChange={() => toggleTrimestre(t)}
                           />
-                          <span className="text-sm text-foreground">T{t}</span>
+                          <span className="text-sm text-foreground">Q{t}</span>
                         </label>
                       ))}
                     </div>
@@ -295,7 +296,6 @@ export function PTBAActiviteForm({
                         value={formData.responsableExterne}
                         onChange={e => setFormData(d => ({ ...d, responsableExterne: e.target.value }))}
                         placeholder="Ex: Entreprise de construction XYZ, Fournisseur Équipement..."
-                        autoFocus
                       />
                     )}
                   </>
