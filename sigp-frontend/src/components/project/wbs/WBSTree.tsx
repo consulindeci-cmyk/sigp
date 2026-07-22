@@ -3,6 +3,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
 import type { WBS } from '@/types';
 import { flattenWBSTree } from '@/utils/tree';
+import { formatMoney } from '@/utils/format';
 import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Badge } from '@/components/ui/data-display/Badge';
 
@@ -41,16 +42,11 @@ function getStatusLabel(statut: string): string {
   }
 }
 
-const formatMoney = (amount: number = 0) =>
-  new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'XOF',
-    maximumFractionDigits: 0,
-  }).format(amount);
-
 export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canManage, canDelete, responsableLabels = {} }: WBSTreeProps) {
+  // Tri par défaut par Code WBS croissant (1, 2, 3...) — cf. audit WBS/PTBA,
+  // même comparateur numeric-aware que PTBAMatrix.tsx (formatRootCode).
   const rootNodes = useMemo(
-    () => data.filter(n => !n.parent_id).sort((a, b) => a.ordre - b.ordre),
+    () => data.filter(n => !n.parent_id).sort((a, b) => a.code_wbs.localeCompare(b.code_wbs, undefined, { numeric: true })),
     [data]
   );
   const flatItems = useMemo(() => flattenWBSTree(rootNodes, data), [rootNodes, data]);
@@ -173,7 +169,7 @@ export function WBSTree({ data, onReorder, onEdit, onDelete, onAddChild, canMana
       },
       {
         accessorKey: 'budget_alloue',
-        header: 'BUDGET (XOF)',
+        header: 'BUDGET',
         size: 180,
         meta: { align: 'right' },
         cell: ({ row }) => {

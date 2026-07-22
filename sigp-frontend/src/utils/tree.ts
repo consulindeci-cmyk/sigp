@@ -7,7 +7,9 @@ export const flattenWBSTree = (nodes: WBS[], allNodes: WBS[]): WBS[] => {
   let result: WBS[] = [];
   nodes.forEach(node => {
     result.push(node);
-    const children = allNodes.filter(n => n.parent_id === node.id).sort((a, b) => a.ordre - b.ordre);
+    const children = allNodes
+      .filter(n => n.parent_id === node.id)
+      .sort((a, b) => a.code_wbs.localeCompare(b.code_wbs, undefined, { numeric: true }));
     if (children.length > 0) {
       result = result.concat(flattenWBSTree(children, allNodes));
     }

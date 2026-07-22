@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  LayoutList, TrendingUp, Banknote, Plus, Loader2,
+  LayoutList, Banknote, Plus, Loader2,
   AlertCircle, Network, Layers, Trash2,
 } from 'lucide-react';
 import { useWBS, useUpdateWBSOrder, useCreateWBSNode, useUpdateWBSNode, useDeleteWBSNode } from '@/hooks/useWBS';
@@ -13,6 +13,7 @@ import { WBSNodeForm } from '@/components/project/wbs/WBSNodeForm';
 import type { WBS } from '@/types';
 import { Button } from '@/components/ui/forms/Button';
 import { StatCard } from '@/components/ui/data-display/StatCard';
+import { formatMoney } from '@/utils/format';
 import {
   Modal,
   ModalContent,
@@ -21,17 +22,6 @@ import {
   ModalDescription,
   ModalFooter,
 } from '@/components/ui/overlays/Modal';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-const formatMoney = (n: number) =>
-  new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'XOF',
-    maximumFractionDigits: 0,
-  }).format(n);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Loading / Error views
@@ -219,17 +209,16 @@ export default function WBSPage() {
     const sousElements = wbsItems.filter(i => !!i.parent_id).length;
     const activites = wbsItems.filter(i => !wbsItems.some(j => j.parent_id === i.id)).length;
     const niveauMax = wbsItems.length > 0 ? Math.max(...wbsItems.map(i => i.niveau || 1)) : 0;
-    const budgetTotal = wbsItems
+    // Plafond bailleur global — somme des enveloppe_cible des composantes
+    // racine (cf. Enveloppe Bailleur, WBSNodeForm), même logique que la carte
+    // "Plafond Global (Bailleur)" du module PTBA. Distinct de budget_alloue
+    // (rollup réel des activités PTBA liées), toujours visible par nœud dans
+    // la colonne Budget de l'arborescence ci-dessous.
+    const plafondGlobal = wbsItems
       .filter(i => !i.parent_id)
-      .reduce((sum, i) => sum + (i.budget_alloue || 0), 0);
-    const progressionMoyenne =
-      wbsItems.length > 0
-        ? Math.round(
-            wbsItems.reduce((sum, i) => sum + (i.progression_physique || 0), 0) / wbsItems.length
-          )
-        : 0;
+      .reduce((sum, i) => sum + (i.enveloppe_cible || 0), 0);
 
-    return { composantes, sousElements, activites, niveauMax, budgetTotal, progressionMoyenne };
+    return { composantes, sousElements, activites, niveauMax, plafondGlobal };
   }, [wbsItems]);
 
   // ── No project guard ──────────────────────────────────────────────────────
@@ -278,7 +267,7 @@ export default function WBSPage() {
       )}
 
       {/* ── KPI STRIP ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <StatCard
           title="Composantes"
           value={kpis.composantes}
@@ -308,18 +297,11 @@ export default function WBSPage() {
           description="Profondeur arbre"
         />
         <StatCard
-          title="Progression"
-          value={`${kpis.progressionMoyenne}%`}
-          icon={<TrendingUp className="h-4 w-4 text-success" />}
-          iconVariant="success"
-          description="Moyenne globale"
-        />
-        <StatCard
-          title="Budget alloué"
-          value={formatMoney(kpis.budgetTotal)}
+          title="Plafond Global Bailleur"
+          value={formatMoney(kpis.plafondGlobal)}
           icon={<Banknote className="h-4 w-4 text-warning" />}
           iconVariant="warning"
-          description="Agrégé depuis racines"
+          description="Somme des plafonds composantes"
         />
       </div>
 
