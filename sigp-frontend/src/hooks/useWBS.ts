@@ -25,11 +25,14 @@ interface WbsNodeRow {
   // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
   // — mutuellement exclusif avec responsable_id côté formulaire.
   responsable_externe: string | null;
+  // Plafond bailleur (composantes racine uniquement) — saisie manuelle
+  // réelle, distincte du rollup budget_alloue.
+  enveloppe_cible: number | null;
   date_debut: string | null;
   date_fin: string | null;
 }
 
-const WBS_SELECT = 'id, project_id, parent_id, objective_id, code, libelle, type, ordre, niveau, responsable_id, responsable_externe, date_debut, date_fin';
+const WBS_SELECT = 'id, project_id, parent_id, objective_id, code, libelle, type, ordre, niveau, responsable_id, responsable_externe, enveloppe_cible, date_debut, date_fin';
 
 // ── Ligne Supabase (colonnes utiles de `ptba_activites` pour l'agrégation) ────
 
@@ -55,6 +58,7 @@ function adaptNode(row: WbsNodeRow): WBS {
     statut: 'NON_COMMENCE',
     responsable: row.responsable_id ?? '',
     responsable_externe: row.responsable_externe ?? null,
+    enveloppe_cible: row.enveloppe_cible ?? null,
     logframe_ref_id: row.objective_id ?? null,
     date_debut_prevue: row.date_debut ?? undefined,
     date_fin_prevue: row.date_fin ?? undefined,
@@ -165,6 +169,9 @@ function buildCreatePayload(projectId: string, data: Partial<WBS>) {
     // l'exclusivité mutuelle utilisateur/externe (un seul des deux renseigné).
     responsableId: isUUID(data.responsable) ? data.responsable : null,
     responsableExterne: data.responsable_externe?.trim() || null,
+    // Composantes racine uniquement côté UI (WBSNodeForm) — undefined pour un
+    // sous-élément, où data.enveloppe_cible n'est jamais renseigné.
+    enveloppeCible: data.enveloppe_cible ?? undefined,
     ordre: data.ordre,
     dateDebut: data.date_debut_prevue || undefined,
     dateFin:   data.date_fin_prevue   || undefined,
@@ -181,6 +188,9 @@ function buildUpdatePayload(data: Partial<WBS>) {
     objectiveId:  isUUID(data.logframe_ref_id)  ? data.logframe_ref_id : undefined,
     responsableId: isUUID(data.responsable)    ? data.responsable     : null,
     responsableExterne: data.responsable_externe?.trim() || null,
+    // number | null | undefined : présent (même null, pour effacer) uniquement
+    // quand le formulaire a réellement affiché ce champ (composante racine).
+    enveloppeCible: data.enveloppe_cible,
     dateDebut: data.date_debut_prevue || undefined,
     dateFin:   data.date_fin_prevue   || undefined,
   };

@@ -177,6 +177,10 @@ export interface WBS {
   date_fin_prevue?: string;
   budget_alloue?: number;
   progression_physique?: number;
+  // Plafond bailleur pour l'ensemble de la composante (composantes racine
+  // uniquement) — saisie manuelle réelle, distincte de budget_alloue (rollup
+  // automatique en lecture seule des activités PTBA rattachées).
+  enveloppe_cible?: number | null;
   ordre: number;
   logframe_ref_id?: string | null;
   children?: WBS[];

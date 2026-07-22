@@ -12,6 +12,9 @@ interface UpdateWbsNodeBody {
   // deux pour garantir l'exclusivité mutuelle utilisateur/externe.
   responsableId?: string | null;
   responsableExterne?: string | null;
+  // Plafond bailleur pour l'ensemble de la composante — n'a de sens que pour
+  // une composante racine, non imposé en base. null pour effacer.
+  enveloppeCible?: number | null;
   dateDebut?: string;
   dateFin?: string;
   actif?: boolean;
@@ -27,6 +30,9 @@ Deno.serve(async (req: Request) => {
 
     const body: UpdateWbsNodeBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
+    if (body.enveloppeCible != null && body.enveloppeCible < 0) {
+      return json({ error: 'enveloppeCible doit être supérieur ou égal à 0' }, 400);
+    }
 
     const { data: existing, error: findError } = await admin
       .from('wbs_nodes')
@@ -103,6 +109,7 @@ Deno.serve(async (req: Request) => {
     if (body.responsableExterne !== undefined) {
       updatePayload.responsable_externe = body.responsableExterne?.trim() || null;
     }
+    if (body.enveloppeCible !== undefined) updatePayload.enveloppe_cible = body.enveloppeCible;
     if (body.dateDebut !== undefined) updatePayload.date_debut = body.dateDebut;
     if (body.dateFin !== undefined) updatePayload.date_fin = body.dateFin;
     if (body.actif !== undefined) updatePayload.actif = body.actif;

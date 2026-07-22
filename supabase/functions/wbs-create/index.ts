@@ -13,6 +13,9 @@ interface CreateWbsNodeBody {
   // Tiers externe sans compte système (ex: "Entreprise de construction XYZ")
   // — mutuellement exclusif avec responsableId côté formulaire.
   responsableExterne?: string;
+  // Plafond bailleur pour l'ensemble de la composante — n'a de sens que pour
+  // une composante racine (parentId absent), non imposé en base.
+  enveloppeCible?: number;
   dateDebut?: string;
   dateFin?: string;
 }
@@ -30,6 +33,9 @@ Deno.serve(async (req: Request) => {
     if (!body.code?.trim()) return json({ error: 'code est obligatoire' }, 400);
     if (!body.libelle?.trim()) return json({ error: 'libelle est obligatoire' }, 400);
     if (!body.type) return json({ error: 'type est obligatoire' }, 400);
+    if (body.enveloppeCible !== undefined && body.enveloppeCible < 0) {
+      return json({ error: 'enveloppeCible doit être supérieur ou égal à 0' }, 400);
+    }
 
     const { data: project, error: projectError } = await admin
       .from('projects')
@@ -100,6 +106,7 @@ Deno.serve(async (req: Request) => {
         ordre: body.ordre ?? 0,
         responsable_id: body.responsableId ?? null,
         responsable_externe: body.responsableExterne?.trim() || null,
+        enveloppe_cible: body.enveloppeCible ?? null,
         date_debut: body.dateDebut ?? null,
         date_fin: body.dateFin ?? null,
         created_by: profile.id,

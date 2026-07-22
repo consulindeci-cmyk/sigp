@@ -93,6 +93,7 @@ export function WBSNodeForm({
     date_fin_prevue: '',
     code_wbs: '',
     parent_id: null,
+    enveloppe_cible: null,
   });
 
   useEffect(() => {
@@ -111,6 +112,7 @@ export function WBSNodeForm({
         date_fin_prevue: '',
         code_wbs: initialData?.code_wbs ?? computeSuggestedCode(effectiveParentId, existingNodes),
         parent_id: effectiveParentId,
+        enveloppe_cible: null,
         ...initialData,
       });
     }
@@ -328,6 +330,34 @@ export function WBSNodeForm({
                     automatiquement à partir des activités PTBA qui lui sont rattachées — non saisissables ici.
                   </p>
                 </div>
+              </section>
+            )}
+
+            {/* Enveloppe bailleur (composantes racine uniquement) */}
+            {isParent && (
+              <section className="flex flex-col gap-4 pt-5 border-t border-border">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Enveloppe Bailleur
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {field(
+                    'Enveloppe Budgétaire Cible / Plafond ($)',
+                    <Input
+                      type="number"
+                      min={0}
+                      value={formData.enveloppe_cible ?? ''}
+                      onChange={e => setFormData(d => ({
+                        ...d,
+                        enveloppe_cible: e.target.value === '' ? null : Number(e.target.value),
+                      }))}
+                      placeholder="Ex: 50000000 (optionnel)"
+                    />
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Budget maximal alloué par le bailleur pour l'ensemble de cette composante — comparé
+                  au total réellement planifié dans la Matrice Financière PTBA (alerte en cas de dépassement).
+                </p>
               </section>
             )}
 

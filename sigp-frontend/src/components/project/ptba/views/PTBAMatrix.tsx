@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, memo, Fragment, type KeyboardEvent } from 'react';
-import { ChevronRight, ChevronDown, Activity, Pencil, Trash2, Layers } from 'lucide-react';
+import { ChevronRight, ChevronDown, Activity, Pencil, Trash2, Layers, AlertTriangle } from 'lucide-react';
 import type { PTBA, PTBALigne, WBS } from '@/types';
 import { formatMoney } from '@/utils/format';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -229,6 +229,14 @@ interface PTBAComponentSubtotalRowProps {
 }
 
 const PTBAComponentSubtotalRow = memo(({ root, lignes, expandedQuarters, showActionsColumn }: PTBAComponentSubtotalRowProps) => {
+  // Enveloppe bailleur (composantes racine uniquement, cf. WBSNodeForm) —
+  // comparée au budget réellement planifié pour cette composante afin de
+  // détecter un dépassement (ecart négatif).
+  const totalPrevu = sumBy(lignes, 'montant_total');
+  const plafond = root.enveloppe_cible ?? null;
+  const ecart = plafond != null ? plafond - totalPrevu : null;
+  const isOverBudget = ecart != null && ecart < 0;
+
   const renderQuarterSubtotal = (q: string, qKey: keyof PTBALigne, mKeys: (keyof PTBALigne)[]) => {
     const isExpanded = expandedQuarters[q];
     return (
@@ -246,15 +254,27 @@ const PTBAComponentSubtotalRow = memo(({ root, lignes, expandedQuarters, showAct
   };
 
   return (
-    <tr role="row" className="border-b-2 border-border bg-muted/40">
-      <td className="px-3 py-2 text-xs font-mono font-bold text-foreground whitespace-nowrap bg-muted/40 border-r border-border">
+    <tr role="row" className={`border-b-2 ${isOverBudget ? 'border-destructive bg-destructive/10' : 'border-border bg-muted/40'}`}>
+      <td className={`px-3 py-2 text-xs font-mono font-bold text-foreground whitespace-nowrap border-r ${isOverBudget ? 'bg-destructive/10 border-destructive/30' : 'bg-muted/40 border-border'}`}>
         {formatRootCode(root.code_wbs)}
       </td>
       <td className="px-3 py-2">
-        <div className="flex items-center gap-1.5 font-bold text-foreground text-sm">
+        <div className="flex items-center gap-1.5 flex-wrap font-bold text-foreground text-sm">
           <Layers className="h-3.5 w-3.5 shrink-0 text-primary" />
           <span className="truncate">{root.titre}</span>
+          {isOverBudget && (
+            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1 font-normal">
+              <AlertTriangle className="h-3 w-3" />
+              Dépassement de {formatMoney(Math.abs(ecart!))}
+            </Badge>
+          )}
         </div>
+        {plafond != null && (
+          <p className={`text-[11px] mt-0.5 ${isOverBudget ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+            Plafond bailleur : {formatMoney(plafond)}
+            {!isOverBudget && ` — Reste à planifier : ${formatMoney(ecart!)}`}
+          </p>
+        )}
       </td>
       <td className="px-3 py-2 text-xs text-muted-foreground italic whitespace-nowrap">
         {lignes.length} activité{lignes.length > 1 ? 's' : ''}
@@ -265,10 +285,12 @@ const PTBAComponentSubtotalRow = memo(({ root, lignes, expandedQuarters, showAct
       {renderQuarterSubtotal('Q3', 'q3_montant', ['m7_montant', 'm8_montant', 'm9_montant'])}
       {renderQuarterSubtotal('Q4', 'q4_montant', ['m10_montant', 'm11_montant', 'm12_montant'])}
 
-      <td className="px-3 py-2 text-right font-bold text-foreground font-mono text-sm bg-primary/5 border-l border-border">
-        {formatMoney(sumBy(lignes, 'montant_total'))}
+      <td className={`px-3 py-2 text-right font-bold font-mono text-sm border-l ${isOverBudget ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-primary/5 text-foreground border-border'}`}>
+        {formatMoney(totalPrevu)}
       </td>
-      {showActionsColumn && <td className="px-2 py-2 border-l border-border bg-muted/40" />}
+      {showActionsColumn && (
+        <td className={`px-2 py-2 border-l ${isOverBudget ? 'bg-destructive/10 border-destructive/30' : 'bg-muted/40 border-border'}`} />
+      )}
     </tr>
   );
 });
