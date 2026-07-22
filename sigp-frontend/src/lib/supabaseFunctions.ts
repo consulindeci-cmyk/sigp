@@ -30,7 +30,10 @@ export async function invokeEdgeFunction<T>(name: string, body: Record<string, u
   const payload = await res.json().catch(() => null)
 
   if (!res.ok) {
-    throw new Error(payload?.error ?? `Erreur ${res.status}`)
+    // status attaché à l'erreur : queryClient.ts s'en sert pour détecter un
+    // 401 (identité révoquée — cf. authorize.ts) et forcer une déconnexion,
+    // à distinguer des 403 de permission qui ne doivent pas déconnecter.
+    throw Object.assign(new Error(payload?.error ?? `Erreur ${res.status}`), { status: res.status })
   }
   return payload as T
 }

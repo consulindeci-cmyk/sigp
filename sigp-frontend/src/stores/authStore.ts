@@ -25,10 +25,22 @@ async function userFromSupabaseSession(): Promise<User | null> {
 
     const { data: profile } = await supabase
       .from('users')
-      .select('id, nom, prenom, email, role, actif, telephone, poste, bio, organisation_id')
+      .select('id, nom, prenom, email, role, actif, telephone, poste, bio, organisation_id, deleted_at')
       .eq('auth_user_id', authUserId)
       .maybeSingle()
     if (!profile) return null
+
+    // Compte supprimé/désactivé pendant que la session était déjà ouverte :
+    // la ligne reste lisible ici (policy users_select_self_or_admin autorise
+    // toujours auth_user_id = auth.uid(), sans filtre deleted_at, précisément
+    // pour permettre cette détection) mais l'identité n'est plus valide —
+    // révoque la session locale immédiatement plutôt que d'attendre
+    // l'expiration naturelle du token (cf. migration RLS deleted_at côté
+    // helpers, qui coupe déjà l'accès aux données mais pas la session elle-même).
+    if (profile.deleted_at || !profile.actif) {
+      await supabase.auth.signOut()
+      return null
+    }
 
     return {
       id: profile.id,

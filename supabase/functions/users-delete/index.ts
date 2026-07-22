@@ -52,6 +52,17 @@ Deno.serve(async (req: Request) => {
     // du profil applicatif : si elle échoue (ex. déjà purgé côté Auth), l'accès
     // reste bloqué dans tous les cas via deleted_at, donc pas de rollback ni
     // d'échec de la requête pour un problème non bloquant côté Auth.
+    // Note révocation de session : il n'existe pas d'API "admin.auth.signOut(userId)"
+    // dans supabase-js — signOut(jwt, scope) exige le JWT vivant de la session à
+    // révoquer, qu'on n'a pas ici (on n'a que l'id). deleteUser() ci-dessous
+    // invalide déjà les refresh tokens (plus moyen d'obtenir un nouvel access
+    // token), mais un access token déjà émis et non expiré resterait
+    // techniquement valide pour PostgREST (qui ne revérifie pas auth.users par
+    // requête) jusqu'à son expiration naturelle. C'est fermé côté RLS, pas ici :
+    // cf. migration 20260816100000_rls_helpers_exclude_deleted_users.sql, qui
+    // fait retourner NULL/false à current_user_role()/is_admin()/
+    // current_user_organisation_id() dès que deleted_at est renseigné — l'accès
+    // aux données est donc coupé immédiatement, quel que soit l'état du token.
     if (existing.auth_user_id) {
       const { error: authDeleteError } = await admin.auth.admin.deleteUser(existing.auth_user_id);
       if (authDeleteError) {

@@ -45,11 +45,16 @@ export async function authorize(req: Request): Promise<AuthorizedRequest> {
     .is('deleted_at', null)
     .single();
 
+  // 401 (pas 403) sur ces deux cas : ce ne sont pas des refus de permission
+  // pour un compte valide, mais une identité qui n'est plus authentifiable
+  // (supprimée/désactivée) — le frontend s'appuie sur ce code pour déclencher
+  // une déconnexion immédiate (cf. queryClient.ts), à distinguer des vrais 403
+  // de rôle/organisation qui ne doivent jamais provoquer de déconnexion.
   if (profileError || !profile) {
-    throw Object.assign(new Error('Profil utilisateur introuvable'), { status: 403 });
+    throw Object.assign(new Error('Profil utilisateur introuvable'), { status: 401 });
   }
   if (!profile.actif) {
-    throw Object.assign(new Error('Compte désactivé'), { status: 403 });
+    throw Object.assign(new Error('Compte désactivé'), { status: 401 });
   }
 
   // SUPER_ADMIN est un rôle plateforme, jamais bloqué par le statut de sa
