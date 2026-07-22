@@ -11,6 +11,7 @@ import PPMPage from './project/PPMPage';
 
 // Natural-flow tabs (padded by ProjectDetail, scroll via parent)
 import { Loader } from '@/components/ui/feedback/Loader';
+import WBSPage from './project/WBSPage';
 import TabOverview from '../components/project/TabOverview';
 import TabEVM from '../components/project/TabEVM';
 import TabRisks from '../components/project/TabRisks';
@@ -136,6 +137,9 @@ export default function ProjectDetail() {
         )}
         {activeProjectTab === 'governance' && (
           <div className={PAD}><div className={INNER}><ProjectGovernanceTab /></div></div>
+        )}
+        {activeProjectTab === 'wbs' && (
+          <div className={PAD}><div className={INNER}><WBSPage /></div></div>
         )}
         {activeProjectTab === 'journal' && (
           <div className={PAD}><div className={INNER}><ProjectOperationsJournalTab /></div></div>

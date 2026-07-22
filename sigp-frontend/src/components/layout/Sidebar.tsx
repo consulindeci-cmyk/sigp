@@ -35,6 +35,7 @@ export const PROJECT_NAV_GROUPS = [
   {
     title: "Planification & Opérations",
     items: [
+      { id: "wbs",        label: "Structure WBS",          status: "success" },
       { id: "ptba",       label: "PTBA",                   status: "success" },
       { id: "journal",    label: "Journal des Opérations", status: "success" },
     ],
