@@ -18,12 +18,18 @@
 -- un décaissement associé n'est par définition pas une ligne fantôme jamais
 -- utilisée : elle est exclue du périmètre de cette purge et laissée en l'état
 -- pour investigation manuelle si un tel cas existe.
+--
+-- Correctif : journal_operations.budget_ligne_id référence ces lignes sans
+-- ON DELETE CASCADE/SET NULL (contrainte bloquante découverte à l'exécution)
+-- — les entrées de journal rattachées aux lignes fantômes purgées sont donc
+-- nettoyées explicitement avant le DELETE sur budget_lignes.
 
 DO $$
 DECLARE
   v_purged_count int;
   v_skipped_count int;
 BEGIN
+  -- 1. Compter les lignes à ignorer (qui ont des décaissements réels)
   SELECT count(*) INTO v_skipped_count
   FROM public.budget_lignes bl
   WHERE bl.wbs_id IS NULL
@@ -32,9 +38,21 @@ BEGIN
     );
 
   IF v_skipped_count > 0 THEN
-    RAISE NOTICE '% ligne(s) sans wbs_id ignorée(s) car un décaissement réel y est rattaché (à traiter manuellement)', v_skipped_count;
+    RAISE NOTICE '% ligne(s) sans wbs_id ignorée(s) car un décaissement réel y est rattaché', v_skipped_count;
   END IF;
 
+  -- 2. Nettoyer le journal d'opérations rattaché aux lignes fantômes à purger
+  DELETE FROM public.journal_operations
+  WHERE budget_ligne_id IN (
+    SELECT bl.id
+    FROM public.budget_lignes bl
+    WHERE bl.wbs_id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.disbursements d WHERE d.budget_ligne_id = bl.id
+      )
+  );
+
+  -- 3. Purger les lignes budgétaires fantômes
   DELETE FROM public.budget_lignes bl
   WHERE bl.wbs_id IS NULL
     AND NOT EXISTS (
