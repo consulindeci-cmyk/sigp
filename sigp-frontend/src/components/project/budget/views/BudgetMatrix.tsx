@@ -516,9 +516,17 @@ export function BudgetMatrix({
       g.lignes.push(ligne);
     }
 
+    // Lignes enfants triées par leur propre code WBS (numeric-aware) — chaque
+    // ligne affiche strictement son code (ex: 4.1, 4.2, 4.3), la bande de
+    // sous-total affichant elle le code racine exact (ex: 4.0).
     const sortedGroups = order
       .map(id => groupMap.get(id)!)
       .sort((a, b) => a.root.code_wbs.localeCompare(b.root.code_wbs, undefined, { numeric: true }));
+    for (const g of sortedGroups) {
+      g.lignes.sort((a, b) =>
+        (a.code_wbs || a.code_ligne).localeCompare(b.code_wbs || b.code_ligne, undefined, { numeric: true })
+      );
+    }
 
     return { groups: sortedGroups, unassignedLignes: unassigned };
   }, [filteredLignes, wbsNodes]);

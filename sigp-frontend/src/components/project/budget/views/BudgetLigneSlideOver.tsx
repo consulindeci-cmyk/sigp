@@ -115,14 +115,17 @@ export function BudgetLigneSlideOver({
   // bailleur_id référence une vraie funding_sources.id du projet.
   const { data: fundingSources = [], isLoading: isLoadingFunding } = useFundingSources(projectId);
 
-  // wbs_id référence un vrai nœud wbs_nodes du projet (composante ou
-  // sous-élément — cf. modèle Excel de valorisation, contrairement au PTBA
-  // les composantes racine sont aussi des cibles valides ici).
+  // wbs_id référence un vrai nœud wbs_nodes du projet — sous-éléments
+  // (activités filles) uniquement, même règle que PTBAActiviteForm : une
+  // composante racine (parent_id null) ne peut pas être valorisée
+  // directement, elle n'existe que comme regroupement dans la Matrice
+  // (cf. BudgetComponentSubtotalRow) — l'attacher directement dupliquerait
+  // la bande de sous-total et sa seule ligne enfant.
   const { data: wbsData } = useWBS(projectId);
   const wbsNodes = wbsData?.data ?? [];
   const wbsOptions = useMemo(() => {
     const roots = wbsNodes.filter(n => !n.parent_id);
-    return flattenWBSTree(roots, wbsNodes);
+    return flattenWBSTree(roots, wbsNodes).filter(n => !!n.parent_id);
   }, [wbsNodes]);
 
   useEffect(() => {
@@ -223,7 +226,7 @@ export function BudgetLigneSlideOver({
                 Rattachement WBS
               </h3>
               <div className="grid grid-cols-1 gap-4">
-                <FRow id="wbs-node" label="Composante / Activité WBS">
+                <FRow id="wbs-node" label="Activité WBS">
                   <Select
                     id="wbs-node"
                     value={values.wbs_id}
@@ -232,14 +235,15 @@ export function BudgetLigneSlideOver({
                     <option value="">— Aucune liaison —</option>
                     {wbsOptions.map(n => (
                       <option key={n.id} value={n.id}>
-                        {'  '.repeat(Math.max(0, n.niveau - 1))}{n.code_wbs} — {n.titre}
+                        {'  '.repeat(Math.max(0, n.niveau - 2))}{n.code_wbs} — {n.titre}
                       </option>
                     ))}
                   </Select>
                   <span className="text-[11px] text-muted-foreground mt-0.5">
                     {isEditing
                       ? 'Modifier le rattachement ne met pas à jour automatiquement Code/Libellé/Budget ci-dessous.'
-                      : "Sélectionner un nœud pré-remplit Code WBS, Libellé et le Coût Total (depuis le budget WBS/PTBA déjà planifié) — tout reste modifiable ensuite."}
+                      : "Sélectionner une activité pré-remplit Code WBS, Libellé et le Coût Total (depuis le budget WBS/PTBA déjà planifié) — tout reste modifiable ensuite."}
+                    {' '}Les composantes racine (1.0, 2.0…) ne sont pas proposées ici — seules les activités filles (1.1, 1.2…) sont valorisables.
                   </span>
                 </FRow>
               </div>
