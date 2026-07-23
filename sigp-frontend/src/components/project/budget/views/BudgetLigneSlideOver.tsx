@@ -166,6 +166,7 @@ export function BudgetLigneSlideOver({
 
   function validate(): boolean {
     const errs: LigneFormErrors = {};
+    if (!values.wbs_id) errs.wbs_id = 'Sélectionnez une activité WBS';
     if (!values.libelle.trim()) errs.libelle = 'Requis';
     if (montantTotal <= 0) errs.montant_revise = 'Montant total requis (> 0)';
     setErrors(errs);
@@ -176,7 +177,7 @@ export function BudgetLigneSlideOver({
     if (!validate()) return;
 
     onSave({
-      wbs_id:        values.wbs_id || undefined,
+      wbs_id:        values.wbs_id,
       code_ligne:    values.code_ligne.trim() || `bl-${Date.now()}`,
       libelle:       values.libelle.trim(),
       unite:         values.unite.trim() || undefined,
@@ -211,13 +212,13 @@ export function BudgetLigneSlideOver({
                 Rattachement WBS
               </h3>
               <div className="grid grid-cols-1 gap-4">
-                <FRow id="wbs-node" label="Activité WBS">
+                <FRow id="wbs-node" label="Activité WBS *" error={errors.wbs_id}>
                   <Select
                     id="wbs-node"
                     value={values.wbs_id}
                     onChange={e => handleWbsChange(e.target.value)}
                   >
-                    <option value="">— Aucune liaison —</option>
+                    <option value="" disabled>Sélectionner une activité…</option>
                     {wbsOptions.map(n => (
                       <option key={n.id} value={n.id}>
                         {'  '.repeat(Math.max(0, n.niveau - 2))}{n.code_wbs} — {n.titre}
