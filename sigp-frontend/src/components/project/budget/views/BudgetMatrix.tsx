@@ -417,8 +417,15 @@ export function BudgetMatrix({
 
   // ── Regroupement hiérarchique par composante WBS racine (même principe que
   // PTBAMatrix.tsx) : chaque ligne remonte à sa composante racine via
-  // parent_id. Une ligne dont le wbs_id ne résout à aucun nœud réel (jamais
-  // rattachée) tombe dans `unassignedLignes`, affichée à part.
+  // parent_id. Une ligne dont le wbs_id ne résout à aucun nœud réel tombe
+  // dans `unassignedLignes` — en pratique, ce sont exclusivement des lignes
+  // fantômes héritées de l'ancien assistant de création de projet (une ligne
+  // par composante C1/C2/C3, créée sans rattachement WBS pour équilibrer les
+  // sources de financement ; cf. useProjects.ts useCreateProjectWizard).
+  // Depuis que cette étape a été supprimée du wizard, plus aucune ligne n'est
+  // censée atterrir ici — elles sont volontairement écartées de l'affichage
+  // ET du TOTAL GÉNÉRAL ci-dessous pour ne pas fausser le budget réel (double
+  // compte avec le découpage WBS).
   const { groups, unassignedLignes } = useMemo(() => {
     const nodesById = new Map<string, WBS>();
     for (const n of wbsNodes) nodesById.set(n.id, n);
@@ -461,20 +468,29 @@ export function BudgetMatrix({
     return { groups: sortedGroups, unassignedLignes: unassigned };
   }, [filteredLignes, wbsNodes]);
 
+  // ── Lignes réellement rattachées au WBS (celles affichées sous une bande de
+  // composante) — sert de base au TOTAL GÉNÉRAL, en excluant délibérément
+  // `unassignedLignes` (lignes fantômes sans activité WBS, cf. commentaire
+  // plus haut) pour ne jamais compter deux fois le même budget.
+  const visibleLignes = useMemo(
+    () => groups.flatMap(g => g.lignes),
+    [groups],
+  );
+
   // ── Totals ────────────────────────────────────────────────────────────────
   // plafond_global / disponible_global reprennent, à l'échelle du TOTAL
   // GÉNÉRAL, la même logique que la colonne Financement Bailleur/Disponible
   // des bandes de sous-total : somme des enveloppes des composantes affichées
   // moins le Coût Total global (cf. Plafond Global déjà établi sur WBSPage/PTBAPage).
   const totals = useMemo(() => {
-    const montantRevise = filteredLignes.reduce((s, l) => s + l.montant_revise, 0);
+    const montantRevise = visibleLignes.reduce((s, l) => s + l.montant_revise, 0);
     const plafondGlobal = groups.reduce((s, g) => s + (g.root.enveloppe_cible || 0), 0);
     return {
       montant_revise:    montantRevise,
       plafond_global:    plafondGlobal,
       disponible_global: plafondGlobal - montantRevise,
     };
-  }, [filteredLignes, groups]);
+  }, [visibleLignes, groups]);
 
   // ── Per-ligne history (selected) — filtré sur enregistrement_id, l'id réel
   // de la ligne budgétaire concernée par chaque événement historique.
@@ -734,6 +750,17 @@ export function BudgetMatrix({
         </div>
       </div>
 
+      {unassignedLignes.length > 0 && (
+        <div className="shrink-0 mx-4 mt-2 flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            {unassignedLignes.length} ligne{unassignedLignes.length > 1 ? 's' : ''} ancienne{unassignedLignes.length > 1 ? 's' : ''} sans rattachement WBS
+            {unassignedLignes.length > 1 ? ' sont masquées' : ' est masquée'} (héritée{unassignedLignes.length > 1 ? 's' : ''} de l'ancien assistant de création de projet) —
+            exclue{unassignedLignes.length > 1 ? 's' : ''} du tableau et du TOTAL GÉNÉRAL.
+          </span>
+        </div>
+      )}
+
       {duplicateError && (
         <div className="shrink-0 mx-4 mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
@@ -774,67 +801,42 @@ export function BudgetMatrix({
           </thead>
 
           <tbody className="divide-y divide-border">
-            {filteredLignes.length === 0 ? (
+            {visibleLignes.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
                   {lignes.length === 0
                     ? 'Aucune ligne budgétaire. Cliquez sur « Ajouter ligne » ou « Importer Excel ».'
-                    : 'Aucune ligne ne correspond aux filtres appliqués.'}
+                    : 'Aucune ligne rattachée à une activité WBS ne correspond aux filtres appliqués.'}
                 </td>
               </tr>
             ) : (
-              <>
-                {groups.map(group => (
-                  <Fragment key={group.root.id}>
-                    <BudgetComponentSubtotalRow root={group.root} lignes={group.lignes} />
-                    {group.lignes.map(ligne => (
-                      <BudgetMatrixRow
-                        key={ligne.id}
-                        ligne={ligne}
-                        hasHistory={lignesWithHistory.has(ligne.id)}
-                        canManage={canManage}
-                        canDelete={canDelete}
-                        onEdit={openEdit}
-                        onDelete={openDeleteModal}
-                        onDuplicate={handleDuplicate}
-                        onViewHistory={openLigneHistorique}
-                        indented
-                      />
-                    ))}
-                  </Fragment>
-                ))}
-
-                {unassignedLignes.length > 0 && (
-                  <Fragment>
-                    <tr className="bg-muted/10">
-                      <td colSpan={9} className="px-4 py-1.5 text-[11px] uppercase font-semibold text-muted-foreground tracking-wide">
-                        Sans composante WBS ({unassignedLignes.length})
-                      </td>
-                    </tr>
-                    {unassignedLignes.map(ligne => (
-                      <BudgetMatrixRow
-                        key={ligne.id}
-                        ligne={ligne}
-                        hasHistory={lignesWithHistory.has(ligne.id)}
-                        canManage={canManage}
-                        canDelete={canDelete}
-                        onEdit={openEdit}
-                        onDelete={openDeleteModal}
-                        onDuplicate={handleDuplicate}
-                        onViewHistory={openLigneHistorique}
-                      />
-                    ))}
-                  </Fragment>
-                )}
-              </>
+              groups.map(group => (
+                <Fragment key={group.root.id}>
+                  <BudgetComponentSubtotalRow root={group.root} lignes={group.lignes} />
+                  {group.lignes.map(ligne => (
+                    <BudgetMatrixRow
+                      key={ligne.id}
+                      ligne={ligne}
+                      hasHistory={lignesWithHistory.has(ligne.id)}
+                      canManage={canManage}
+                      canDelete={canDelete}
+                      onEdit={openEdit}
+                      onDelete={openDeleteModal}
+                      onDuplicate={handleDuplicate}
+                      onViewHistory={openLigneHistorique}
+                      indented
+                    />
+                  ))}
+                </Fragment>
+              ))
             )}
           </tbody>
 
-          {filteredLignes.length > 0 && (
+          {visibleLignes.length > 0 && (
             <tfoot>
               <tr className="bg-primary/5 border-t-2 border-primary/30 font-bold">
                 <td colSpan={5} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
-                  TOTAL GÉNÉRAL ({filteredLignes.length} ligne{filteredLignes.length > 1 ? 's' : ''})
+                  TOTAL GÉNÉRAL ({visibleLignes.length} ligne{visibleLignes.length > 1 ? 's' : ''})
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-r-2 border-border">{formatMoney(totals.montant_revise)}</td>
                 <td className="px-4 py-3 text-sm text-foreground">

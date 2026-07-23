@@ -34,7 +34,6 @@ interface InfosState {
 }
 
 interface SourceRow { tempId: string; nom: string; montant: string }
-interface LigneRow { tempId: string; codeLigne: string; libelle: string; montantPrevu: string }
 interface ComposanteRow { tempId: string; libelle: string }
 
 const EMPTY_INFOS: InfosState = {
@@ -91,11 +90,10 @@ function StepDot({ index, label, active, done }: { index: number; label: string;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: ProjectCreateModalProps) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2>(1);
   const [infos, setInfos] = useState<InfosState>(EMPTY_INFOS);
   const [devise, setDevise] = useState('XOF');
   const [sources, setSources] = useState<SourceRow[]>([]);
-  const [lignes, setLignes] = useState<LigneRow[]>([]);
   const [composantes, setComposantes] = useState<ComposanteRow[]>([]);
   const [errors, setErrors] = useState<Partial<Record<keyof InfosState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -125,7 +123,6 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
       setStep(1);
       setInfos(EMPTY_INFOS);
       setSources([]);
-      setLignes([]);
       setComposantes([]);
       setErrors({});
       setSubmitError(null);
@@ -171,21 +168,6 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
     [sources],
   );
 
-  // ── Étape 3 : lignes budgétaires ─────────────────────────────────────────
-  function addLigne() {
-    setLignes(prev => [...prev, { tempId: uid(), codeLigne: '', libelle: '', montantPrevu: '' }]);
-  }
-  function updateLigne(tempId: string, patch: Partial<LigneRow>) {
-    setLignes(prev => prev.map(l => l.tempId === tempId ? { ...l, ...patch } : l));
-  }
-  function removeLigne(tempId: string) {
-    setLignes(prev => prev.filter(l => l.tempId !== tempId));
-  }
-  const totalLignes = useMemo(
-    () => lignes.reduce((s, r) => s + (Number(r.montantPrevu) || 0), 0),
-    [lignes],
-  );
-
   // ── Validation par étape ─────────────────────────────────────────────────
   function validateStep1(): boolean {
     const errs: Partial<Record<keyof InfosState, string>> = {};
@@ -200,27 +182,20 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
   }
 
   const sourcesValid = sources.every(s => s.nom.trim() && Number(s.montant) > 0);
-  const lignesValid = lignes.every(l => l.codeLigne.trim() && l.libelle.trim() && Number(l.montantPrevu) > 0);
-  // Validation stricte de l'équilibre — le bouton final reste désactivé tant
-  // que ce n'est pas rigoureusement égal (à 1 centime près pour l'arrondi flottant).
-  const balanced = Math.abs(totalLignes - totalSources) < 0.01;
   // Sans programme, projects-create rejette systématiquement la création
   // (programmeId obligatoire) — mieux vaut bloquer clairement ici avec un
   // message explicite que laisser échouer l'appel serveur sans contexte.
   const hasProgramme = !!defaultProgrammeId;
-  const canFinish = lignesValid && sourcesValid && balanced && hasProgramme && !wizard.isPending;
+  const canFinish = sourcesValid && hasProgramme && !wizard.isPending;
 
   function goNext() {
     if (step === 1) {
       if (!validateStep1()) return;
       setStep(2);
-    } else if (step === 2) {
-      if (!sourcesValid) return;
-      setStep(3);
     }
   }
   function goBack() {
-    if (step > 1) setStep((s) => (s - 1) as 1 | 2);
+    if (step > 1) setStep((s) => (s - 1) as 1);
   }
 
   async function handleFinish() {
@@ -239,7 +214,6 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
         composantes: composantes.map(c => c.libelle.trim()).filter(Boolean),
         devise,
         fundingSources: sources.map(s => ({ nom: s.nom.trim(), montant: Number(s.montant) })),
-        budgetLignes: lignes.map(l => ({ codeLigne: l.codeLigne.trim(), libelle: l.libelle.trim(), montantPrevu: Number(l.montantPrevu) })),
       });
       onOpenChange(false);
     } catch (err) {
@@ -248,7 +222,6 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
           objectif: "l'objectif global (Cadre Logique)",
           composantes: 'les composantes (Cadre Logique)',
           financement: 'les sources de financement',
-          budget: 'le budget initial',
         };
         setSubmitError(
           `Le projet a bien été créé, mais l'enregistrement de ${STEP_LABELS[err.step]} a échoué : ${err.message}. ` +
@@ -268,14 +241,12 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
         <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-3">
           <div>
             <ModalTitle>Nouveau projet</ModalTitle>
-            <ModalDescription>Création guidée en 3 étapes — informations, financement, budget initial.</ModalDescription>
+            <ModalDescription>Création guidée en 2 étapes — informations, financement.</ModalDescription>
           </div>
           <div className="flex items-start gap-2">
             <StepDot index={1} label="Informations" active={step === 1} done={step > 1} />
             <div className={cn('h-0.5 flex-1 mt-4 rounded', step > 1 ? 'bg-primary' : 'bg-border')} />
-            <StepDot index={2} label="Financement" active={step === 2} done={step > 2} />
-            <div className={cn('h-0.5 flex-1 mt-4 rounded', step > 2 ? 'bg-primary' : 'bg-border')} />
-            <StepDot index={3} label="Budget initial" active={step === 3} done={false} />
+            <StepDot index={2} label="Financement" active={step === 2} done={false} />
           </div>
         </ModalHeader>
 
@@ -409,8 +380,8 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
                     <label className="text-xs font-medium text-muted-foreground">Bailleur / Source</label>
                     <Input value={s.nom} onChange={e => updateSource(s.tempId, { nom: e.target.value })} placeholder="Ex : Banque Mondiale" />
                   </div>
-                  <div className="w-40">
-                    <label className="text-xs font-medium text-muted-foreground">Montant ({devise})</label>
+                  <div className="w-44">
+                    <label className="text-xs font-medium text-muted-foreground">Enveloppe globale ({devise})</label>
                     <Input type="number" min={0} value={s.montant} onChange={e => updateSource(s.tempId, { montant: e.target.value })} placeholder="0" />
                   </div>
                   <Button type="button" variant="ghost" size="sm" onClick={() => removeSource(s.tempId)} aria-label="Retirer cette source">
@@ -421,7 +392,7 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
 
               {sources.length > 0 && (
                 <div className="flex justify-between text-sm font-semibold border-t border-border pt-3">
-                  <span className="text-muted-foreground">Total des sources</span>
+                  <span className="text-muted-foreground">Total des enveloppes</span>
                   <span className="font-mono text-foreground">{totalSources.toLocaleString('fr-FR')} {devise}</span>
                 </div>
               )}
@@ -429,70 +400,15 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
               {sources.length > 0 && !sourcesValid && (
                 <div className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  Chaque source doit avoir un nom et un montant supérieur à 0 pour continuer.
+                  Chaque source doit avoir un nom et une enveloppe supérieure à 0 pour continuer.
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ── Étape 3 : Budget Initial ──────────────────────────────────── */}
-          {step === 3 && (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-foreground">Répartition du budget initial</p>
-                <Button type="button" variant="outline" size="sm" onClick={addLigne} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-                  Ajouter une ligne
-                </Button>
-              </div>
-
-              {lignes.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">
-                  Aucune ligne budgétaire pour l'instant — vous pourrez construire le budget plus tard depuis l'onglet Budget.
-                </p>
-              )}
-
-              {lignes.map(l => (
-                <div key={l.tempId} className="flex items-end gap-2">
-                  <div className="w-28">
-                    <label className="text-xs font-medium text-muted-foreground">Code</label>
-                    <Input value={l.codeLigne} onChange={e => updateLigne(l.tempId, { codeLigne: e.target.value })} placeholder="L1" />
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-xs font-medium text-muted-foreground">Libellé</label>
-                    <Input value={l.libelle} onChange={e => updateLigne(l.tempId, { libelle: e.target.value })} placeholder="Ex : Travaux de génie civil" />
-                  </div>
-                  <div className="w-40">
-                    <label className="text-xs font-medium text-muted-foreground">Montant ({devise})</label>
-                    <Input type="number" min={0} value={l.montantPrevu} onChange={e => updateLigne(l.tempId, { montantPrevu: e.target.value })} placeholder="0" />
-                  </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => removeLigne(l.tempId)} aria-label="Retirer cette ligne">
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-
-              <div className="flex flex-col gap-1 border-t border-border pt-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total des lignes budgétaires</span>
-                  <span className="font-mono text-foreground">{totalLignes.toLocaleString('fr-FR')} {devise}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total des sources de financement (Étape 2)</span>
-                  <span className="font-mono text-foreground">{totalSources.toLocaleString('fr-FR')} {devise}</span>
-                </div>
-                {lignes.length > 0 && !lignesValid && (
-                  <div className="flex items-center gap-1.5 text-xs text-destructive mt-1" role="alert">
-                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    Chaque ligne doit avoir un code, un libellé et un montant supérieur à 0.
-                  </div>
-                )}
-                {lignesValid && !balanced && (
-                  <div className="flex items-center gap-1.5 text-xs text-destructive mt-1" role="alert">
-                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    Le total des lignes budgétaires doit être strictement égal au total des sources de financement.
-                  </div>
-                )}
-              </div>
+              <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
+                Le découpage du budget par composante se fait depuis le WBS (1.0, 2.0…) et l'onglet
+                Budget, une fois le projet créé — chaque source ci-dessus ne définit que le bailleur
+                et son enveloppe globale pour l'ensemble du projet.
+              </p>
             </div>
           )}
 
@@ -508,8 +424,8 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
           <Button type="button" variant="outline" onClick={goBack} disabled={step === 1 || isLocked}>
             Précédent
           </Button>
-          {step < 3 ? (
-            <Button type="button" variant="default" onClick={goNext} disabled={isLocked || (step === 2 && !sourcesValid)}>
+          {step < 2 ? (
+            <Button type="button" variant="default" onClick={goNext} disabled={isLocked}>
               Suivant
             </Button>
           ) : (

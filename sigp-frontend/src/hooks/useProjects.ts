@@ -408,12 +408,20 @@ export function useCreateProject() {
 // ── Assistant de création (ProjectCreateModal) — orchestration séquentielle ───
 // Option A validée : pas de nouvelle Edge Function atomique, on enchaîne les
 // briques existantes (projects-create, logframe-objectives-create,
-// funding-sources-create, budget-versions-create, budget-lines-create). Si une
-// étape après la création du projet échoue, on ne supprime PAS le projet déjà
-// créé (pas de projets-delete ici) — l'erreur porte le projectId et le nom de
-// l'étape en échec pour que l'UI oriente l'utilisateur vers l'onglet concerné.
+// funding-sources-create). Si une étape après la création du projet échoue,
+// on ne supprime PAS le projet déjà créé (pas de projets-delete ici) —
+// l'erreur porte le projectId et le nom de l'étape en échec pour que l'UI
+// oriente l'utilisateur vers l'onglet concerné.
+//
+// Le budget initial n'est PLUS seedé ici : l'ancienne étape 4 créait une
+// version "Budget initial" + une ligne budget_lignes par composante (C1,
+// C2...) SANS rattachement WBS (pas de wbs_id), pour forcer l'égalité
+// lignes/sources. Ces lignes devenaient des "fantômes" dans BudgetMatrix
+// (groupe "Sans composante WBS"), en doublon avec le vrai découpage porté
+// par le WBS (1.0, 2.0...). Le découpage budgétaire par composante se fait
+// désormais à 100% depuis l'onglet Budget, rattaché aux activités WBS.
 
-export type ProjectWizardStep = 'objectif' | 'composantes' | 'financement' | 'budget';
+export type ProjectWizardStep = 'objectif' | 'composantes' | 'financement';
 
 export class ProjectWizardStepError extends Error {
   step: ProjectWizardStep;
@@ -440,21 +448,19 @@ export interface CreateProjectWizardPayload {
   composantes: string[];
   devise: string;
   fundingSources: { nom: string; montant: number }[];
-  budgetLignes: { codeLigne: string; libelle: string; montantPrevu: number }[];
 }
 
 export function useCreateProjectWizard() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: CreateProjectWizardPayload) => {
-      // Connu dès la soumission du formulaire (pas besoin d'attendre l'étape
-      // 4) — envoyé directement à la création : projects.budget_total est
-      // l'enveloppe globale du projet (cf. ProjectEditModal.tsx, champ
-      // "Budget total"), lue telle quelle par le Dashboard portefeuille
-      // (dashboard-summary : SUM(budget_total)). Sans ça, un projet créé via
-      // l'assistant restait à 0 malgré des lignes budgétaires réelles déjà
-      // enregistrées dans budget_lignes.
-      const montantTotal = payload.budgetLignes.reduce((s, l) => s + l.montantPrevu, 0)
+      // projects.budget_total est l'enveloppe globale du projet (cf.
+      // ProjectEditModal.tsx, champ "Budget total"), lue telle quelle par le
+      // Dashboard portefeuille (dashboard-summary : SUM(budget_total)) — elle
+      // reprend désormais la somme des sources de financement (Étape 2),
+      // seule source de l'enveloppe globale depuis la suppression de l'étape
+      // "Budget initial" (cf. commentaire plus haut).
+      const montantTotal = payload.fundingSources.reduce((s, f) => s + f.montant, 0)
 
       // 1. Le projet lui-même — si ça échoue, rien d'autre n'a été tenté.
       const { data: project } = await invokeEdgeFunction<{ data: { id: string } }>('projects-create', {
@@ -525,31 +531,6 @@ export function useCreateProjectWizard() {
           })
         } catch (err) {
           throw new ProjectWizardStepError('financement', projectId, err)
-        }
-      }
-
-      // 4. Budget initial — une version "Budget initial" + ses lignes
-      // (montantTotal déjà calculé plus haut et envoyé à projects-create)
-      if (payload.budgetLignes.length > 0) {
-        try {
-          const { data: version } = await invokeEdgeFunction<{ data: { id: string } }>('budget-versions-create', {
-            projectId,
-            nom: 'Budget initial',
-            version: 1,
-            statut: 'BROUILLON',
-            montantTotal,
-          })
-          for (const [i, ligne] of payload.budgetLignes.entries()) {
-            await invokeEdgeFunction('budget-lines-create', {
-              versionId: version.id,
-              codeLigne: ligne.codeLigne,
-              libelle: ligne.libelle,
-              montantPrevu: ligne.montantPrevu,
-              ordre: i + 1,
-            })
-          }
-        } catch (err) {
-          throw new ProjectWizardStepError('budget', projectId, err)
         }
       }
 
