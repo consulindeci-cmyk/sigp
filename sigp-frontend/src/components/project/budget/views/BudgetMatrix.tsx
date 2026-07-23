@@ -10,6 +10,7 @@ import {
 import { useFundingSources, type FundingSource } from '@/hooks/useFundingSources';
 import { useWBS } from '@/hooks/useWBS';
 import { useHistory } from '@/hooks/useHistory';
+import { flattenWBSTree } from '@/utils/tree';
 import { ACTION_LABEL } from '@/mocks/historyMocks';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
@@ -33,6 +34,7 @@ interface ImportRow {
   rowIndex: number;
   libelle:      string;
   code_ligne:   string;
+  wbs_id:       string;
   bailleur_id:  string;
   bailleur_nom: string;
   unite:          string;
@@ -61,6 +63,17 @@ function findBailleur(raw: string, fundingSources: FundingSource[]) {
   );
 }
 
+// Résout le texte "Code WBS" d'une ligne importée vers un vrai nœud WBS fille
+// (jamais une composante racine, cf. wbsOptions) — sans cette résolution,
+// l'import créait des budget_lignes avec wbs_id NULL : invisibles dans le
+// tableau (BudgetMatrix ne rend que les groupes rattachés au WBS) et absentes
+// du TOTAL GÉNÉRAL, tout en affichant "Import réussi" à l'utilisateur.
+function findWbsNode(raw: string, wbsOptions: WBS[]) {
+  const r = raw.trim().toLowerCase();
+  if (!r) return undefined;
+  return wbsOptions.find(n => n.code_wbs.trim().toLowerCase() === r);
+}
+
 function colVal(row: Record<string, unknown>, ...keys: string[]): unknown {
   for (const k of keys) {
     const found = Object.entries(row).find(([col]) => col.toLowerCase().includes(k.toLowerCase()));
@@ -69,7 +82,7 @@ function colVal(row: Record<string, unknown>, ...keys: string[]): unknown {
   return '';
 }
 
-async function parseImportFile(file: File, fundingSources: FundingSource[]): Promise<ImportRow[]> {
+async function parseImportFile(file: File, fundingSources: FundingSource[], wbsOptions: WBS[]): Promise<ImportRow[]> {
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array' });
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -79,12 +92,13 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
     .filter(row => Object.values(row).some(v => String(v).trim() !== ''))
     .map((row, i) => {
       const libelle    = String(colVal(row, 'composante', 'wbs nom', 'wbs_nom', 'libellé', 'libelle')).trim();
-      const codeLigne  = String(colVal(row, 'code wbs', 'wbs_id', 'wbs id', 'code')).trim()
-                      || `bl-import-${i + 1}`;
+      const codeWbsRaw = String(colVal(row, 'code wbs', 'wbs_id', 'wbs id', 'code')).trim();
       const bailleurRaw  = String(colVal(row, 'bailleur')).trim();
       const unite        = String(colVal(row, 'unité', 'unite')).trim();
 
       const bailleur = findBailleur(bailleurRaw, fundingSources);
+      const wbsNode = findWbsNode(codeWbsRaw, wbsOptions);
+      const codeLigne = wbsNode?.code_wbs || codeWbsRaw || `bl-import-${i + 1}`;
 
       const quantite      = parseNum(colVal(row, 'quantité', 'quantite'));
       const cout_unitaire = parseNum(colVal(row, 'coût unitaire', 'cout unitaire', 'cout_unitaire'));
@@ -93,6 +107,7 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
 
       const errors: string[] = [];
       if (!libelle)       errors.push('Composante/WBS manquant');
+      if (!wbsNode)       errors.push(`Activité WBS introuvable pour le code "${codeWbsRaw || '—'}"`);
       if (!bailleur)      errors.push(`Bailleur inconnu : "${bailleurRaw}"`);
       if (montant_revise <= 0) errors.push('Coût total requis (> 0)');
 
@@ -100,6 +115,7 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
         rowIndex:     i + 2,
         libelle,
         code_ligne:   codeLigne,
+        wbs_id:       wbsNode?.id || '',
         bailleur_id:  bailleur?.id  || '',
         bailleur_nom: bailleur?.nom || bailleurRaw,
         unite,
@@ -340,6 +356,14 @@ export function BudgetMatrix({
   const { data: fundingSources = [] } = useFundingSources(projectId);
   const { data: wbsData } = useWBS(projectId);
   const wbsNodes = wbsData?.data ?? [];
+
+  // Activités WBS filles uniquement (jamais une composante racine) — même
+  // filtre que BudgetLigneSlideOver.wbsOptions, réutilisé ici pour résoudre
+  // le "Code WBS" d'un import Excel vers un vrai nœud rattachable.
+  const wbsOptions = useMemo(() => {
+    const roots = wbsNodes.filter(n => !n.parent_id);
+    return flattenWBSTree(roots, wbsNodes).filter(n => !!n.parent_id);
+  }, [wbsNodes]);
 
   // ── Historique (table réelle `historique`, alimentée par les Edge
   // Functions) — remplace l'ancien journal en mémoire de session, perdu au
@@ -598,7 +622,7 @@ export function BudgetMatrix({
     setImportFileName(file.name);
     setImportLoading(true);
     try {
-      const rows = await parseImportFile(file, fundingSources);
+      const rows = await parseImportFile(file, fundingSources, wbsOptions);
       setImportRows(rows);
       setImportModalOpen(true);
     } catch {
@@ -616,6 +640,7 @@ export function BudgetMatrix({
     const toAdd: Partial<BudgetLigne>[] = validImportRows.map(r => ({
       libelle:         r.libelle,
       code_ligne:      r.code_ligne,
+      wbs_id:          r.wbs_id,
       bailleur_id:     r.bailleur_id,
       bailleur_nom:    r.bailleur_nom,
       unite:           r.unite || undefined,
@@ -966,6 +991,7 @@ export function BudgetMatrix({
             <table className="w-full text-xs border-collapse min-w-[600px]">
               <thead>
                 <tr className="bg-muted/50 sticky top-0">
+                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Code WBS</th>
                   <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Composante</th>
                   <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Bailleur</th>
                   <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Coût Total</th>
@@ -975,6 +1001,9 @@ export function BudgetMatrix({
               <tbody className="divide-y divide-border">
                 {importRows.map(r => (
                   <tr key={r.rowIndex} className={`${r.isValid ? '' : 'bg-destructive/5'}`}>
+                    <td className="px-3 py-2 font-mono text-muted-foreground">
+                      {r.wbs_id ? r.code_ligne : <span className="text-destructive italic">Non rattaché</span>}
+                    </td>
                     <td className="px-3 py-2 font-medium text-foreground">{r.libelle || <span className="text-destructive italic">—</span>}</td>
                     <td className="px-3 py-2 text-muted-foreground">{r.bailleur_nom || <span className="text-destructive italic">Inconnu</span>}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatMoney(r.montant_revise)}</td>
