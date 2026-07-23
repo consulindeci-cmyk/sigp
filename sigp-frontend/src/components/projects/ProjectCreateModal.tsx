@@ -30,14 +30,12 @@ interface InfosState {
   startDate: string;
   endDate: string;
   managerId: string;
-  objectifGlobalLibelle: string;
 }
 
 interface SourceRow { tempId: string; nom: string; montant: string }
-interface ComposanteRow { tempId: string; libelle: string }
 
 const EMPTY_INFOS: InfosState = {
-  code: '', name: '', description: '', startDate: '', endDate: '', managerId: '', objectifGlobalLibelle: '',
+  code: '', name: '', description: '', startDate: '', endDate: '', managerId: '',
 };
 
 function uid(): string {
@@ -85,16 +83,30 @@ function StepDot({ index, label, active, done }: { index: number; label: string;
   );
 }
 
+function RecapSection({
+  title, onEdit, children,
+}: { title: string; onEdit: () => void; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <Button type="button" variant="ghost" size="sm" onClick={onEdit}>Modifier</Button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Composant
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: ProjectCreateModalProps) {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [infos, setInfos] = useState<InfosState>(EMPTY_INFOS);
   const [devise, setDevise] = useState('XOF');
+  const [objectifGlobal, setObjectifGlobal] = useState('');
   const [sources, setSources] = useState<SourceRow[]>([]);
-  const [composantes, setComposantes] = useState<ComposanteRow[]>([]);
   const [errors, setErrors] = useState<Partial<Record<keyof InfosState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -122,8 +134,8 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
     if (open) {
       setStep(1);
       setInfos(EMPTY_INFOS);
+      setObjectifGlobal('');
       setSources([]);
-      setComposantes([]);
       setErrors({});
       setSubmitError(null);
       setDevise(organisation?.deviseDefaut || 'XOF');
@@ -141,18 +153,6 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
     if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
   }
 
-  // ── Étape 1 : composantes (C1..Cn) — deviennent des nœuds RESULTAT sous
-  // l'objectif global à la création (cf. useCreateProjectWizard) ────────────
-  function addComposante() {
-    setComposantes(prev => [...prev, { tempId: uid(), libelle: '' }]);
-  }
-  function updateComposante(tempId: string, libelle: string) {
-    setComposantes(prev => prev.map(c => c.tempId === tempId ? { ...c, libelle } : c));
-  }
-  function removeComposante(tempId: string) {
-    setComposantes(prev => prev.filter(c => c.tempId !== tempId));
-  }
-
   // ── Étape 2 : sources de financement ─────────────────────────────────────
   function addSource() {
     setSources(prev => [...prev, { tempId: uid(), nom: '', montant: '' }]);
@@ -168,12 +168,20 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
     [sources],
   );
 
+  const selectedManagerLabel = useMemo(() => {
+    if (!infos.managerId) return '';
+    const u = (usersList ?? []).find(u => u.id === infos.managerId);
+    return u ? `${u.prenom} ${u.nom}` : '';
+  }, [infos.managerId, usersList]);
+
   // ── Validation par étape ─────────────────────────────────────────────────
+  // Seules les informations essentielles (Étape 1) sont obligatoires — le
+  // Responsable (managerId), comme tout le reste, reste facultatif à la
+  // création (déjà optionnel côté projects-create ; assignable plus tard).
   function validateStep1(): boolean {
     const errs: Partial<Record<keyof InfosState, string>> = {};
     if (!infos.code.trim()) errs.code = 'Code requis';
     if (!infos.name.trim()) errs.name = 'Nom requis';
-    if (!infos.managerId) errs.managerId = 'Responsable requis';
     if (infos.startDate && infos.endDate && infos.endDate < infos.startDate) {
       errs.endDate = 'Date de fin antérieure à la date de début';
     }
@@ -192,10 +200,25 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
     if (step === 1) {
       if (!validateStep1()) return;
       setStep(2);
+    } else if (step === 2) {
+      if (!sourcesValid) return;
+      setStep(3);
     }
   }
   function goBack() {
-    if (step > 1) setStep((s) => (s - 1) as 1);
+    if (step > 1) setStep((s) => (s - 1) as 1 | 2);
+  }
+
+  // "Passer cette étape" — Étape 2 est 100% optionnelle : on efface toute
+  // saisie partielle (objectif, sources) plutôt que de la conserver
+  // silencieusement, pour éviter qu'une ligne incomplète (ex : source avec
+  // un nom mais sans montant) ne soit envoyée ambiguë à la création — cf.
+  // règle d'or : aucune donnée de cadrage/financement ne doit être créée si
+  // l'utilisateur n'a pas explicitement validé cette étape.
+  function skipStep2() {
+    setObjectifGlobal('');
+    setSources([]);
+    setStep(3);
   }
 
   async function handleFinish() {
@@ -210,8 +233,7 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
         dateDebut: infos.startDate || undefined,
         dateFinPrevue: infos.endDate || undefined,
         managerId: infos.managerId || undefined,
-        objectifGlobalLibelle: infos.objectifGlobalLibelle.trim() || undefined,
-        composantes: composantes.map(c => c.libelle.trim()).filter(Boolean),
+        objectifGlobalLibelle: objectifGlobal.trim() || undefined,
         devise,
         fundingSources: sources.map(s => ({ nom: s.nom.trim(), montant: Number(s.montant) })),
       });
@@ -220,7 +242,6 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
       if (err instanceof ProjectWizardStepError) {
         const STEP_LABELS: Record<string, string> = {
           objectif: "l'objectif global (Cadre Logique)",
-          composantes: 'les composantes (Cadre Logique)',
           financement: 'les sources de financement',
         };
         setSubmitError(
@@ -241,12 +262,16 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
         <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-3">
           <div>
             <ModalTitle>Nouveau projet</ModalTitle>
-            <ModalDescription>Création guidée en 2 étapes — informations, financement.</ModalDescription>
+            <ModalDescription>
+              Création guidée en 3 étapes — informations essentielles, cadre &amp; financement (optionnel), récapitulatif.
+            </ModalDescription>
           </div>
           <div className="flex items-start gap-2">
             <StepDot index={1} label="Informations" active={step === 1} done={step > 1} />
             <div className={cn('h-0.5 flex-1 mt-4 rounded', step > 1 ? 'bg-primary' : 'bg-border')} />
-            <StepDot index={2} label="Financement" active={step === 2} done={false} />
+            <StepDot index={2} label="Cadre & Financement" active={step === 2} done={step > 2} />
+            <div className={cn('h-0.5 flex-1 mt-4 rounded', step > 2 ? 'bg-primary' : 'bg-border')} />
+            <StepDot index={3} label="Récapitulatif" active={step === 3} done={false} />
           </div>
         </ModalHeader>
 
@@ -270,15 +295,15 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
             </div>
           )}
 
-          {/* ── Étape 1 : Informations Générales ─────────────────────────── */}
+          {/* ── Étape 1 : Informations Essentielles ──────────────────────── */}
           {step === 1 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FieldRow id="pc-code" label="Code projet" error={errors.code} required>
                 <Input id="pc-code" value={infos.code} onChange={e => setInfo('code', e.target.value)} placeholder="PROJ-XXX" />
               </FieldRow>
-              <FieldRow id="pc-manager" label="Responsable" error={errors.managerId} required>
+              <FieldRow id="pc-manager" label="Responsable">
                 <Select id="pc-manager" value={infos.managerId} onChange={e => setInfo('managerId', e.target.value)} disabled={isUsersLoading}>
-                  <option value="">{isUsersLoading ? 'Chargement…' : 'Sélectionner un responsable'}</option>
+                  <option value="">{isUsersLoading ? 'Chargement…' : 'Non assigné — à définir plus tard'}</option>
                   {(usersList ?? []).map(u => (
                     <option key={u.id} value={u.id}>{u.prenom} {u.nom} ({u.role ?? 'Utilisateur'})</option>
                   ))}
@@ -296,119 +321,164 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
               <FieldRow id="pc-fin" label="Date fin prévue" error={errors.endDate}>
                 <Input id="pc-fin" type="date" value={infos.endDate} onChange={e => setInfo('endDate', e.target.value)} />
               </FieldRow>
-              <FieldRow id="pc-objectif" label="Objectif global (Cadre Logique)" full>
-                <Textarea
-                  id="pc-objectif"
-                  value={infos.objectifGlobalLibelle}
-                  onChange={e => setInfo('objectifGlobalLibelle', e.target.value)}
-                  rows={2}
-                  placeholder="Ex : Contribuer à l'amélioration de l'accès à l'eau potable dans la région..."
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Deviendra l'objectif racine du Cadre Logique du projet — modifiable ensuite depuis cet onglet.
-                </p>
-              </FieldRow>
+            </div>
+          )}
 
-              <div className="sm:col-span-2 flex flex-col gap-3 border-t border-border pt-4">
+          {/* ── Étape 2 : Cadre & Financement (optionnelle) ──────────────── */}
+          {step === 2 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                Cette étape est entièrement facultative — vous pouvez la passer et tout renseigner plus tard depuis les onglets Cadre Logique et Financement.
+              </div>
+
+              {/* Cadre logique */}
+              <div className="flex flex-col gap-3">
+                <FieldRow id="pc-objectif" label="Objectif global (Cadre Logique)" full>
+                  <Textarea
+                    id="pc-objectif"
+                    value={objectifGlobal}
+                    onChange={e => setObjectifGlobal(e.target.value)}
+                    rows={2}
+                    placeholder="Ex : Contribuer à l'amélioration de l'accès à l'eau potable dans la région..."
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Deviendra l'objectif racine du Cadre Logique du projet — modifiable ensuite depuis cet onglet.
+                    Le découpage en composantes se fait désormais exclusivement via le WBS (1.0, 2.0…), une fois le projet créé.
+                  </p>
+                </FieldRow>
+              </div>
+
+              {/* Financement */}
+              <div className="flex flex-col gap-3 border-t border-border pt-4">
+                <FieldRow id="pc-devise" label="Devise du projet">
+                  <Select id="pc-devise" value={devise} onChange={e => setDevise(e.target.value)} className="max-w-[200px]">
+                    <option value="XOF">XOF — Franc CFA</option>
+                    <option value="EUR">EUR — Euro</option>
+                    <option value="USD">USD — Dollar américain</option>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Initialisée avec la devise par défaut de l'organisation ({organisation?.deviseDefaut ?? 'XOF'}).
+                  </p>
+                </FieldRow>
+
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">Composantes (C1, C2…)</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Créées automatiquement comme Résultats sous l'objectif global — nécessite qu'il soit renseigné ci-dessus.
-                    </p>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={addComposante} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-                    Ajouter
+                  <p className="text-sm font-semibold text-foreground">Sources de financement</p>
+                  <Button type="button" variant="outline" size="sm" onClick={addSource} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                    Ajouter une source
                   </Button>
                 </div>
 
-                {composantes.map((c, i) => (
-                  <div key={c.tempId} className="flex items-center gap-2">
-                    <span className="w-8 shrink-0 text-xs font-mono text-muted-foreground">C{i + 1}</span>
-                    <Input
-                      value={c.libelle}
-                      onChange={e => updateComposante(c.tempId, e.target.value)}
-                      placeholder="Ex : Accès à l'eau potable"
-                      className="flex-1"
-                    />
-                    <Button type="button" variant="ghost" size="sm" onClick={() => removeComposante(c.tempId)} aria-label="Retirer cette composante">
+                {sources.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">
+                    Aucune source déclarée pour l'instant — vous pourrez en ajouter plus tard depuis l'onglet Financement.
+                  </p>
+                )}
+
+                {sources.map(s => (
+                  <div key={s.tempId} className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs font-medium text-muted-foreground">Bailleur / Source</label>
+                      <Input value={s.nom} onChange={e => updateSource(s.tempId, { nom: e.target.value })} placeholder="Ex : Banque Mondiale" />
+                    </div>
+                    <div className="w-44">
+                      <label className="text-xs font-medium text-muted-foreground">Enveloppe globale ({devise})</label>
+                      <Input type="number" min={0} value={s.montant} onChange={e => updateSource(s.tempId, { montant: e.target.value })} placeholder="0" />
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeSource(s.tempId)} aria-label="Retirer cette source">
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
                 ))}
 
-                {composantes.length > 0 && !infos.objectifGlobalLibelle.trim() && (
-                  <div className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
-                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    Renseignez l'objectif global ci-dessus pour que ces composantes soient créées.
+                {sources.length > 0 && (
+                  <div className="flex justify-between text-sm font-semibold border-t border-border pt-3">
+                    <span className="text-muted-foreground">Total des enveloppes</span>
+                    <span className="font-mono text-foreground">{totalSources.toLocaleString('fr-FR')} {devise}</span>
                   </div>
                 )}
+
+                {sources.length > 0 && !sourcesValid && (
+                  <div className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    Chaque source doit avoir un nom et une enveloppe supérieure à 0 pour continuer — ou retirez-la, ou passez l'étape.
+                  </div>
+                )}
+
+                <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
+                  Le découpage du budget par composante se fait depuis le WBS (1.0, 2.0…) et l'onglet
+                  Budget, une fois le projet créé — chaque source ci-dessus ne définit que le bailleur
+                  et son enveloppe globale pour l'ensemble du projet. Aucune ligne budgétaire n'est créée ici.
+                </p>
               </div>
             </div>
           )}
 
-          {/* ── Étape 2 : Financement ─────────────────────────────────────── */}
-          {step === 2 && (
+          {/* ── Étape 3 : Récapitulatif & Confirmation ───────────────────── */}
+          {step === 3 && (
             <div className="flex flex-col gap-4">
-              <FieldRow id="pc-devise" label="Devise du projet" required>
-                <Select id="pc-devise" value={devise} onChange={e => setDevise(e.target.value)} className="max-w-[200px]">
-                  <option value="XOF">XOF — Franc CFA</option>
-                  <option value="EUR">EUR — Euro</option>
-                  <option value="USD">USD — Dollar américain</option>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Initialisée avec la devise par défaut de l'organisation ({organisation?.deviseDefaut ?? 'XOF'}).
-                </p>
-              </FieldRow>
-
-              <div className="flex items-center justify-between border-t border-border pt-4">
-                <p className="text-sm font-semibold text-foreground">Sources de financement</p>
-                <Button type="button" variant="outline" size="sm" onClick={addSource} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-                  Ajouter une source
-                </Button>
-              </div>
-
-              {sources.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">
-                  Aucune source déclarée pour l'instant — vous pourrez en ajouter plus tard depuis l'onglet Financement.
-                </p>
-              )}
-
-              {sources.map(s => (
-                <div key={s.tempId} className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="text-xs font-medium text-muted-foreground">Bailleur / Source</label>
-                    <Input value={s.nom} onChange={e => updateSource(s.tempId, { nom: e.target.value })} placeholder="Ex : Banque Mondiale" />
+              <RecapSection title="Informations essentielles" onEdit={() => setStep(1)}>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground">Nom du projet</dt>
+                    <dd className="text-foreground font-medium">{infos.name.trim() || '—'}</dd>
                   </div>
-                  <div className="w-44">
-                    <label className="text-xs font-medium text-muted-foreground">Enveloppe globale ({devise})</label>
-                    <Input type="number" min={0} value={s.montant} onChange={e => updateSource(s.tempId, { montant: e.target.value })} placeholder="0" />
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground">Code</dt>
+                    <dd className="text-foreground font-mono">{infos.code.trim() || '—'}</dd>
                   </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => removeSource(s.tempId)} aria-label="Retirer cette source">
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground">Date début</dt>
+                    <dd className="text-foreground">{infos.startDate || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground">Date fin prévue</dt>
+                    <dd className="text-foreground">{infos.endDate || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground">Responsable</dt>
+                    <dd className="text-foreground">{selectedManagerLabel || 'Non assigné'}</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-[11px] text-muted-foreground">Description</dt>
+                    <dd className="text-foreground">{infos.description.trim() || '—'}</dd>
+                  </div>
+                </dl>
+              </RecapSection>
 
-              {sources.length > 0 && (
-                <div className="flex justify-between text-sm font-semibold border-t border-border pt-3">
-                  <span className="text-muted-foreground">Total des enveloppes</span>
-                  <span className="font-mono text-foreground">{totalSources.toLocaleString('fr-FR')} {devise}</span>
-                </div>
-              )}
+              <RecapSection title="Cadre logique" onEdit={() => setStep(2)}>
+                {objectifGlobal.trim() ? (
+                  <p className="text-sm text-foreground">{objectifGlobal.trim()}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">
+                    Aucun objectif global défini — configurable plus tard depuis l'onglet Cadre Logique.
+                  </p>
+                )}
+              </RecapSection>
 
-              {sources.length > 0 && !sourcesValid && (
-                <div className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  Chaque source doit avoir un nom et une enveloppe supérieure à 0 pour continuer.
-                </div>
-              )}
-
-              <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
-                Le découpage du budget par composante se fait depuis le WBS (1.0, 2.0…) et l'onglet
-                Budget, une fois le projet créé — chaque source ci-dessus ne définit que le bailleur
-                et son enveloppe globale pour l'ensemble du projet.
-              </p>
+              <RecapSection title="Financement" onEdit={() => setStep(2)}>
+                {sources.length > 0 ? (
+                  <>
+                    <ul className="flex flex-col gap-1 text-sm">
+                      {sources.map(s => (
+                        <li key={s.tempId} className="flex justify-between gap-2">
+                          <span className="text-foreground truncate">{s.nom.trim() || '—'}</span>
+                          <span className="font-mono text-muted-foreground shrink-0">{(Number(s.montant) || 0).toLocaleString('fr-FR')} {devise}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex justify-between text-sm font-semibold border-t border-border mt-2 pt-2">
+                      <span className="text-muted-foreground">Total</span>
+                      <span className="font-mono text-foreground">{totalSources.toLocaleString('fr-FR')} {devise}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-start gap-1.5 text-xs text-muted-foreground italic">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    Aucun financement déclaré — Le projet sera créé avec le statut « En préparation ».
+                  </div>
+                )}
+              </RecapSection>
             </div>
           )}
 
@@ -424,15 +494,22 @@ export function ProjectCreateModal({ open, onOpenChange, defaultProgrammeId }: P
           <Button type="button" variant="outline" onClick={goBack} disabled={step === 1 || isLocked}>
             Précédent
           </Button>
-          {step < 2 ? (
-            <Button type="button" variant="default" onClick={goNext} disabled={isLocked}>
-              Suivant
-            </Button>
-          ) : (
-            <Button type="button" variant="default" onClick={handleFinish} disabled={!canFinish}>
-              {isLocked ? 'Création…' : 'Créer le projet'}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {step === 2 && (
+              <Button type="button" variant="outline" onClick={skipStep2} disabled={isLocked}>
+                Passer cette étape
+              </Button>
+            )}
+            {step < 3 ? (
+              <Button type="button" variant="default" onClick={goNext} disabled={isLocked || (step === 2 && !sourcesValid)}>
+                Suivant
+              </Button>
+            ) : (
+              <Button type="button" variant="default" onClick={handleFinish} disabled={!canFinish}>
+                {isLocked ? 'Création…' : 'Créer le projet'}
+              </Button>
+            )}
+          </div>
         </div>
       </ModalContent>
     </Modal>
