@@ -16,10 +16,9 @@ import {
   ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
 import {
-  Filter, Plus, Download, Printer, History, Search, Trash2, X,
+  Plus, Download, Printer, History, Search, Trash2, X,
   Upload, Clock, CheckCircle, AlertTriangle, Layers,
 } from 'lucide-react';
-import { Select } from '@/components/ui/forms/Select';
 import { Input } from '@/components/ui/forms/Input';
 import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -353,7 +352,6 @@ export function BudgetMatrix({
   );
 
   // ── Filters ────────────────────────────────────────────────────────────────
-  const [filterBailleur,  setFilterBailleur]  = useState('');
   const [searchQuery,     setSearchQuery]     = useState('');
 
   // ── SlideOver (add / edit) ─────────────────────────────────────────────────
@@ -391,42 +389,27 @@ export function BudgetMatrix({
   // ── Export feedback ────────────────────────────────────────────────────────
   const [exportDone, setExportDone] = useState<'csv' | 'excel' | null>(null);
 
-  // ── Computed options ──────────────────────────────────────────────────────
-  const bailleurOptions = useMemo(() => {
-    const ids = [...new Set(lignes.map(l => l.bailleur_id))];
-    return ids.map(id => ({
-      id,
-      nom: fundingSources.find(b => b.id === id)?.nom
-        || lignes.find(l => l.bailleur_id === id)?.bailleur_nom
-        || id,
-    }));
-  }, [lignes, fundingSources]);
-
   // ── Filtered lignes ────────────────────────────────────────────────────────
   const filteredLignes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    if (!q) return lignes;
     return lignes.filter(l => {
-      if (filterBailleur && l.bailleur_id !== filterBailleur) return false;
-      if (q) {
-        const hay = [l.libelle, l.code_ligne, l.code_wbs, l.bailleur_nom, l.bailleur_id].join(' ').toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+      const hay = [l.libelle, l.code_ligne, l.code_wbs, l.bailleur_nom, l.bailleur_id].join(' ').toLowerCase();
+      return hay.includes(q);
     });
-  }, [lignes, filterBailleur, searchQuery]);
+  }, [lignes, searchQuery]);
 
   // ── Regroupement hiérarchique par composante WBS racine (même principe que
   // PTBAMatrix.tsx) : chaque ligne remonte à sa composante racine via
-  // parent_id. Une ligne dont le wbs_id ne résout à aucun nœud réel tombe
-  // dans `unassignedLignes` — en pratique, ce sont exclusivement des lignes
-  // fantômes héritées de l'ancien assistant de création de projet (une ligne
-  // par composante C1/C2/C3, créée sans rattachement WBS pour équilibrer les
-  // sources de financement ; cf. useProjects.ts useCreateProjectWizard).
-  // Depuis que cette étape a été supprimée du wizard, plus aucune ligne n'est
-  // censée atterrir ici — elles sont volontairement écartées de l'affichage
-  // ET du TOTAL GÉNÉRAL ci-dessous pour ne pas fausser le budget réel (double
-  // compte avec le découpage WBS).
-  const { groups, unassignedLignes } = useMemo(() => {
+  // parent_id. Toute ligne budgétaire doit désormais être rattachée à une
+  // activité WBS fille (cf. BudgetLigneSlideOver, sélection obligatoire) —
+  // les anciennes lignes fantômes sans wbs_id (héritées de l'ex-étape
+  // "Budget initial" du wizard de création) ont été purgées définitivement
+  // en base (cf. migration 20260827100000). Une ligne dont le wbs_id ne
+  // résout exceptionnellement à aucun nœud réel (ex : nœud WBS supprimé
+  // après coup) est simplement écartée du regroupement, de l'affichage et
+  // du TOTAL GÉNÉRAL, pour ne jamais fausser le budget réel par double compte.
+  const { groups } = useMemo(() => {
     const nodesById = new Map<string, WBS>();
     for (const n of wbsNodes) nodesById.set(n.id, n);
 
@@ -443,11 +426,10 @@ export function BudgetMatrix({
 
     const groupMap = new Map<string, { root: WBS; lignes: BudgetLigne[] }>();
     const order: string[] = [];
-    const unassigned: BudgetLigne[] = [];
 
     for (const ligne of filteredLignes) {
       const root = ligne.wbs_id ? findRoot(ligne.wbs_id) : null;
-      if (!root) { unassigned.push(ligne); continue; }
+      if (!root) continue;
       let g = groupMap.get(root.id);
       if (!g) { g = { root, lignes: [] }; groupMap.set(root.id, g); order.push(root.id); }
       g.lignes.push(ligne);
@@ -465,7 +447,7 @@ export function BudgetMatrix({
       );
     }
 
-    return { groups: sortedGroups, unassignedLignes: unassigned };
+    return { groups: sortedGroups };
   }, [filteredLignes, wbsNodes]);
 
   // ── Lignes réellement rattachées au WBS (celles affichées sous une bande de
@@ -671,17 +653,6 @@ export function BudgetMatrix({
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex items-center flex-wrap gap-2 px-4 py-2.5 border-b border-border bg-card">
 
-        {/* Filters */}
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-          <Filter className="h-3.5 w-3.5" />
-          Filtres :
-        </div>
-
-        <Select wrapperClassName="w-auto" className="h-8 text-xs py-1" value={filterBailleur} onChange={e => setFilterBailleur(e.target.value)}>
-          <option value="">Tous les bailleurs</option>
-          {bailleurOptions.map(b => <option key={b.id} value={b.id}>{b.nom}</option>)}
-        </Select>
-
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -749,17 +720,6 @@ export function BudgetMatrix({
           )}
         </div>
       </div>
-
-      {unassignedLignes.length > 0 && (
-        <div className="shrink-0 mx-4 mt-2 flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            {unassignedLignes.length} ligne{unassignedLignes.length > 1 ? 's' : ''} ancienne{unassignedLignes.length > 1 ? 's' : ''} sans rattachement WBS
-            {unassignedLignes.length > 1 ? ' sont masquées' : ' est masquée'} (héritée{unassignedLignes.length > 1 ? 's' : ''} de l'ancien assistant de création de projet) —
-            exclue{unassignedLignes.length > 1 ? 's' : ''} du tableau et du TOTAL GÉNÉRAL.
-          </span>
-        </div>
-      )}
 
       {duplicateError && (
         <div className="shrink-0 mx-4 mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
