@@ -137,10 +137,13 @@ export function BudgetLigneSlideOver({
     if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
   }
 
-  // Auto-remplissage Code/Libellé depuis le nœud WBS sélectionné — uniquement
-  // à la création (cf. même règle que PTBAActiviteForm/WBSNodeForm : en
-  // édition, ré-appliquer l'auto-remplissage écraserait silencieusement une
-  // valeur déjà personnalisée par l'utilisateur).
+  // Auto-remplissage Code/Libellé/Budget depuis le nœud WBS sélectionné —
+  // uniquement à la création (cf. même règle que PTBAActiviteForm/
+  // WBSNodeForm : en édition, ré-appliquer l'auto-remplissage écraserait
+  // silencieusement une valeur déjà personnalisée par l'utilisateur). Le
+  // budget est repris depuis budget_alloue (rollup réel des activités PTBA
+  // liées à ce nœud) ou, à défaut, enveloppe_cible (plafond bailleur) —
+  // uniquement si l'utilisateur n'a pas déjà commencé à saisir un montant.
   function handleWbsChange(newWbsId: string) {
     setValues(prev => {
       const next = { ...prev, wbs_id: newWbsId };
@@ -149,6 +152,10 @@ export function BudgetLigneSlideOver({
       if (node) {
         next.code_ligne = node.code_wbs;
         next.libelle = node.titre;
+        const suggestedBudget = node.budget_alloue || node.enveloppe_cible;
+        if (suggestedBudget && !prev.quantite && !prev.cout_unitaire && !prev.montant_revise) {
+          next.montant_revise = String(suggestedBudget);
+        }
       }
       return next;
     });
@@ -231,8 +238,8 @@ export function BudgetLigneSlideOver({
                   </Select>
                   <span className="text-[11px] text-muted-foreground mt-0.5">
                     {isEditing
-                      ? 'Modifier le rattachement ne met pas à jour automatiquement Code/Libellé ci-dessous.'
-                      : "Sélectionner un nœud pré-remplit Code WBS et Libellé ci-dessous (modifiables ensuite)."}
+                      ? 'Modifier le rattachement ne met pas à jour automatiquement Code/Libellé/Budget ci-dessous.'
+                      : "Sélectionner un nœud pré-remplit Code WBS, Libellé et le Coût Total (depuis le budget WBS/PTBA déjà planifié) — tout reste modifiable ensuite."}
                   </span>
                 </FRow>
               </div>

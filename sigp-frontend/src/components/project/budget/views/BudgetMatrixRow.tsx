@@ -14,10 +14,13 @@ interface BudgetMatrixRowProps {
   onDelete:       (id: string) => void;
   onDuplicate:    (id: string) => void;
   onViewHistory:  (id: string) => void;
+  /** Indente visuellement la ligne quand elle est regroupée sous une bande
+   * de composante WBS racine (cf. BudgetComponentSubtotalRow au-dessus). */
+  indented?: boolean;
 }
 
 export const BudgetMatrixRow = memo(({
-  ligne, hasHistory, canManage, canDelete, onEdit, onDelete, onDuplicate, onViewHistory,
+  ligne, hasHistory, canManage, canDelete, onEdit, onDelete, onDuplicate, onViewHistory, indented = false,
 }: BudgetMatrixRowProps) => {
   return (
     <tr className="hover:bg-muted/30 transition-colors group">
@@ -28,7 +31,7 @@ export const BudgetMatrixRow = memo(({
       </td>
 
       {/* Libellé */}
-      <td className="px-4 py-2.5 font-semibold text-foreground">
+      <td className={`px-4 py-2.5 font-semibold text-foreground ${indented ? 'pl-8' : ''}`}>
         {ligne.libelle || ligne.code_ligne}
       </td>
 

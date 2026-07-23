@@ -1,23 +1,26 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 import type { BudgetLigne } from '@/types/budget';
+import type { WBS } from '@/types';
 import { BudgetMatrixRow } from './BudgetMatrixRow';
 import {
   BudgetLigneSlideOver, CATEGORIES_REF,
   type LigneSlideOverMode,
 } from './BudgetLigneSlideOver';
 import { useFundingSources, type FundingSource } from '@/hooks/useFundingSources';
+import { useWBS } from '@/hooks/useWBS';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
   ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
 import {
   Filter, Plus, Download, Printer, History, Search, Trash2, X,
-  Upload, Clock, CheckCircle, AlertTriangle,
+  Upload, Clock, CheckCircle, AlertTriangle, Layers,
 } from 'lucide-react';
 import { Select } from '@/components/ui/forms/Select';
 import { Input } from '@/components/ui/forms/Input';
 import { Button } from '@/components/ui/forms/Button';
+import { Badge } from '@/components/ui/data-display/Badge';
 import { formatMoney } from '@/utils/format';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -299,6 +302,83 @@ const ACTION_LABELS: Record<LigneHistoryEntry['action'], string> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Bande de sous-total par composante WBS racine (regroupement hiérarchique,
+// même principe que PTBAComponentSubtotalRow) — ligne synthétique (pas une
+// vraie budget_lignes), jamais éditable, juste l'agrégation des lignes
+// filles regroupées dessous.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sumBy(lignes: BudgetLigne[], key: keyof BudgetLigne): number {
+  return lignes.reduce((s, l) => s + ((l[key] as number) || 0), 0);
+}
+
+// Nos codes WBS racine sont générés sans suffixe ("1", "2"...) — affichage
+// aligné sur la convention Excel ("1.0", "2.0"), sans toucher à la vraie donnée.
+function formatRootCode(code: string): string {
+  return code.includes('.') ? code : `${code}.0`;
+}
+
+function BudgetComponentSubtotalRow({ root, lignes }: { root: WBS; lignes: BudgetLigne[] }) {
+  const totalRevise    = sumBy(lignes, 'montant_revise');
+  const totalEngage    = sumBy(lignes, 'montant_engage');
+  const totalDecaisse  = sumBy(lignes, 'montant_decaisse');
+  const totalDisponible = sumBy(lignes, 'solde_disponible');
+  const totalRap       = sumBy(lignes, 'reste_a_payer');
+
+  // Plafond bailleur (composantes racine uniquement, cf. WBSNodeForm) — même
+  // alerte de dépassement que sur la Matrice Financière PTBA.
+  const plafond = root.enveloppe_cible ?? null;
+  const ecart = plafond != null ? plafond - totalRevise : null;
+  const isOverBudget = ecart != null && ecart < 0;
+
+  return (
+    <tr className={`border-b-2 ${isOverBudget ? 'border-destructive bg-destructive/10' : 'border-border bg-muted/40'}`}>
+      <td className={`px-4 py-2.5 font-mono text-xs font-bold text-foreground whitespace-nowrap border-r ${isOverBudget ? 'bg-destructive/10 border-destructive/30' : 'bg-muted/40 border-border'}`}>
+        {formatRootCode(root.code_wbs)}
+      </td>
+      <td className="px-4 py-2.5" colSpan={3}>
+        <div className="flex items-center gap-1.5 flex-wrap font-bold text-foreground text-sm">
+          <Layers className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="truncate">{root.titre}</span>
+          <span className="text-xs font-normal text-muted-foreground">
+            ({lignes.length} ligne{lignes.length > 1 ? 's' : ''})
+          </span>
+          {isOverBudget && (
+            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1 font-normal">
+              <AlertTriangle className="h-3 w-3" />
+              Dépassement de {formatMoney(Math.abs(ecart!))}
+            </Badge>
+          )}
+        </div>
+        {plafond != null && (
+          <p className={`text-[11px] mt-0.5 ${isOverBudget ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+            Plafond bailleur : {formatMoney(plafond)}
+            {!isOverBudget && ` — Reste à planifier : ${formatMoney(ecart!)}`}
+          </p>
+        )}
+      </td>
+      <td className="border-r-2 border-border" colSpan={3} />
+      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-foreground border-r-2 border-border">
+        {formatMoney(totalRevise)}
+      </td>
+      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-warning border-r-2 border-border">
+        {formatMoney(totalEngage)}
+      </td>
+      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-success border-r-2 border-border">
+        {formatMoney(totalDecaisse)}
+      </td>
+      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-primary">
+        {formatMoney(totalDisponible)}
+      </td>
+      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-muted-foreground border-r-2 border-border">
+        {formatMoney(totalRap)}
+      </td>
+      <td />
+    </tr>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -329,6 +409,8 @@ export function BudgetMatrix({
 }: BudgetMatrixProps) {
 
   const { data: fundingSources = [] } = useFundingSources(projectId);
+  const { data: wbsData } = useWBS(projectId);
+  const wbsNodes = wbsData?.data ?? [];
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const [filterBailleur,  setFilterBailleur]  = useState('');
@@ -402,6 +484,44 @@ export function BudgetMatrix({
       return true;
     });
   }, [lignes, filterBailleur, filterCategorie, searchQuery]);
+
+  // ── Regroupement hiérarchique par composante WBS racine (même principe que
+  // PTBAMatrix.tsx) : chaque ligne remonte à sa composante racine via
+  // parent_id. Une ligne dont le wbs_id ne résout à aucun nœud réel (jamais
+  // rattachée) tombe dans `unassignedLignes`, affichée à part.
+  const { groups, unassignedLignes } = useMemo(() => {
+    const nodesById = new Map<string, WBS>();
+    for (const n of wbsNodes) nodesById.set(n.id, n);
+
+    const findRoot = (nodeId: string): WBS | null => {
+      let current = nodesById.get(nodeId);
+      if (!current) return null;
+      const visited = new Set<string>();
+      while (current.parent_id && nodesById.has(current.parent_id) && !visited.has(current.id)) {
+        visited.add(current.id);
+        current = nodesById.get(current.parent_id)!;
+      }
+      return current;
+    };
+
+    const groupMap = new Map<string, { root: WBS; lignes: BudgetLigne[] }>();
+    const order: string[] = [];
+    const unassigned: BudgetLigne[] = [];
+
+    for (const ligne of filteredLignes) {
+      const root = ligne.wbs_id ? findRoot(ligne.wbs_id) : null;
+      if (!root) { unassigned.push(ligne); continue; }
+      let g = groupMap.get(root.id);
+      if (!g) { g = { root, lignes: [] }; groupMap.set(root.id, g); order.push(root.id); }
+      g.lignes.push(ligne);
+    }
+
+    const sortedGroups = order
+      .map(id => groupMap.get(id)!)
+      .sort((a, b) => a.root.code_wbs.localeCompare(b.root.code_wbs, undefined, { numeric: true }));
+
+    return { groups: sortedGroups, unassignedLignes: unassigned };
+  }, [filteredLignes, wbsNodes]);
 
   // ── Totals ────────────────────────────────────────────────────────────────
   const totals = useMemo(() => ({
@@ -738,19 +858,50 @@ export function BudgetMatrix({
                 </td>
               </tr>
             ) : (
-              filteredLignes.map(ligne => (
-                <BudgetMatrixRow
-                  key={ligne.id}
-                  ligne={ligne}
-                  hasHistory={lignesWithHistory.has(ligne.id)}
-                  canManage={canManage}
-                  canDelete={canDelete}
-                  onEdit={openEdit}
-                  onDelete={openDeleteModal}
-                  onDuplicate={handleDuplicate}
-                  onViewHistory={openLigneHistorique}
-                />
-              ))
+              <>
+                {groups.map(group => (
+                  <Fragment key={group.root.id}>
+                    <BudgetComponentSubtotalRow root={group.root} lignes={group.lignes} />
+                    {group.lignes.map(ligne => (
+                      <BudgetMatrixRow
+                        key={ligne.id}
+                        ligne={ligne}
+                        hasHistory={lignesWithHistory.has(ligne.id)}
+                        canManage={canManage}
+                        canDelete={canDelete}
+                        onEdit={openEdit}
+                        onDelete={openDeleteModal}
+                        onDuplicate={handleDuplicate}
+                        onViewHistory={openLigneHistorique}
+                        indented
+                      />
+                    ))}
+                  </Fragment>
+                ))}
+
+                {unassignedLignes.length > 0 && (
+                  <Fragment>
+                    <tr className="bg-muted/10">
+                      <td colSpan={13} className="px-4 py-1.5 text-[11px] uppercase font-semibold text-muted-foreground tracking-wide">
+                        Sans composante WBS ({unassignedLignes.length})
+                      </td>
+                    </tr>
+                    {unassignedLignes.map(ligne => (
+                      <BudgetMatrixRow
+                        key={ligne.id}
+                        ligne={ligne}
+                        hasHistory={lignesWithHistory.has(ligne.id)}
+                        canManage={canManage}
+                        canDelete={canDelete}
+                        onEdit={openEdit}
+                        onDelete={openDeleteModal}
+                        onDuplicate={handleDuplicate}
+                        onViewHistory={openLigneHistorique}
+                      />
+                    ))}
+                  </Fragment>
+                )}
+              </>
             )}
           </tbody>
 
