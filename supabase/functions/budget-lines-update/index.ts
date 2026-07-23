@@ -10,6 +10,12 @@ interface UpdateBudgetLineBody {
   montantEngage?: number;
   montantPaye?: number;
   ordre?: number;
+  // Valorisation WBS (cf. audit Budget) — null pour effacer.
+  wbsId?: string | null;
+  unite?: string | null;
+  quantite?: number | null;
+  coutUnitaire?: number | null;
+  fundingSourceId?: string | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -63,6 +69,34 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (body.wbsId) {
+      const { data: wbs, error: wbsError } = await admin
+        .from('wbs_nodes')
+        .select('id, project_id')
+        .eq('id', body.wbsId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (wbsError) throw wbsError;
+      if (!wbs) return json({ error: 'Nœud WBS introuvable' }, 404);
+      if (wbs.project_id !== version?.project_id) {
+        return json({ error: 'Le nœud WBS appartient à un autre projet' }, 409);
+      }
+    }
+
+    if (body.fundingSourceId) {
+      const { data: fs, error: fsError } = await admin
+        .from('funding_sources')
+        .select('id, project_id')
+        .eq('id', body.fundingSourceId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (fsError) throw fsError;
+      if (!fs) return json({ error: 'Source de financement introuvable' }, 404);
+      if (fs.project_id !== version?.project_id) {
+        return json({ error: 'La source de financement appartient à un autre projet' }, 409);
+      }
+    }
+
     const updatePayload: Record<string, unknown> = {
       updated_by: profile.id,
       updated_at: new Date().toISOString(),
@@ -74,6 +108,11 @@ Deno.serve(async (req: Request) => {
     if (body.montantEngage !== undefined) updatePayload.montant_engage = body.montantEngage;
     if (body.montantPaye !== undefined) updatePayload.montant_paye = body.montantPaye;
     if (body.ordre !== undefined) updatePayload.ordre = body.ordre;
+    if (body.wbsId !== undefined) updatePayload.wbs_id = body.wbsId;
+    if (body.unite !== undefined) updatePayload.unite = body.unite?.trim() || null;
+    if (body.quantite !== undefined) updatePayload.quantite = body.quantite;
+    if (body.coutUnitaire !== undefined) updatePayload.cout_unitaire = body.coutUnitaire;
+    if (body.fundingSourceId !== undefined) updatePayload.funding_source_id = body.fundingSourceId;
 
     const { data: updated, error: updateError } = await admin
       .from('budget_lignes')

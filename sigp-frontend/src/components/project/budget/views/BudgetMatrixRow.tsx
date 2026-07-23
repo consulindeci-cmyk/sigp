@@ -22,48 +22,50 @@ export const BudgetMatrixRow = memo(({
   return (
     <tr className="hover:bg-muted/30 transition-colors group">
 
-      {/* First column — WBS */}
-      <td className="px-4 py-2.5 bg-card border-r border-border font-semibold text-foreground whitespace-nowrap">
-        <div className="flex flex-col gap-0.5">
-          <span>{ligne.libelle || ligne.code_ligne}</span>
-          <span className="text-[10px] text-muted-foreground/80">Réf: {ligne.code_ligne}</span>
-        </div>
+      {/* Code WBS */}
+      <td className="px-4 py-2.5 bg-card border-r border-border font-mono text-xs text-muted-foreground whitespace-nowrap">
+        {ligne.code_wbs || ligne.code_ligne}
       </td>
 
-      <td className="px-4 py-2.5">
-        <Badge variant="outline" className="text-[11px]">
-          {ligne.bailleur_nom || ligne.bailleur_id}
-        </Badge>
+      {/* Libellé */}
+      <td className="px-4 py-2.5 font-semibold text-foreground">
+        {ligne.libelle || ligne.code_ligne}
       </td>
 
+      {/* Catégorie */}
       <td className="px-4 py-2.5 text-xs text-muted-foreground">
         {ligne.categorie_id}
       </td>
 
-      <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground border-r-2 border-border">
-        {ligne.compte_comptable_id || '—'}
+      {/* Financement Bailleur */}
+      <td className="px-4 py-2.5 border-r-2 border-border">
+        <Badge variant="outline" className="text-[11px]">
+          {ligne.bailleur_nom || ligne.bailleur_id || '—'}
+        </Badge>
       </td>
 
-      {/* Budget */}
-      <td className="px-4 py-2.5 text-right font-mono text-sm text-muted-foreground">
-        {formatMoney(ligne.montant_initial)}
+      {/* Valorisation */}
+      <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+        {ligne.unite || '—'}
       </td>
+      <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">
+        {ligne.quantite ?? '—'}
+      </td>
+      <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground border-r-2 border-border">
+        {ligne.cout_unitaire != null ? formatMoney(ligne.cout_unitaire) : '—'}
+      </td>
+
+      {/* Budget (Coût Total) */}
       <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-foreground border-r-2 border-border">
         {formatMoney(ligne.montant_revise)}
       </td>
 
       {/* Engagements */}
-      <td className="px-4 py-2.5 text-right font-mono text-sm text-warning">
-        {formatMoney(ligne.montant_pre_engage)}
-      </td>
       <td className="px-4 py-2.5 text-right font-mono text-sm text-warning font-semibold border-r-2 border-border">
         {formatMoney(ligne.montant_engage)}
       </td>
 
       {/* Décaissements */}
-      <td className="px-4 py-2.5 text-right font-mono text-sm text-muted-foreground">
-        {formatMoney(ligne.montant_liquide)}
-      </td>
       <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-success border-r-2 border-border">
         {formatMoney(ligne.montant_decaisse)}
       </td>

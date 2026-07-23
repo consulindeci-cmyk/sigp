@@ -44,33 +44,44 @@ export interface BudgetLigne {
   id: string;
   budget_version_id: string;
   version: number;
-  
-  // Identifiant/libellé PROPRES à la ligne budgétaire (code_ligne/libelle de la
-  // table budget_lignes) — ne référence PAS un nœud de wbs_nodes malgré le nom
-  // historique "wbs_*" ; aucune vraie relation WBS n'existe sur cette table.
+
+  // Identifiant propre à la ligne budgétaire (code_ligne de la table
+  // budget_lignes) — distinct de wbs_id/code_wbs ci-dessous, le vrai
+  // rattachement à un nœud wbs_nodes (cf. audit Budget : migration
+  // 20260823100000_budget_lignes_wbs_valorisation).
   code_ligne: string;
-  bailleur_id: string;
-  source_financement_id: string;
+  // Rattachement réel à un nœud WBS (composante ou sous-élément) — code_wbs/
+  // wbs_libelle sont résolus depuis ce nœud pour l'affichage, avec repli sur
+  // code_ligne/libelle si la ligne n'est pas (encore) rattachée.
+  wbs_id?: string | null;
+  code_wbs?: string;
   categorie_id: string;
-  compte_comptable_id?: string;
-  centre_cout_id?: string;
-  zone_geo_id?: string;
-  responsable_id?: string;
-  
+
+  // Valorisation façon Excel : Coût Total (montant_revise) = Quantité × Coût
+  // Unitaire quand les deux sont renseignés.
+  unite?: string | null;
+  quantite?: number | null;
+  cout_unitaire?: number | null;
+
+  // Bailleur réel (funding_sources.id) — remplace l'ancien overlay client
+  // jamais persisté.
+  bailleur_id: string;
+  bailleur_nom?: string;
+
   montant_initial: number;
   montant_revise: number;
-  
-  montant_pre_engage: number;
+
+  // Calculés côté serveur depuis les vraies transactions (contrats non
+  // résiliés / décaissements DECAISSE) via recalc_budget_ligne_montants() —
+  // jamais saisis manuellement ici.
   montant_engage: number;
-  montant_liquide: number;
   montant_decaisse: number;
-  
+
   solde_disponible: number;
   reste_a_payer: number;
-  
+
   // For UI presentation only (Optional relations)
   libelle?: string;
-  bailleur_nom?: string;
 }
 
 export interface BudgetRevision {

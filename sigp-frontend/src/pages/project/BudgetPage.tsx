@@ -14,15 +14,13 @@ import type { LigneHistoryEntry, ImportResult } from '@/components/project/budge
 import type { VersionItem } from '@/components/common/workflow/VersionSelector';
 import {
   GitCommit, CheckCircle2, AlertCircle, LayoutGrid,
-  TrendingUp, Banknote, Loader2, PieChart, Wallet, BarChart2,
+  Banknote, Loader2, Wallet, BarChart2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Button } from '@/components/ui/forms/Button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/navigation/Tabs';
 import { BudgetMatrix } from '@/components/project/budget/views/BudgetMatrix';
-import { BudgetRevisionsView } from '@/components/project/budget/views/BudgetRevisionsView';
-import { BudgetAnalyticsDashboard } from '@/components/project/budget/views/BudgetAnalyticsDashboard';
 import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,21 +171,21 @@ export default function BudgetPage() {
   // Miroir des rôles serveur (requireRole) sur budget-lines-*/budget-versions-update
   // (COORDINATEUR/CHARGE_PROGRAMME/FINANCIER/ADMIN/SUPER_ADMIN) et *-delete (ADMIN/SUPER_ADMIN).
   const currentRole = useAuthStore(s => s.user?.role);
-  const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
-  const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
+  const hasManageRole = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
+  const hasDeleteRole = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
-  // ── Champs sans colonne DB (bailleur_id, compte_comptable_id, montant_pre_
-  // engage, montant_liquide, etc. — cf. audit Budget, aucune refonte du modèle
-  // ici) : conservés en overlay client, fusionnés sur les lignes réelles pour
-  // ne pas perdre la saisie affichée pendant la session, sans jamais prétendre
-  // qu'ils sont persistés côté serveur.
-  const [decorations, setDecorations] = useState<Record<string, Partial<BudgetLigne>>>({});
+  // Verrouillage du workflow : une version SOUMIS ou APPROUVE passe le tableau
+  // en lecture seule — seule une version BROUILLON reste éditable, quel que
+  // soit le rôle (cf. audit Budget).
+  const isBrouillon = budgetVersion?.statut === StatutBudget.BROUILLON;
+  const canManage = hasManageRole && isBrouillon;
+  const canDelete = hasDeleteRole && isBrouillon;
+
+  // Pas de miroir d'état local (cf. audit Budget) : les lignes affichées
+  // proviennent directement de la source de vérité (budgetVersion.lignes),
+  // rafraîchies par l'invalidation de cache après chaque mutation.
   const [lineHistory, setLineHistory] = useState<LigneHistoryEntry[]>([]);
-
-  const displayLignes = useMemo((): BudgetLigne[] => {
-    const base = budgetVersion?.lignes ?? [];
-    return base.map(l => ({ ...l, ...decorations[l.id] }));
-  }, [budgetVersion?.lignes, decorations]);
+  const displayLignes = budgetVersion?.lignes ?? [];
 
   // Set active version once budget loads
   useEffect(() => {
@@ -196,9 +194,8 @@ export default function BudgetPage() {
     }
   }, [budget?.version_active_id, versionSelectionnee]);
 
-  // Purge décorations + historique de session au changement de version
+  // Purge l'historique de session au changement de version
   useEffect(() => {
-    setDecorations({});
     setLineHistory([]);
   }, [budgetVersion?.id]);
 
@@ -267,36 +264,31 @@ export default function BudgetPage() {
     );
   }
 
-  // ── CRUD réel (Edge Functions) + décorations client + historique de session ─
-  // Seuls libelle/code_ligne/categorie/montant_prevu/montant_engage/
-  // montant_paye ont une colonne réelle en base (cf. audit Budget) ;
-  // bailleur_id/bailleur_nom/source_financement_id/compte_comptable_id/
-  // montant_pre_engage/montant_liquide n'existent nulle part côté serveur et
-  // restent de purs artefacts d'affichage (overlay `decorations`).
+  // ── CRUD réel (Edge Functions) + historique de session ────────────────────
+  // Toutes les données envoyées correspondent désormais à une colonne réelle
+  // en base (cf. audit Budget / migration budget_lignes_wbs_valorisation) —
+  // plus d'overlay client pour bailleur/WBS/valorisation.
 
-  function extractDecoration(data: Partial<BudgetLigne>): Partial<BudgetLigne> {
-    const dec: Partial<BudgetLigne> = {};
-    if (data.bailleur_id           !== undefined) dec.bailleur_id           = data.bailleur_id;
-    if (data.bailleur_nom          !== undefined) dec.bailleur_nom          = data.bailleur_nom;
-    if (data.source_financement_id !== undefined) dec.source_financement_id = data.source_financement_id;
-    if (data.compte_comptable_id   !== undefined) dec.compte_comptable_id   = data.compte_comptable_id;
-    if (data.montant_pre_engage    !== undefined) dec.montant_pre_engage    = data.montant_pre_engage;
-    if (data.montant_liquide       !== undefined) dec.montant_liquide       = data.montant_liquide;
-    return dec;
+  function toLinePayload(data: Partial<BudgetLigne>) {
+    return {
+      libelle:         data.libelle || '',
+      categorie:       data.categorie_id || undefined,
+      montantPrevu:    data.montant_revise ?? 0,
+      wbsId:           data.wbs_id || undefined,
+      unite:           data.unite || undefined,
+      quantite:        data.quantite ?? undefined,
+      coutUnitaire:    data.cout_unitaire ?? undefined,
+      fundingSourceId: data.bailleur_id || undefined,
+    };
   }
 
   async function handleAddLigne(data: Partial<BudgetLigne>) {
     const { data: created } = await createLineMutation.mutateAsync({
-      versionId:     versionSelectionnee,
-      codeLigne:     data.code_ligne || uid('wbs'),
-      libelle:       data.libelle || '',
-      categorie:     data.categorie_id || undefined,
-      montantPrevu:  data.montant_revise ?? data.montant_initial ?? 0,
-      montantEngage: data.montant_engage ?? 0,
-      montantPaye:   data.montant_decaisse ?? 0,
+      versionId: versionSelectionnee,
+      codeLigne: data.code_ligne || uid('bl'),
+      ...toLinePayload(data),
     });
     if (created?.id) {
-      setDecorations(prev => ({ ...prev, [created.id]: extractDecoration(data) }));
       setLineHistory(prev => [...prev, {
         id: uid('h'), ligneId: created.id, action: 'CREATION',
         date: new Date().toISOString(), user: 'Utilisateur', after: data,
@@ -306,15 +298,7 @@ export default function BudgetPage() {
 
   async function handleEditLigne(id: string, data: Partial<BudgetLigne>) {
     const before = displayLignes.find(l => l.id === id);
-    await updateLineMutation.mutateAsync({
-      id,
-      libelle:       data.libelle,
-      categorie:     data.categorie_id,
-      montantPrevu:  data.montant_revise,
-      montantEngage: data.montant_engage,
-      montantPaye:   data.montant_decaisse,
-    });
-    setDecorations(prev => ({ ...prev, [id]: { ...prev[id], ...extractDecoration(data) } }));
+    await updateLineMutation.mutateAsync({ id, ...toLinePayload(data) });
     setLineHistory(prev => [...prev, {
       id: uid('h'), ligneId: id, action: 'MODIFICATION',
       date: new Date().toISOString(), user: 'Utilisateur', before, after: data,
@@ -324,7 +308,6 @@ export default function BudgetPage() {
   async function handleDeleteLigne(id: string) {
     const deleted = displayLignes.find(l => l.id === id);
     await deleteLineMutation.mutateAsync(id);
-    setDecorations(prev => { const next = { ...prev }; delete next[id]; return next; });
     setLineHistory(prev => [...prev, {
       id: uid('h'), ligneId: id, action: 'SUPPRESSION',
       date: new Date().toISOString(), user: 'Utilisateur',
@@ -337,16 +320,12 @@ export default function BudgetPage() {
     const source = displayLignes.find(l => l.id === id);
     if (!source) return;
     const { data: created } = await createLineMutation.mutateAsync({
-      versionId:     versionSelectionnee,
-      codeLigne:     `${source.code_ligne}-copy`,
-      libelle:       source.libelle ? `${source.libelle} (copie)` : '',
-      categorie:     source.categorie_id || undefined,
-      montantPrevu:  source.montant_revise,
-      montantEngage: source.montant_engage,
-      montantPaye:   source.montant_decaisse,
+      versionId: versionSelectionnee,
+      codeLigne: `${source.code_ligne}-copy`,
+      ...toLinePayload(source),
+      libelle:   source.libelle ? `${source.libelle} (copie)` : '',
     });
     if (created?.id) {
-      setDecorations(prev => ({ ...prev, [created.id]: extractDecoration(source) }));
       setLineHistory(prev => [...prev, {
         id: uid('h'), ligneId: created.id, action: 'DUPLICATION',
         date: new Date().toISOString(), user: 'Utilisateur',
@@ -361,17 +340,12 @@ export default function BudgetPage() {
     for (const data of newLignes) {
       try {
         const { data: created } = await createLineMutation.mutateAsync({
-          versionId:     versionSelectionnee,
-          codeLigne:     data.code_ligne || uid('wbs-import'),
-          libelle:       data.libelle || '',
-          categorie:     data.categorie_id || undefined,
-          montantPrevu:  data.montant_revise ?? data.montant_initial ?? 0,
-          montantEngage: data.montant_engage ?? 0,
-          montantPaye:   data.montant_decaisse ?? 0,
+          versionId: versionSelectionnee,
+          codeLigne: data.code_ligne || uid('bl-import'),
+          ...toLinePayload(data),
         });
         succeeded += 1;
         if (created?.id) {
-          setDecorations(prev => ({ ...prev, [created.id]: extractDecoration(data) }));
           setLineHistory(prev => [...prev, {
             id: uid('h'), ligneId: created.id, action: 'CREATION',
             date: new Date().toISOString(), user: 'Import Excel',
@@ -388,9 +362,8 @@ export default function BudgetPage() {
     return { succeeded, failed };
   }
 
-  // ── KPIs (source serveur + décorations) ───────────────────────────────────
+  // ── KPIs (100% source serveur) ────────────────────────────────────────────
   const totalBAC        = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_revise,     0), [displayLignes]);
-  const totalPreEngage  = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_pre_engage, 0), [displayLignes]);
   const totalEngage     = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_engage,     0), [displayLignes]);
   const totalDecaisse   = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_decaisse,   0), [displayLignes]);
   const totalDisponible = useMemo(() => displayLignes.reduce((s, l) => s + l.solde_disponible,   0), [displayLignes]);
@@ -419,7 +392,7 @@ export default function BudgetPage() {
             />
           )}
 
-          {canManage && budgetVersion?.statut === StatutBudget.BROUILLON && (
+          {hasManageRole && budgetVersion?.statut === StatutBudget.BROUILLON && (
             <Button
               size="sm" variant="default"
               leftIcon={<CheckCircle2 className="h-4 w-4" />}
@@ -430,7 +403,7 @@ export default function BudgetPage() {
             </Button>
           )}
 
-          {canManage && budgetVersion?.statut === StatutBudget.SOUMIS && (
+          {hasManageRole && budgetVersion?.statut === StatutBudget.SOUMIS && (
             <>
               <Button
                 size="sm" variant="outline"
@@ -477,12 +450,6 @@ export default function BudgetPage() {
           iconVariant="primary"
         />
         <StatCard
-          title="Pré-engagements"
-          value={formatMoney(totalPreEngage)}
-          icon={<TrendingUp className="h-4 w-4 text-warning" />}
-          iconVariant="warning"
-        />
-        <StatCard
           title="Engagements (Contrats)"
           value={formatMoney(totalEngage)}
           icon={<LayoutGrid className="h-4 w-4 text-warning" />}
@@ -513,16 +480,6 @@ export default function BudgetPage() {
             <BarChart2 className="h-3.5 w-3.5" />
             Financements
           </TabsTrigger>
-          <TabsTrigger value="revisions" className="flex items-center gap-1.5 text-xs sm:text-sm">
-            <GitCommit className="h-3.5 w-3.5" />
-            Révisions
-            <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">Démo</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="bi" className="flex items-center gap-1.5 text-xs sm:text-sm">
-            <PieChart className="h-3.5 w-3.5" />
-            Dashboard BI
-            <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">Démo</Badge>
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="matrix" className="flex-1 min-h-0 overflow-hidden mt-0">
@@ -545,20 +502,6 @@ export default function BudgetPage() {
 
         <TabsContent value="finances" className="flex-1 min-h-0 overflow-hidden mt-0">
           <FundingRedirectView onNavigate={() => setActiveProjectTab('funding')} />
-        </TabsContent>
-
-        <TabsContent value="revisions" className="flex-1 min-h-0 overflow-hidden mt-0">
-          {budgetVersion
-            ? <BudgetRevisionsView budgetVersion={budgetVersion} />
-            : <EmptyBudgetView />
-          }
-        </TabsContent>
-
-        <TabsContent value="bi" className="flex-1 min-h-0 overflow-hidden mt-0">
-          {budgetVersion
-            ? <BudgetAnalyticsDashboard budgetVersion={budgetVersion} lignes={displayLignes} />
-            : <EmptyBudgetView />
-          }
         </TabsContent>
       </Tabs>
 

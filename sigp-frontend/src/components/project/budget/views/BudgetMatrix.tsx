@@ -42,19 +42,15 @@ export interface LigneHistoryEntry {
 
 interface ImportRow {
   rowIndex: number;
-  libelle:    string;
-  code_ligne: string;
-  bailleur_id:   string;
-  bailleur_nom:  string;
-  categorie_id:  string;
-  source_financement_id: string;
-  compte_comptable_id?: string;
-  montant_initial: number;
-  montant_revise:  number;
-  montant_pre_engage: number;
-  montant_engage:     number;
-  montant_liquide:    number;
-  montant_decaisse:   number;
+  libelle:      string;
+  code_ligne:   string;
+  bailleur_id:  string;
+  bailleur_nom: string;
+  categorie_id: string;
+  unite:          string;
+  quantite:       number;
+  cout_unitaire:  number;
+  montant_revise: number;
   isValid: boolean;
   errors:  string[];
 }
@@ -105,43 +101,36 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
     .map((row, i) => {
       const libelle    = String(colVal(row, 'composante', 'wbs nom', 'wbs_nom', 'libellé', 'libelle')).trim();
       const codeLigne  = String(colVal(row, 'code wbs', 'wbs_id', 'wbs id', 'code')).trim()
-                      || `wbs-import-${i + 1}`;
+                      || `bl-import-${i + 1}`;
       const bailleurRaw  = String(colVal(row, 'bailleur')).trim();
       const categorieRaw = String(colVal(row, 'catégorie', 'categorie', 'categ')).trim();
-      const sourceRaw    = String(colVal(row, 'source')).trim();
-      const compteRaw    = String(colVal(row, 'compte', 'pcg')).trim();
+      const unite        = String(colVal(row, 'unité', 'unite')).trim();
 
       const bailleur  = findBailleur(bailleurRaw, fundingSources);
       const categorie = findCategorie(categorieRaw);
 
-      const montant_initial    = parseNum(colVal(row, 'initial'));
-      const montant_revise     = parseNum(colVal(row, 'révisé', 'revise', 'revised')) || montant_initial;
-      const montant_pre_engage = parseNum(colVal(row, 'pré-engagé', 'pre-engage', 'pre_engage'));
-      const montant_engage     = parseNum(colVal(row, 'engagé', 'engage'));
-      const montant_liquide    = parseNum(colVal(row, 'liquidé', 'liquide'));
-      const montant_decaisse   = parseNum(colVal(row, 'décaissé', 'decaisse', 'décaisse'));
+      const quantite      = parseNum(colVal(row, 'quantité', 'quantite'));
+      const cout_unitaire = parseNum(colVal(row, 'coût unitaire', 'cout unitaire', 'cout_unitaire'));
+      const totalFromUnit = quantite > 0 && cout_unitaire > 0 ? quantite * cout_unitaire : 0;
+      const montant_revise = totalFromUnit || parseNum(colVal(row, 'coût total', 'cout total', 'révisé', 'revise', 'total'));
 
       const errors: string[] = [];
       if (!libelle)       errors.push('Composante/WBS manquant');
       if (!bailleur)      errors.push(`Bailleur inconnu : "${bailleurRaw}"`);
       if (!categorie)     errors.push(`Catégorie inconnue : "${categorieRaw}"`);
-      if (montant_initial <= 0) errors.push('Montant initial requis (> 0)');
+      if (montant_revise <= 0) errors.push('Coût total requis (> 0)');
 
       return {
-        rowIndex:              i + 2,
+        rowIndex:     i + 2,
         libelle,
-        code_ligne: codeLigne,
-        bailleur_id:           bailleur?.id            || '',
-        bailleur_nom:          bailleur?.nom           || bailleurRaw,
-        categorie_id:          categorie?.id           || '',
-        source_financement_id: sourceRaw               || 'PRET',
-        compte_comptable_id:   compteRaw               || undefined,
-        montant_initial,
+        code_ligne:   codeLigne,
+        bailleur_id:  bailleur?.id  || '',
+        bailleur_nom: bailleur?.nom || bailleurRaw,
+        categorie_id: categorie?.id || '',
+        unite,
+        quantite,
+        cout_unitaire,
         montant_revise,
-        montant_pre_engage,
-        montant_engage,
-        montant_liquide,
-        montant_decaisse,
         isValid: errors.length === 0,
         errors,
       };
@@ -154,16 +143,16 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
 
 function exportToCsv(lignes: BudgetLigne[], filename: string) {
   const HEADERS = [
-    'Composante (WBS)', 'Code WBS', 'Bailleur', 'Source', 'Catégorie', 'Compte PCG',
-    'Initial', 'Révisé', 'Pré-engagé', 'Engagé', 'Liquidé', 'Décaissé',
-    'Solde disponible', 'Reste à payer',
+    'Code WBS', 'Libellé', 'Catégorie', 'Financement Bailleur',
+    'Unité', 'Quantité', 'Coût Unitaire', 'Coût Total',
+    'Engagé', 'Décaissé', 'Solde disponible', 'Reste à payer',
   ];
   const rows = lignes.map(l => [
-    l.libelle || l.code_ligne, l.code_ligne,
-    l.bailleur_nom || l.bailleur_id, l.source_financement_id, l.categorie_id,
-    l.compte_comptable_id || '',
-    l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
-    l.montant_liquide, l.montant_decaisse, l.solde_disponible, l.reste_a_payer,
+    l.code_wbs || l.code_ligne, l.libelle || l.code_ligne, l.categorie_id,
+    l.bailleur_nom || l.bailleur_id,
+    l.unite || '', l.quantite ?? '', l.cout_unitaire ?? '',
+    l.montant_revise, l.montant_engage, l.montant_decaisse,
+    l.solde_disponible, l.reste_a_payer,
   ]);
   const csv = '﻿' + [HEADERS, ...rows]
     .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
@@ -181,28 +170,25 @@ function exportToCsv(lignes: BudgetLigne[], filename: string) {
 
 function exportToXlsx(lignes: BudgetLigne[], filename: string) {
   const HEADERS = [
-    'Composante (WBS)', 'Code WBS', 'Bailleur', 'Source', 'Catégorie', 'Compte PCG',
-    'Initial', 'Révisé', 'Pré-engagé', 'Engagé', 'Liquidé', 'Décaissé',
-    'Solde disponible', 'Reste à payer',
+    'Code WBS', 'Libellé', 'Catégorie', 'Financement Bailleur',
+    'Unité', 'Quantité', 'Coût Unitaire', 'Coût Total',
+    'Engagé', 'Décaissé', 'Solde disponible', 'Reste à payer',
   ];
   const rows = lignes.map(l => [
-    l.libelle || l.code_ligne, l.code_ligne,
-    l.bailleur_nom || l.bailleur_id, l.source_financement_id, l.categorie_id,
-    l.compte_comptable_id || '',
-    l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
-    l.montant_liquide, l.montant_decaisse, l.solde_disponible, l.reste_a_payer,
+    l.code_wbs || l.code_ligne, l.libelle || l.code_ligne, l.categorie_id,
+    l.bailleur_nom || l.bailleur_id,
+    l.unite || '', l.quantite ?? '', l.cout_unitaire ?? '',
+    l.montant_revise, l.montant_engage, l.montant_decaisse,
+    l.solde_disponible, l.reste_a_payer,
   ]);
 
-  // Totals row
-  const numCols = [6, 7, 8, 9, 10, 11, 12, 13] as const;
-  const totRow: (string | number)[] = ['TOTAL', '', '', '', '', ''];
+  // Totals row (Coût Total, Engagé, Décaissé, Disponible, RAP — colonnes 8-12)
+  const numCols = [8, 9, 10, 11, 12] as const;
+  const totRow: (string | number)[] = ['TOTAL', '', '', '', '', '', ''];
   for (const ci of numCols) {
     totRow.push(lignes.reduce((s, l) => {
-      const vals = [
-        l.montant_initial, l.montant_revise, l.montant_pre_engage, l.montant_engage,
-        l.montant_liquide, l.montant_decaisse, l.solde_disponible, l.reste_a_payer,
-      ];
-      return s + (vals[ci - 6] ?? 0);
+      const vals = [l.montant_revise, l.montant_engage, l.montant_decaisse, l.solde_disponible, l.reste_a_payer];
+      return s + (vals[ci - 8] ?? 0);
     }, 0));
   }
 
@@ -210,8 +196,8 @@ function exportToXlsx(lignes: BudgetLigne[], filename: string) {
 
   // Column widths
   ws['!cols'] = [
-    { wch: 30 }, { wch: 12 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 10 },
-    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 12 }, { wch: 30 }, { wch: 20 }, { wch: 18 },
+    { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
     { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
   ];
 
@@ -232,11 +218,8 @@ function printLignes(lignes: BudgetLigne[]) {
   const td = (val: string | number, align = 'left') =>
     `<td style="text-align:${align}">${val}</td>`;
 
-  const totInit  = lignes.reduce((s, l) => s + l.montant_initial,    0);
   const totRev   = lignes.reduce((s, l) => s + l.montant_revise,     0);
-  const totPre   = lignes.reduce((s, l) => s + l.montant_pre_engage, 0);
   const totEng   = lignes.reduce((s, l) => s + l.montant_engage,     0);
-  const totLiq   = lignes.reduce((s, l) => s + l.montant_liquide,    0);
   const totDec   = lignes.reduce((s, l) => s + l.montant_decaisse,   0);
   const totDispo = lignes.reduce((s, l) => s + l.solde_disponible,   0);
   const totRap   = lignes.reduce((s, l) => s + l.reste_a_payer,      0);
@@ -268,27 +251,27 @@ function printLignes(lignes: BudgetLigne[]) {
 <table>
 <thead>
 <tr>
-  ${th('Composante (WBS)')}${th('Bailleur')}${th('Catégorie')}${th('Compte')}
-  ${th('Initial')}${th('Révisé')}${th('Pré-eng.')}${th('Engagé')}
-  ${th('Liquidé')}${th('Décaissé')}${th('Disponible')}${th('RAP')}
+  ${th('Code WBS')}${th('Libellé')}${th('Catégorie')}${th('Bailleur')}
+  ${th('Unité')}${th('Qté')}${th('Coût Unit.')}${th('Coût Total')}
+  ${th('Engagé')}${th('Décaissé')}${th('Disponible')}${th('RAP')}
 </tr>
 </thead>
 <tbody>
 ${lignes.map(l => `<tr>
-  ${td(l.libelle || l.code_ligne)}${td(l.bailleur_nom || l.bailleur_id)}
-  ${td(l.categorie_id)}${td(l.compte_comptable_id || '—')}
-  ${td(fmt(l.montant_initial), 'right')}${td(fmt(l.montant_revise), 'right')}
-  ${td(fmt(l.montant_pre_engage), 'right')}${td(fmt(l.montant_engage), 'right')}
-  ${td(fmt(l.montant_liquide), 'right')}${td(fmt(l.montant_decaisse), 'right')}
+  ${td(l.code_wbs || l.code_ligne)}${td(l.libelle || l.code_ligne)}
+  ${td(l.categorie_id)}${td(l.bailleur_nom || l.bailleur_id)}
+  ${td(l.unite || '—')}${td(l.quantite ?? '—', 'right')}
+  ${td(l.cout_unitaire != null ? fmt(l.cout_unitaire) : '—', 'right')}
+  ${td(fmt(l.montant_revise), 'right')}
+  ${td(fmt(l.montant_engage), 'right')}${td(fmt(l.montant_decaisse), 'right')}
   ${td(fmt(l.solde_disponible), 'right')}${td(fmt(l.reste_a_payer), 'right')}
 </tr>`).join('')}
 </tbody>
 <tfoot>
 <tr>
-  <td colspan="4">TOTAL (${lignes.length} ligne${lignes.length > 1 ? 's' : ''})</td>
-  <td class="r">${fmt(totInit)}</td><td class="r">${fmt(totRev)}</td>
-  <td class="r">${fmt(totPre)}</td><td class="r">${fmt(totEng)}</td>
-  <td class="r">${fmt(totLiq)}</td><td class="r">${fmt(totDec)}</td>
+  <td colspan="7">TOTAL (${lignes.length} ligne${lignes.length > 1 ? 's' : ''})</td>
+  <td class="r">${fmt(totRev)}</td>
+  <td class="r">${fmt(totEng)}</td><td class="r">${fmt(totDec)}</td>
   <td class="r">${fmt(totDispo)}</td><td class="r">${fmt(totRap)}</td>
 </tr>
 </tfoot>
@@ -413,7 +396,7 @@ export function BudgetMatrix({
       if (filterBailleur  && l.bailleur_id  !== filterBailleur)  return false;
       if (filterCategorie && l.categorie_id !== filterCategorie) return false;
       if (q) {
-        const hay = [l.libelle, l.code_ligne, l.bailleur_nom, l.bailleur_id, l.categorie_id, l.compte_comptable_id].join(' ').toLowerCase();
+        const hay = [l.libelle, l.code_ligne, l.code_wbs, l.bailleur_nom, l.bailleur_id, l.categorie_id].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -422,11 +405,8 @@ export function BudgetMatrix({
 
   // ── Totals ────────────────────────────────────────────────────────────────
   const totals = useMemo(() => ({
-    montant_initial:    filteredLignes.reduce((s, l) => s + l.montant_initial,    0),
     montant_revise:     filteredLignes.reduce((s, l) => s + l.montant_revise,     0),
-    montant_pre_engage: filteredLignes.reduce((s, l) => s + l.montant_pre_engage, 0),
     montant_engage:     filteredLignes.reduce((s, l) => s + l.montant_engage,     0),
-    montant_liquide:    filteredLignes.reduce((s, l) => s + l.montant_liquide,    0),
     montant_decaisse:   filteredLignes.reduce((s, l) => s + l.montant_decaisse,   0),
     solde_disponible:   filteredLignes.reduce((s, l) => s + l.solde_disponible,   0),
     reste_a_payer:      filteredLignes.reduce((s, l) => s + l.reste_a_payer,      0),
@@ -576,27 +556,22 @@ export function BudgetMatrix({
   const invalidImportRows   = importRows.filter(r => !r.isValid);
 
   async function confirmImport() {
-    const toAdd: Partial<BudgetLigne>[] = validImportRows.map(r => {
-      const solde = Math.max(0, r.montant_revise - r.montant_pre_engage - r.montant_engage);
-      const rap   = Math.max(0, r.montant_engage - r.montant_decaisse);
-      return {
-        libelle:               r.libelle,
-        code_ligne:            r.code_ligne,
-        bailleur_id:           r.bailleur_id,
-        bailleur_nom:          r.bailleur_nom,
-        source_financement_id: r.source_financement_id,
-        categorie_id:          r.categorie_id,
-        compte_comptable_id:   r.compte_comptable_id,
-        montant_initial:       r.montant_initial,
-        montant_revise:        r.montant_revise,
-        montant_pre_engage:    r.montant_pre_engage,
-        montant_engage:        r.montant_engage,
-        montant_liquide:       r.montant_liquide,
-        montant_decaisse:      r.montant_decaisse,
-        solde_disponible:      solde,
-        reste_a_payer:         rap,
-      };
-    });
+    const toAdd: Partial<BudgetLigne>[] = validImportRows.map(r => ({
+      libelle:         r.libelle,
+      code_ligne:      r.code_ligne,
+      bailleur_id:     r.bailleur_id,
+      bailleur_nom:    r.bailleur_nom,
+      categorie_id:    r.categorie_id,
+      unite:           r.unite || undefined,
+      quantite:        r.quantite || undefined,
+      cout_unitaire:   r.cout_unitaire || undefined,
+      montant_initial: r.montant_revise,
+      montant_revise:  r.montant_revise,
+      montant_engage:   0,
+      montant_decaisse: 0,
+      solde_disponible: r.montant_revise,
+      reste_a_payer:    0,
+    }));
     setImportSaving(true);
     setImportResultError(null);
     try {
@@ -726,23 +701,23 @@ export function BudgetMatrix({
 
           <thead className="sticky top-0 z-10">
             <tr className="bg-primary text-primary-foreground">
-              <th colSpan={4} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 bg-primary">
-                Dimensions Analytiques
+              <th colSpan={7} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 bg-primary">
+                Valorisation WBS
               </th>
-              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Budget</th>
-              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Engagements</th>
-              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Décaissements</th>
+              <th colSpan={1} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Budget</th>
+              <th colSpan={1} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Engagements</th>
+              <th colSpan={1} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Décaissements</th>
               <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Soldes</th>
               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-center">Actions</th>
             </tr>
             <tr className="bg-primary/80 text-primary-foreground">
               {[
-                ['Composante (WBS)', 'bg-primary/80 border-r'],
-                ['Bailleur'], ['Catégorie'],
-                ['Compte (PCG)', 'border-r-2'],
-                ['Initial', 'text-right'], ['Révisé', 'text-right border-r-2'],
-                ['Pré-engagé', 'text-right'], ['Engagé', 'text-right border-r-2'],
-                ['Liquidé', 'text-right'], ['Décaissé', 'text-right border-r-2'],
+                ['Code WBS', 'bg-primary/80 border-r'],
+                ['Libellé'], ['Catégorie'], ['Financement Bailleur', 'border-r-2'],
+                ['Unité'], ['Quantité', 'text-right'], ['Coût Unitaire', 'text-right border-r-2'],
+                ['Coût Total', 'text-right border-r-2'],
+                ['Engagé', 'text-right border-r-2'],
+                ['Décaissé', 'text-right border-r-2'],
                 ['Disponible', 'text-right'], ['Reste à payer', 'text-right border-r-2'],
                 ['—', 'text-center'],
               ].map(([label, cls = '']) => (
@@ -782,14 +757,11 @@ export function BudgetMatrix({
           {filteredLignes.length > 0 && (
             <tfoot>
               <tr className="bg-primary/5 border-t-2 border-primary/30 font-bold">
-                <td colSpan={4} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
-                  TOTAL ({filteredLignes.length} ligne{filteredLignes.length > 1 ? 's' : ''})
+                <td colSpan={7} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
+                  TOTAL GÉNÉRAL ({filteredLignes.length} ligne{filteredLignes.length > 1 ? 's' : ''})
                 </td>
-                <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">{formatMoney(totals.montant_initial)}</td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-r-2 border-border">{formatMoney(totals.montant_revise)}</td>
-                <td className="px-4 py-3 text-right font-mono text-sm text-warning">{formatMoney(totals.montant_pre_engage)}</td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-warning border-r-2 border-border">{formatMoney(totals.montant_engage)}</td>
-                <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">{formatMoney(totals.montant_liquide)}</td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-success border-r-2 border-border">{formatMoney(totals.montant_decaisse)}</td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-primary">{formatMoney(totals.solde_disponible)}</td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground border-r-2 border-border">{formatMoney(totals.reste_a_payer)}</td>
@@ -950,7 +922,7 @@ export function BudgetMatrix({
                   <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Composante</th>
                   <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Bailleur</th>
                   <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Catégorie</th>
-                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Montant initial</th>
+                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Coût Total</th>
                   <th className="px-3 py-2 text-center font-semibold text-muted-foreground">Statut</th>
                 </tr>
               </thead>
@@ -960,7 +932,7 @@ export function BudgetMatrix({
                     <td className="px-3 py-2 font-medium text-foreground">{r.libelle || <span className="text-destructive italic">—</span>}</td>
                     <td className="px-3 py-2 text-muted-foreground">{r.bailleur_nom || <span className="text-destructive italic">Inconnu</span>}</td>
                     <td className="px-3 py-2 text-muted-foreground">{r.categorie_id || <span className="text-destructive italic">Inconnue</span>}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatMoney(r.montant_initial)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{formatMoney(r.montant_revise)}</td>
                     <td className="px-3 py-2 text-center">
                       {r.isValid
                         ? <CheckCircle className="h-3.5 w-3.5 text-success mx-auto" />

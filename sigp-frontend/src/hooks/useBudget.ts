@@ -19,6 +19,17 @@ interface BudgetVersionRow {
   updated_at: string;
 }
 
+interface WbsNodeEmbed {
+  id: string;
+  code: string;
+  libelle: string;
+}
+
+interface FundingSourceEmbed {
+  id: string;
+  nom: string;
+}
+
 interface BudgetLineRow {
   id: string;
   version_id: string;
@@ -30,12 +41,25 @@ interface BudgetLineRow {
   montant_engage: number;
   montant_paye: number;
   ordre: number;
+  wbs_id: string | null;
+  unite: string | null;
+  quantite: number | null;
+  cout_unitaire: number | null;
+  funding_source_id: string | null;
   created_at: string;
   updated_at: string;
+  wbs_nodes: WbsNodeEmbed | null;
+  funding_sources: FundingSourceEmbed | null;
 }
 
 const VERSION_SELECT = 'id, project_id, version, nom, statut, montant_total, approuve_par, approuve_le, created_at, updated_at';
-const LINE_SELECT = 'id, version_id, parent_id, code_ligne, libelle, categorie, montant_prevu, montant_engage, montant_paye, ordre, created_at, updated_at';
+const LINE_SELECT = `
+  id, version_id, parent_id, code_ligne, libelle, categorie, montant_prevu,
+  montant_engage, montant_paye, ordre, wbs_id, unite, quantite, cout_unitaire,
+  funding_source_id, created_at, updated_at,
+  wbs_nodes(id, code, libelle),
+  funding_sources(id, nom)
+`;
 
 // ─── Adapters ─────────────────────────────────────────────────────────────────
 
@@ -60,24 +84,25 @@ function adaptLine(row: BudgetLineRow): BudgetLigne {
   const engage = row.montant_engage ?? 0;
   const paye   = row.montant_paye   ?? 0;
   return {
-    id:                    row.id,
-    budget_version_id:     row.version_id,
-    version:               1,
-    code_ligne:            row.code_ligne,
-    bailleur_id:           '',
-    source_financement_id: row.categorie ?? '',
-    categorie_id:          row.categorie ?? '',
-    compte_comptable_id:   undefined,
-    montant_initial:       prevu,
-    montant_revise:        prevu,
-    montant_pre_engage:    0,
-    montant_engage:        engage,
-    montant_liquide:       0,
-    montant_decaisse:      paye,
-    solde_disponible:      Math.max(0, prevu - engage),
-    reste_a_payer:         Math.max(0, engage - paye),
-    libelle:               row.libelle,
-    bailleur_nom:          undefined,
+    id:                row.id,
+    budget_version_id: row.version_id,
+    version:           1,
+    code_ligne:        row.code_ligne,
+    wbs_id:            row.wbs_id,
+    code_wbs:          row.wbs_nodes?.code ?? row.code_ligne,
+    categorie_id:      row.categorie ?? '',
+    unite:             row.unite,
+    quantite:          row.quantite,
+    cout_unitaire:     row.cout_unitaire,
+    bailleur_id:       row.funding_source_id ?? '',
+    bailleur_nom:      row.funding_sources?.nom,
+    montant_initial:   prevu,
+    montant_revise:    prevu,
+    montant_engage:    engage,
+    montant_decaisse:  paye,
+    solde_disponible:  Math.max(0, prevu - engage),
+    reste_a_payer:     Math.max(0, engage - paye),
+    libelle:           row.wbs_nodes?.libelle ?? row.libelle,
   };
 }
 
@@ -183,7 +208,11 @@ export function useBudgetWorkflow(projetId: string) {
 export function useCreateBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { versionId: string; codeLigne: string; libelle: string; categorie?: string; montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number }) =>
+    mutationFn: async (payload: {
+      versionId: string; codeLigne: string; libelle: string; categorie?: string;
+      montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number;
+      wbsId?: string; unite?: string; quantite?: number; coutUnitaire?: number; fundingSourceId?: string;
+    }) =>
       invokeEdgeFunction<{ data: BudgetLineRow }>('budget-lines-create', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });
@@ -196,7 +225,12 @@ export function useCreateBudgetLine(versionId: string) {
 export function useUpdateBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...payload }: { id: string; codeLigne?: string; libelle?: string; categorie?: string; montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number }) =>
+    mutationFn: async ({ id, ...payload }: {
+      id: string; codeLigne?: string; libelle?: string; categorie?: string;
+      montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number;
+      wbsId?: string | null; unite?: string | null; quantite?: number | null;
+      coutUnitaire?: number | null; fundingSourceId?: string | null;
+    }) =>
       invokeEdgeFunction<{ data: BudgetLineRow }>('budget-lines-update', { id, ...payload }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: budgetKeys.version(versionId) });

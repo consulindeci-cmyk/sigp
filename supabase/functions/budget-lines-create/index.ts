@@ -11,6 +11,15 @@ interface CreateBudgetLineBody {
   montantEngage?: number;
   montantPaye?: number;
   ordre?: number;
+  // Valorisation WBS (cf. audit Budget) : rattachement optionnel à un nœud
+  // WBS (composante ou sous-élément) et ventilation quantité/coût unitaire.
+  wbsId?: string;
+  unite?: string;
+  quantite?: number;
+  coutUnitaire?: number;
+  // Bailleur réel (funding_sources), remplace l'ancien overlay client
+  // 'decorations' qui ne persistait jamais ce choix.
+  fundingSourceId?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -62,6 +71,35 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Rattachements optionnels : cohérence de projet avec la version budgétaire.
+    if (body.wbsId) {
+      const { data: wbs, error: wbsError } = await admin
+        .from('wbs_nodes')
+        .select('id, project_id')
+        .eq('id', body.wbsId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (wbsError) throw wbsError;
+      if (!wbs) return json({ error: 'Nœud WBS introuvable' }, 404);
+      if (wbs.project_id !== version.project_id) {
+        return json({ error: 'Le nœud WBS appartient à un autre projet' }, 409);
+      }
+    }
+
+    if (body.fundingSourceId) {
+      const { data: fs, error: fsError } = await admin
+        .from('funding_sources')
+        .select('id, project_id')
+        .eq('id', body.fundingSourceId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (fsError) throw fsError;
+      if (!fs) return json({ error: 'Source de financement introuvable' }, 404);
+      if (fs.project_id !== version.project_id) {
+        return json({ error: 'La source de financement appartient à un autre projet' }, 409);
+      }
+    }
+
     const { data: ligne, error: insertError } = await admin
       .from('budget_lignes')
       .insert({
@@ -75,6 +113,11 @@ Deno.serve(async (req: Request) => {
         montant_engage: body.montantEngage ?? 0,
         montant_paye: body.montantPaye ?? 0,
         ordre: body.ordre ?? 0,
+        wbs_id: body.wbsId ?? null,
+        unite: body.unite?.trim() || null,
+        quantite: body.quantite ?? null,
+        cout_unitaire: body.coutUnitaire ?? null,
+        funding_source_id: body.fundingSourceId ?? null,
         created_by: profile.id,
         updated_at: new Date().toISOString(),
       })
