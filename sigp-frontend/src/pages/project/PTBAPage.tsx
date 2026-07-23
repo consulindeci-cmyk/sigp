@@ -94,9 +94,6 @@ function EmptyPTBAView({ annee }: { annee: number }) {
         <p className="text-base font-semibold text-foreground">Aucun PTBA pour {annee}</p>
         <p className="text-sm mt-1">Aucun plan n'a encore été généré pour cette année.</p>
       </div>
-      <Button variant="default" size="sm" disabled>
-        Générer à partir du WBS
-      </Button>
     </div>
   );
 }

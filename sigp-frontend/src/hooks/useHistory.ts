@@ -118,6 +118,7 @@ function adaptRow(row: HistoriqueRow): HistoriqueProjet {
     avant: row.avant,
     apres: row.apres,
     createdAt: row.created_at,
+    enregistrement_id: row.enregistrement_id,
   };
 }
 

@@ -415,6 +415,10 @@ export interface HistoriqueProjet {
   avant: Record<string, unknown> | null;
   apres: Record<string, unknown> | null;
   createdAt: string;      // ISO datetime
+  // id de la ligne concernée (historique.enregistrement_id) — permet de
+  // filtrer l'historique d'un élément précis (ex: une ligne budgétaire),
+  // pas seulement le journal global d'un projet.
+  enregistrement_id: string | null;
 }
 
 // ─── Documents globaux (bibliothèque centrale) ────────────────────────────────

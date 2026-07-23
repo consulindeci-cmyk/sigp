@@ -10,7 +10,7 @@ import {
 import { formatMoney } from '@/utils/format';
 import { StatutBudget } from '@/types/budget';
 import type { BudgetLigne, BudgetVersion } from '@/types/budget';
-import type { LigneHistoryEntry, ImportResult } from '@/components/project/budget/views/BudgetMatrix';
+import type { ImportResult } from '@/components/project/budget/views/BudgetMatrix';
 import type { VersionItem } from '@/components/common/workflow/VersionSelector';
 import {
   GitCommit, CheckCircle2, AlertCircle, LayoutGrid,
@@ -75,7 +75,6 @@ interface MatrixContentProps {
   error:            unknown;
   budgetVersion?:   BudgetVersion;
   lignes:           BudgetLigne[];
-  lineHistory:      LigneHistoryEntry[];
   projectId:        string;
   canManage:        boolean;
   canDelete:        boolean;
@@ -88,7 +87,7 @@ interface MatrixContentProps {
 
 function MatrixContent({
   isLoading, error, budgetVersion,
-  lignes, lineHistory, projectId, canManage, canDelete,
+  lignes, projectId, canManage, canDelete,
   onAddLigne, onEditLigne, onDeleteLigne, onDuplicateLigne, onImportLignes,
 }: MatrixContentProps) {
   if (isLoading)      return <LoadingView />;
@@ -97,7 +96,6 @@ function MatrixContent({
   return (
     <BudgetMatrix
       lignes={lignes}
-      lineHistory={lineHistory}
       projectId={projectId}
       canManage={canManage}
       canDelete={canDelete}
@@ -183,8 +181,9 @@ export default function BudgetPage() {
 
   // Pas de miroir d'état local (cf. audit Budget) : les lignes affichées
   // proviennent directement de la source de vérité (budgetVersion.lignes),
-  // rafraîchies par l'invalidation de cache après chaque mutation.
-  const [lineHistory, setLineHistory] = useState<LigneHistoryEntry[]>([]);
+  // rafraîchies par l'invalidation de cache après chaque mutation. Idem pour
+  // l'historique : la Matrice le lit désormais directement depuis la vraie
+  // table `historique` (cf. useHistory), plus de journal de session ici.
   const displayLignes = budgetVersion?.lignes ?? [];
 
   // Set active version once budget loads
@@ -193,11 +192,6 @@ export default function BudgetPage() {
       setVersionSelectionnee(budget.version_active_id);
     }
   }, [budget?.version_active_id, versionSelectionnee]);
-
-  // Purge l'historique de session au changement de version
-  useEffect(() => {
-    setLineHistory([]);
-  }, [budgetVersion?.id]);
 
   // ── Bannières workflow (Soumettre/Approuver/Rejeter) ──────────────────────
   const [workflowError,   setWorkflowError]   = useState<string | null>(null);
@@ -264,10 +258,12 @@ export default function BudgetPage() {
     );
   }
 
-  // ── CRUD réel (Edge Functions) + historique de session ────────────────────
+  // ── CRUD réel (Edge Functions) ─────────────────────────────────────────────
   // Toutes les données envoyées correspondent désormais à une colonne réelle
   // en base (cf. audit Budget / migration budget_lignes_wbs_valorisation) —
-  // plus d'overlay client pour bailleur/WBS/valorisation.
+  // plus d'overlay client pour bailleur/WBS/valorisation. Chaque Edge
+  // Function écrit déjà elle-même dans la table `historique` : plus besoin
+  // de dupliquer un journal ici (cf. BudgetMatrix, qui le lit via useHistory).
 
   function toLinePayload(data: Partial<BudgetLigne>) {
     return {
@@ -283,55 +279,30 @@ export default function BudgetPage() {
   }
 
   async function handleAddLigne(data: Partial<BudgetLigne>) {
-    const { data: created } = await createLineMutation.mutateAsync({
+    await createLineMutation.mutateAsync({
       versionId: versionSelectionnee,
       codeLigne: data.code_ligne || uid('bl'),
       ...toLinePayload(data),
     });
-    if (created?.id) {
-      setLineHistory(prev => [...prev, {
-        id: uid('h'), ligneId: created.id, action: 'CREATION',
-        date: new Date().toISOString(), user: 'Utilisateur', after: data,
-      }]);
-    }
   }
 
   async function handleEditLigne(id: string, data: Partial<BudgetLigne>) {
-    const before = displayLignes.find(l => l.id === id);
     await updateLineMutation.mutateAsync({ id, ...toLinePayload(data) });
-    setLineHistory(prev => [...prev, {
-      id: uid('h'), ligneId: id, action: 'MODIFICATION',
-      date: new Date().toISOString(), user: 'Utilisateur', before, after: data,
-    }]);
   }
 
   async function handleDeleteLigne(id: string) {
-    const deleted = displayLignes.find(l => l.id === id);
     await deleteLineMutation.mutateAsync(id);
-    setLineHistory(prev => [...prev, {
-      id: uid('h'), ligneId: id, action: 'SUPPRESSION',
-      date: new Date().toISOString(), user: 'Utilisateur',
-      comment: deleted ? `Ligne "${deleted.libelle || deleted.code_ligne}" supprimée` : undefined,
-      before: deleted,
-    }]);
   }
 
   async function handleDuplicateLigne(id: string) {
     const source = displayLignes.find(l => l.id === id);
     if (!source) return;
-    const { data: created } = await createLineMutation.mutateAsync({
+    await createLineMutation.mutateAsync({
       versionId: versionSelectionnee,
       codeLigne: `${source.code_ligne}-copy`,
       ...toLinePayload(source),
       libelle:   source.libelle ? `${source.libelle} (copie)` : '',
     });
-    if (created?.id) {
-      setLineHistory(prev => [...prev, {
-        id: uid('h'), ligneId: created.id, action: 'DUPLICATION',
-        date: new Date().toISOString(), user: 'Utilisateur',
-        comment: `Dupliqué depuis "${source.libelle || source.code_ligne}"`, after: source,
-      }]);
-    }
   }
 
   async function handleImportLignes(newLignes: Partial<BudgetLigne>[]): Promise<ImportResult> {
@@ -339,19 +310,12 @@ export default function BudgetPage() {
     const failed: ImportResult['failed'] = [];
     for (const data of newLignes) {
       try {
-        const { data: created } = await createLineMutation.mutateAsync({
+        await createLineMutation.mutateAsync({
           versionId: versionSelectionnee,
           codeLigne: data.code_ligne || uid('bl-import'),
           ...toLinePayload(data),
         });
         succeeded += 1;
-        if (created?.id) {
-          setLineHistory(prev => [...prev, {
-            id: uid('h'), ligneId: created.id, action: 'CREATION',
-            date: new Date().toISOString(), user: 'Import Excel',
-            comment: 'Importé depuis fichier Excel', after: data,
-          }]);
-        }
       } catch (err) {
         failed.push({
           libelle: data.libelle || data.code_ligne || '—',
@@ -467,7 +431,6 @@ export default function BudgetPage() {
             error={error}
             budgetVersion={budgetVersion}
             lignes={displayLignes}
-            lineHistory={lineHistory}
             projectId={resolvedProjectId}
             canManage={canManage}
             canDelete={canDelete}

@@ -9,6 +9,8 @@ import {
 } from './BudgetLigneSlideOver';
 import { useFundingSources, type FundingSource } from '@/hooks/useFundingSources';
 import { useWBS } from '@/hooks/useWBS';
+import { useHistory } from '@/hooks/useHistory';
+import { ACTION_LABEL } from '@/mocks/historyMocks';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
   ModalFooter, ModalClose,
@@ -22,21 +24,6 @@ import { Input } from '@/components/ui/forms/Input';
 import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { formatMoney } from '@/utils/format';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Exported types (consumed by BudgetPage)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface LigneHistoryEntry {
-  id:       string;
-  ligneId:  string;
-  action:   'CREATION' | 'MODIFICATION' | 'DUPLICATION' | 'SUPPRESSION';
-  date:     string;
-  user:     string;
-  comment?: string;
-  before?:  Partial<BudgetLigne>;
-  after?:   Partial<BudgetLigne>;
-}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -259,17 +246,6 @@ ${lignes.map(l => `<tr>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Action label helper (historique)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const ACTION_LABELS: Record<LigneHistoryEntry['action'], string> = {
-  CREATION:     'Création',
-  MODIFICATION: 'Modification',
-  DUPLICATION:  'Duplication',
-  SUPPRESSION:  'Suppression',
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Bande de sous-total par composante WBS racine (regroupement hiérarchique,
 // même principe que PTBAComponentSubtotalRow) — ligne synthétique (pas une
 // vraie budget_lignes), jamais éditable, juste l'agrégation des lignes
@@ -344,7 +320,6 @@ export interface ImportResult {
 
 interface BudgetMatrixProps {
   lignes:           BudgetLigne[];
-  lineHistory:      LigneHistoryEntry[];
   projectId:        string;
   canManage:        boolean;
   canDelete:        boolean;
@@ -360,12 +335,22 @@ interface BudgetMatrixProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function BudgetMatrix({
-  lignes, lineHistory, projectId, canManage, canDelete, onAddLigne, onEditLigne, onDeleteLigne, onDuplicateLigne, onImportLignes,
+  lignes, projectId, canManage, canDelete, onAddLigne, onEditLigne, onDeleteLigne, onDuplicateLigne, onImportLignes,
 }: BudgetMatrixProps) {
 
   const { data: fundingSources = [] } = useFundingSources(projectId);
   const { data: wbsData } = useWBS(projectId);
   const wbsNodes = wbsData?.data ?? [];
+
+  // ── Historique (table réelle `historique`, alimentée par les Edge
+  // Functions) — remplace l'ancien journal en mémoire de session, perdu au
+  // rechargement. Filtré au module "Budget" (budget_versions/budget_lignes,
+  // cf. useHistory.ts MODULE_MAP).
+  const { data: historyData } = useHistory(projectId);
+  const budgetHistoryEntries = useMemo(
+    () => (historyData?.data ?? []).filter(e => e.module === 'Budget'),
+    [historyData],
+  );
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const [filterBailleur,  setFilterBailleur]  = useState('');
@@ -491,45 +476,40 @@ export function BudgetMatrix({
     };
   }, [filteredLignes, groups]);
 
-  // ── Per-ligne history (selected) ──────────────────────────────────────────
+  // ── Per-ligne history (selected) — filtré sur enregistrement_id, l'id réel
+  // de la ligne budgétaire concernée par chaque événement historique.
   const selectedLigneHistory = useMemo(() =>
     ligneHistoriqueId
-      ? lineHistory.filter(h => h.ligneId === ligneHistoriqueId)
+      ? budgetHistoryEntries.filter(e => e.enregistrement_id === ligneHistoriqueId)
       : [],
-    [ligneHistoriqueId, lineHistory]
+    [ligneHistoriqueId, budgetHistoryEntries]
   );
 
   const ligneHistoriqueNom = useMemo(() => {
     if (!ligneHistoriqueId) return '';
     return lignes.find(l => l.id === ligneHistoriqueId)?.libelle
-      || lineHistory.find(h => h.ligneId === ligneHistoriqueId)?.after?.libelle
+      || (selectedLigneHistory[0]?.apres?.libelle as string | undefined)
+      || (selectedLigneHistory[0]?.avant?.libelle as string | undefined)
       || ligneHistoriqueId;
-  }, [ligneHistoriqueId, lignes, lineHistory]);
+  }, [ligneHistoriqueId, lignes, selectedLigneHistory]);
 
   // ── hasHistory lookup ─────────────────────────────────────────────────────
-  const lignesWithHistory = useMemo(() => new Set(lineHistory.map(h => h.ligneId)), [lineHistory]);
+  const lignesWithHistory = useMemo(
+    () => new Set(budgetHistoryEntries.map(e => e.enregistrement_id).filter((id): id is string => !!id)),
+    [budgetHistoryEntries],
+  );
 
-  // ── Journal global dérivé du lineHistory réel de la session ──────────────
+  // ── Journal global — déjà trié du plus récent au plus ancien par useHistory
+  // (ORDER BY created_at DESC) ──────────────────────────────────────────────
   const globalAuditEntries = useMemo(() =>
-    [...lineHistory].reverse().map(h => {
-      const ligneLibelle = h.after?.libelle ?? h.before?.libelle ?? '';
-      const actionStr = h.comment
-        ? `${ACTION_LABELS[h.action]} — ${h.comment}`
-        : ligneLibelle
-          ? `${ACTION_LABELS[h.action]} : ${ligneLibelle}`
-          : ACTION_LABELS[h.action];
-      return {
-        id:     h.id,
-        date:   new Date(h.date).toLocaleString('fr-FR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit',
-        }),
-        user:   h.user,
-        action: actionStr,
-        statut: h.action,
-      };
-    }),
-  [lineHistory]);
+    budgetHistoryEntries.map(e => ({
+      id:     e.id,
+      date:   `${new Date(e.date).toLocaleDateString('fr-FR')} ${e.heure.slice(0, 5)}`,
+      user:   e.utilisateur,
+      action: `${ACTION_LABEL[e.action]} : ${e.element}`,
+      statut: e.action,
+    })),
+  [budgetHistoryEntries]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -914,13 +894,13 @@ export function BudgetMatrix({
           <ModalHeader>
             <ModalTitle>Historique des modifications</ModalTitle>
             <ModalDescription>
-              Journal d'audit de la session — {globalAuditEntries.length} événement{globalAuditEntries.length !== 1 ? 's' : ''}.
+              Journal d'audit du module Budget — {globalAuditEntries.length} événement{globalAuditEntries.length !== 1 ? 's' : ''}.
             </ModalDescription>
           </ModalHeader>
           <div className="py-2 max-h-80 overflow-y-auto">
             {globalAuditEntries.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Aucune opération effectuée dans cette session.
+                Aucune opération enregistrée pour ce budget.
               </p>
             ) : (
               <table className="w-full text-sm border-collapse">
@@ -971,26 +951,29 @@ export function BudgetMatrix({
               <p className="text-sm text-muted-foreground text-center py-8">Aucun historique disponible.</p>
             ) : (
               <div className="flex flex-col gap-3">
-                {[...selectedLigneHistory].reverse().map(entry => (
-                  <div key={entry.id} className="flex gap-3 p-3 bg-muted/20 rounded-lg">
-                    <div className="w-2 h-2 mt-1.5 rounded-full bg-primary shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-foreground">{ACTION_LABELS[entry.action]}</span>
-                        <span className="text-[10px] font-mono text-muted-foreground">
-                          {new Date(entry.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                {selectedLigneHistory.map(entry => {
+                  const avantRevise = entry.avant?.montant_prevu as number | undefined;
+                  const apresRevise = entry.apres?.montant_prevu as number | undefined;
+                  return (
+                    <div key={entry.id} className="flex gap-3 p-3 bg-muted/20 rounded-lg">
+                      <div className="w-2 h-2 mt-1.5 rounded-full bg-primary shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-xs font-semibold text-foreground">{ACTION_LABEL[entry.action]}</span>
+                          <span className="text-[10px] font-mono text-muted-foreground">
+                            {new Date(entry.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} {entry.heure.slice(0, 5)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">Par {entry.utilisateur}</p>
+                        {avantRevise !== undefined && apresRevise !== undefined && avantRevise !== apresRevise && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Coût Total : {formatMoney(avantRevise)} → {formatMoney(apresRevise)}
+                          </p>
+                        )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">Par {entry.user}</p>
-                      {entry.comment && <p className="text-[11px] text-muted-foreground italic mt-0.5">{entry.comment}</p>}
-                      {entry.after?.montant_revise !== undefined && entry.before?.montant_revise !== undefined && entry.before.montant_revise !== entry.after.montant_revise && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          Budget révisé : {formatMoney(entry.before.montant_revise)} → {formatMoney(entry.after.montant_revise)}
-                        </p>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
