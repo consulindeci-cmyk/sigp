@@ -16,6 +16,9 @@ interface UpdateBudgetLineBody {
   quantite?: number | null;
   coutUnitaire?: number | null;
   fundingSourceId?: string | null;
+  // Montant réellement financé par ce bailleur sur cette ligne — null pour
+  // effacer (cf. correction Matrice Budget, colonne "Financement Bailleur").
+  montantBailleur?: number | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -28,6 +31,9 @@ Deno.serve(async (req: Request) => {
 
     const body: UpdateBudgetLineBody = await req.json();
     if (!body.id) return json({ error: 'id est obligatoire' }, 400);
+    if (body.montantBailleur != null && body.montantBailleur < 0) {
+      return json({ error: 'montantBailleur doit être supérieur ou égal à 0' }, 400);
+    }
 
     const { data: existing, error: findError } = await admin
       .from('budget_lignes')
@@ -113,6 +119,7 @@ Deno.serve(async (req: Request) => {
     if (body.quantite !== undefined) updatePayload.quantite = body.quantite;
     if (body.coutUnitaire !== undefined) updatePayload.cout_unitaire = body.coutUnitaire;
     if (body.fundingSourceId !== undefined) updatePayload.funding_source_id = body.fundingSourceId;
+    if (body.montantBailleur !== undefined) updatePayload.montant_bailleur = body.montantBailleur;
 
     const { data: updated, error: updateError } = await admin
       .from('budget_lignes')

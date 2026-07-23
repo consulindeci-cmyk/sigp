@@ -9,63 +9,47 @@ import {
   SlideOverBody, SlideOverFooter, SlideOverClose,
 } from '@/components/ui/overlays/SlideOver';
 import { formatMoney } from '@/utils/format';
-import { useFundingSources } from '@/hooks/useFundingSources';
 import { useWBS } from '@/hooks/useWBS';
 import { flattenWBSTree } from '@/utils/tree';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Référentiels
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const CATEGORIES_REF = [
-  { id: 'TRAVAUX',        nom: 'Travaux'                       },
-  { id: 'BIENS',          nom: 'Biens'                         },
-  { id: 'SERVICES',       nom: 'Services de Consultants'       },
-  { id: 'FONCTIONNEMENT', nom: 'Fonctionnement / UGP'          },
-  { id: 'FORMATION',      nom: 'Formation & Renforcement'      },
-];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Form types
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LigneFormValues {
-  wbs_id:         string;
-  code_ligne:     string;
-  libelle:        string;
-  categorie_id:   string;
-  bailleur_id:    string;
-  unite:          string;
-  quantite:       string;
-  cout_unitaire:  string;
-  montant_revise: string;
+  wbs_id:           string;
+  code_ligne:       string;
+  libelle:          string;
+  unite:            string;
+  quantite:         string;
+  cout_unitaire:    string;
+  montant_revise:   string;
+  montant_bailleur: string;
 }
 
 type LigneFormErrors = Partial<Record<keyof LigneFormValues, string>>;
 
 const EMPTY_FORM: LigneFormValues = {
-  wbs_id:         '',
-  code_ligne:     '',
-  libelle:        '',
-  categorie_id:   '',
-  bailleur_id:    '',
-  unite:          '',
-  quantite:       '',
-  cout_unitaire:  '',
-  montant_revise: '',
+  wbs_id:           '',
+  code_ligne:       '',
+  libelle:          '',
+  unite:            '',
+  quantite:         '',
+  cout_unitaire:    '',
+  montant_revise:   '',
+  montant_bailleur: '',
 };
 
 function ligneToForm(l: BudgetLigne): LigneFormValues {
   return {
-    wbs_id:         l.wbs_id ?? '',
-    code_ligne:     l.code_ligne,
-    libelle:        l.libelle ?? '',
-    categorie_id:   l.categorie_id,
-    bailleur_id:    l.bailleur_id,
-    unite:          l.unite ?? '',
-    quantite:       l.quantite != null ? String(l.quantite) : '',
-    cout_unitaire:  l.cout_unitaire != null ? String(l.cout_unitaire) : '',
-    montant_revise: String(l.montant_revise),
+    wbs_id:           l.wbs_id ?? '',
+    code_ligne:       l.code_ligne,
+    libelle:          l.libelle ?? '',
+    unite:            l.unite ?? '',
+    quantite:         l.quantite != null ? String(l.quantite) : '',
+    cout_unitaire:    l.cout_unitaire != null ? String(l.cout_unitaire) : '',
+    montant_revise:   String(l.montant_revise),
+    montant_bailleur: l.montant_bailleur != null ? String(l.montant_bailleur) : '',
   };
 }
 
@@ -111,9 +95,6 @@ export function BudgetLigneSlideOver({
   const [errors, setErrors] = useState<LigneFormErrors>({});
 
   const isEditing = mode === 'edit';
-
-  // bailleur_id référence une vraie funding_sources.id du projet.
-  const { data: fundingSources = [], isLoading: isLoadingFunding } = useFundingSources(projectId);
 
   // wbs_id référence un vrai nœud wbs_nodes du projet — sous-éléments
   // (activités filles) uniquement, même règle que PTBAActiviteForm : une
@@ -174,11 +155,18 @@ export function BudgetLigneSlideOver({
 
   const montantTotal = computedTotal ?? (Number(values.montant_revise) || 0);
 
+  // Montant réellement financé par le bailleur sur cette ligne — déduit
+  // automatiquement du Coût Total si l'utilisateur ne le renseigne pas
+  // explicitement (hypothèse : financement intégral par défaut), modifiable
+  // pour les cas de cofinancement (le bailleur ne couvre qu'une partie).
+  const montantBailleur = values.montant_bailleur.trim() === ''
+    ? montantTotal
+    : Number(values.montant_bailleur);
+  const disponibleApercu = montantBailleur - montantTotal;
+
   function validate(): boolean {
     const errs: LigneFormErrors = {};
-    if (!values.libelle.trim())   errs.libelle      = 'Requis';
-    if (!values.bailleur_id)      errs.bailleur_id  = 'Requis';
-    if (!values.categorie_id)     errs.categorie_id = 'Requis';
+    if (!values.libelle.trim()) errs.libelle = 'Requis';
     if (montantTotal <= 0) errs.montant_revise = 'Montant total requis (> 0)';
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -186,20 +174,17 @@ export function BudgetLigneSlideOver({
 
   function handleSave() {
     if (!validate()) return;
-    const bailleur = fundingSources.find(b => b.id === values.bailleur_id);
 
     onSave({
       wbs_id:        values.wbs_id || undefined,
       code_ligne:    values.code_ligne.trim() || `bl-${Date.now()}`,
       libelle:       values.libelle.trim(),
-      categorie_id:  values.categorie_id,
-      bailleur_id:   values.bailleur_id,
-      bailleur_nom:  bailleur?.nom,
       unite:         values.unite.trim() || undefined,
       quantite:      values.quantite.trim()      === '' ? undefined : Number(values.quantite),
       cout_unitaire: values.cout_unitaire.trim() === '' ? undefined : Number(values.cout_unitaire),
-      montant_initial: montantTotal,
-      montant_revise:  montantTotal,
+      montant_initial:  montantTotal,
+      montant_revise:   montantTotal,
+      montant_bailleur: montantBailleur,
     });
   }
 
@@ -272,38 +257,6 @@ export function BudgetLigneSlideOver({
                     className="font-mono"
                   />
                 </FRow>
-
-                <FRow id="categorie" label="Catégorie *" error={errors.categorie_id}>
-                  <Select
-                    id="categorie"
-                    value={values.categorie_id}
-                    onChange={e => set('categorie_id', e.target.value)}
-                  >
-                    <option value="">Sélectionner…</option>
-                    {CATEGORIES_REF.map(c => (
-                      <option key={c.id} value={c.id}>{c.nom}</option>
-                    ))}
-                  </Select>
-                </FRow>
-
-                <FRow id="bailleur" label="Financement Bailleur *" error={errors.bailleur_id}>
-                  <Select
-                    id="bailleur"
-                    value={values.bailleur_id}
-                    onChange={e => set('bailleur_id', e.target.value)}
-                    disabled={isLoadingFunding}
-                  >
-                    <option value="">{isLoadingFunding ? 'Chargement…' : 'Sélectionner…'}</option>
-                    {fundingSources.map(b => (
-                      <option key={b.id} value={b.id}>{b.nom}</option>
-                    ))}
-                  </Select>
-                  {!isLoadingFunding && fundingSources.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground mt-0.5">
-                      Aucune source de financement pour ce projet — ajoutez-en une depuis l'onglet Sources de Financement.
-                    </span>
-                  )}
-                </FRow>
               </div>
             </div>
 
@@ -370,39 +323,37 @@ export function BudgetLigneSlideOver({
               </div>
             </div>
 
-            {/* ── Exécution financière (lecture seule) ─────────────────────── */}
-            {isEditing && ligne && (
-              <div>
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border">
-                  Exécution financière
-                </h3>
-                <div className="flex items-start gap-3 p-3 bg-muted/30 border border-border rounded-lg mb-3">
-                  <AlertCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
-                  <p className="text-xs text-muted-foreground">
-                    Engagé et Décaissé sont calculés automatiquement depuis les contrats et décaissements
-                    réels rattachés à cette ligne — non saisissables ici.
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4 bg-muted/20 rounded-lg p-4">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Engagé</p>
-                    <p className="font-mono text-base font-bold text-warning">{formatMoney(ligne.montant_engage)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Décaissé</p>
-                    <p className="font-mono text-base font-bold text-success">{formatMoney(ligne.montant_decaisse)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Solde disponible</p>
-                    <p className="font-mono text-base font-bold text-primary">{formatMoney(ligne.solde_disponible)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Reste à payer</p>
-                    <p className="font-mono text-base font-bold text-muted-foreground">{formatMoney(ligne.reste_a_payer)}</p>
-                  </div>
-                </div>
+            {/* ── Financement Bailleur ──────────────────────────────────────── */}
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border">
+                Financement Bailleur
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FRow id="montant-bailleur" label="Montant financé par le bailleur">
+                  <Input
+                    id="montant-bailleur"
+                    type="number"
+                    min={0}
+                    value={values.montant_bailleur}
+                    onChange={e => set('montant_bailleur', e.target.value)}
+                    placeholder={`Par défaut : Coût Total (${formatMoney(montantTotal)})`}
+                    className="font-mono"
+                  />
+                  <span className="text-[11px] text-muted-foreground mt-0.5">
+                    Laissez vide si le bailleur finance intégralement le Coût Total — ne renseigner que
+                    pour un cofinancement (le bailleur ne couvre qu'une partie de la ligne).
+                  </span>
+                </FRow>
               </div>
-            )}
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-muted/20 px-4 py-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Disponible (aperçu)
+                </span>
+                <span className={`font-mono text-sm font-bold ${disponibleApercu < 0 ? 'text-destructive' : 'text-primary'}`}>
+                  {disponibleApercu < 0 ? `-${formatMoney(Math.abs(disponibleApercu))}` : formatMoney(disponibleApercu)}
+                </span>
+              </div>
+            </div>
 
           </div>
 

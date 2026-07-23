@@ -20,6 +20,11 @@ interface CreateBudgetLineBody {
   // Bailleur réel (funding_sources), remplace l'ancien overlay client
   // 'decorations' qui ne persistait jamais ce choix.
   fundingSourceId?: string;
+  // Montant réellement financé par ce bailleur sur cette ligne (cofinancement
+  // possible : peut différer du Coût Total) — affiché tel quel dans la
+  // colonne "Financement Bailleur" de la Matrice, à la place du nom du
+  // bailleur (cf. correction Matrice Budget).
+  montantBailleur?: number;
 }
 
 Deno.serve(async (req: Request) => {
@@ -34,6 +39,9 @@ Deno.serve(async (req: Request) => {
     if (!body.versionId) return json({ error: 'versionId est obligatoire' }, 400);
     if (!body.codeLigne?.trim()) return json({ error: 'codeLigne est obligatoire' }, 400);
     if (!body.libelle?.trim()) return json({ error: 'libelle est obligatoire' }, 400);
+    if (body.montantBailleur !== undefined && body.montantBailleur < 0) {
+      return json({ error: 'montantBailleur doit être supérieur ou égal à 0' }, 400);
+    }
 
     const { data: version, error: versionError } = await admin
       .from('budget_versions')
@@ -118,6 +126,7 @@ Deno.serve(async (req: Request) => {
         quantite: body.quantite ?? null,
         cout_unitaire: body.coutUnitaire ?? null,
         funding_source_id: body.fundingSourceId ?? null,
+        montant_bailleur: body.montantBailleur ?? null,
         created_by: profile.id,
         updated_at: new Date().toISOString(),
       })

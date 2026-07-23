@@ -14,7 +14,7 @@ import type { LigneHistoryEntry, ImportResult } from '@/components/project/budge
 import type { VersionItem } from '@/components/common/workflow/VersionSelector';
 import {
   GitCommit, CheckCircle2, AlertCircle, LayoutGrid,
-  Banknote, Loader2, Wallet, BarChart2,
+  Loader2, Wallet, BarChart2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { StatCard } from '@/components/ui/data-display/StatCard';
@@ -272,13 +272,13 @@ export default function BudgetPage() {
   function toLinePayload(data: Partial<BudgetLigne>) {
     return {
       libelle:         data.libelle || '',
-      categorie:       data.categorie_id || undefined,
       montantPrevu:    data.montant_revise ?? 0,
       wbsId:           data.wbs_id || undefined,
       unite:           data.unite || undefined,
       quantite:        data.quantite ?? undefined,
       coutUnitaire:    data.cout_unitaire ?? undefined,
       fundingSourceId: data.bailleur_id || undefined,
+      montantBailleur: data.montant_bailleur ?? undefined,
     };
   }
 
@@ -363,10 +363,7 @@ export default function BudgetPage() {
   }
 
   // ── KPIs (100% source serveur) ────────────────────────────────────────────
-  const totalBAC        = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_revise,     0), [displayLignes]);
-  const totalEngage     = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_engage,     0), [displayLignes]);
-  const totalDecaisse   = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_decaisse,   0), [displayLignes]);
-  const totalDisponible = useMemo(() => displayLignes.reduce((s, l) => s + l.solde_disponible,   0), [displayLignes]);
+  const totalBAC = useMemo(() => displayLignes.reduce((s, l) => s + l.montant_revise, 0), [displayLignes]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
@@ -448,24 +445,6 @@ export default function BudgetPage() {
           value={formatMoney(totalBAC)}
           icon={<Wallet className="h-4 w-4 text-primary" />}
           iconVariant="primary"
-        />
-        <StatCard
-          title="Engagements (Contrats)"
-          value={formatMoney(totalEngage)}
-          icon={<LayoutGrid className="h-4 w-4 text-warning" />}
-          iconVariant="warning"
-        />
-        <StatCard
-          title="Décaissements"
-          value={formatMoney(totalDecaisse)}
-          icon={<CheckCircle2 className="h-4 w-4 text-success" />}
-          iconVariant="success"
-        />
-        <StatCard
-          title="Solde Disponible"
-          value={formatMoney(totalDisponible)}
-          icon={<Banknote className="h-4 w-4 text-info" />}
-          iconVariant="info"
         />
       </div>
 

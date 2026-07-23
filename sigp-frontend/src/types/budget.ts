@@ -55,7 +55,6 @@ export interface BudgetLigne {
   // code_ligne/libelle si la ligne n'est pas (encore) rattachée.
   wbs_id?: string | null;
   code_wbs?: string;
-  categorie_id: string;
 
   // Valorisation façon Excel : Coût Total (montant_revise) = Quantité × Coût
   // Unitaire quand les deux sont renseignés.
@@ -63,22 +62,25 @@ export interface BudgetLigne {
   quantite?: number | null;
   cout_unitaire?: number | null;
 
-  // Bailleur réel (funding_sources.id) — remplace l'ancien overlay client
-  // jamais persisté.
+  // Bailleur réel (funding_sources.id) — rattachement en base uniquement,
+  // jamais affiché tel quel dans la colonne "Financement Bailleur" de la
+  // Matrice (remplacé par montant_bailleur ci-dessous, cf. correction).
   bailleur_id: string;
   bailleur_nom?: string;
+  // Montant réellement financé par ce bailleur sur cette ligne (peut différer
+  // du Coût Total en cofinancement) — c'est cette valeur, pas le nom du
+  // bailleur, qui s'affiche dans la colonne "Financement Bailleur".
+  montant_bailleur?: number | null;
 
   montant_initial: number;
   montant_revise: number;
 
-  // Calculés côté serveur depuis les vraies transactions (contrats non
-  // résiliés / décaissements DECAISSE) via recalc_budget_ligne_montants() —
-  // jamais saisis manuellement ici.
-  montant_engage: number;
-  montant_decaisse: number;
-
+  // Calculé côté serveur (montant_revise − montant_engage, cf. useBudget.ts) —
+  // montant_engage lui-même n'est plus exposé sur ce type depuis le nettoyage
+  // BudgetMatrix (Engagements retiré de la table), mais solde_disponible reste
+  // consommé ailleurs (ProjectDisbursementTab : alerte de dépassement à la
+  // saisie d'un décaissement contre une ligne budgétaire).
   solde_disponible: number;
-  reste_a_payer: number;
 
   // For UI presentation only (Optional relations)
   libelle?: string;

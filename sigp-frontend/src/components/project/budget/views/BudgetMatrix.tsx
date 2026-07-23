@@ -4,7 +4,7 @@ import type { BudgetLigne } from '@/types/budget';
 import type { WBS } from '@/types';
 import { BudgetMatrixRow } from './BudgetMatrixRow';
 import {
-  BudgetLigneSlideOver, CATEGORIES_REF,
+  BudgetLigneSlideOver,
   type LigneSlideOverMode,
 } from './BudgetLigneSlideOver';
 import { useFundingSources, type FundingSource } from '@/hooks/useFundingSources';
@@ -49,7 +49,6 @@ interface ImportRow {
   code_ligne:   string;
   bailleur_id:  string;
   bailleur_nom: string;
-  categorie_id: string;
   unite:          string;
   quantite:       number;
   cout_unitaire:  number;
@@ -76,15 +75,6 @@ function findBailleur(raw: string, fundingSources: FundingSource[]) {
   );
 }
 
-function findCategorie(raw: string) {
-  const r = raw.trim().toUpperCase();
-  return CATEGORIES_REF.find(c =>
-    c.id === r
-    || c.nom.toUpperCase().includes(r)
-    || r.includes(c.id)
-  );
-}
-
 function colVal(row: Record<string, unknown>, ...keys: string[]): unknown {
   for (const k of keys) {
     const found = Object.entries(row).find(([col]) => col.toLowerCase().includes(k.toLowerCase()));
@@ -106,11 +96,9 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
       const codeLigne  = String(colVal(row, 'code wbs', 'wbs_id', 'wbs id', 'code')).trim()
                       || `bl-import-${i + 1}`;
       const bailleurRaw  = String(colVal(row, 'bailleur')).trim();
-      const categorieRaw = String(colVal(row, 'catégorie', 'categorie', 'categ')).trim();
       const unite        = String(colVal(row, 'unité', 'unite')).trim();
 
-      const bailleur  = findBailleur(bailleurRaw, fundingSources);
-      const categorie = findCategorie(categorieRaw);
+      const bailleur = findBailleur(bailleurRaw, fundingSources);
 
       const quantite      = parseNum(colVal(row, 'quantité', 'quantite'));
       const cout_unitaire = parseNum(colVal(row, 'coût unitaire', 'cout unitaire', 'cout_unitaire'));
@@ -120,7 +108,6 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
       const errors: string[] = [];
       if (!libelle)       errors.push('Composante/WBS manquant');
       if (!bailleur)      errors.push(`Bailleur inconnu : "${bailleurRaw}"`);
-      if (!categorie)     errors.push(`Catégorie inconnue : "${categorieRaw}"`);
       if (montant_revise <= 0) errors.push('Coût total requis (> 0)');
 
       return {
@@ -129,7 +116,6 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
         code_ligne:   codeLigne,
         bailleur_id:  bailleur?.id  || '',
         bailleur_nom: bailleur?.nom || bailleurRaw,
-        categorie_id: categorie?.id || '',
         unite,
         quantite,
         cout_unitaire,
@@ -146,16 +132,13 @@ async function parseImportFile(file: File, fundingSources: FundingSource[]): Pro
 
 function exportToCsv(lignes: BudgetLigne[], filename: string) {
   const HEADERS = [
-    'Code WBS', 'Libellé', 'Catégorie', 'Financement Bailleur',
-    'Unité', 'Quantité', 'Coût Unitaire', 'Coût Total',
-    'Engagé', 'Décaissé', 'Solde disponible', 'Reste à payer',
+    'Code WBS', 'Libellé', 'Unité', 'Quantité', 'Coût Unitaire', 'Coût Total',
+    'Financement Bailleur',
   ];
   const rows = lignes.map(l => [
-    l.code_wbs || l.code_ligne, l.libelle || l.code_ligne, l.categorie_id,
-    l.bailleur_nom || l.bailleur_id,
+    l.code_wbs || l.code_ligne, l.libelle || l.code_ligne,
     l.unite || '', l.quantite ?? '', l.cout_unitaire ?? '',
-    l.montant_revise, l.montant_engage, l.montant_decaisse,
-    l.solde_disponible, l.reste_a_payer,
+    l.montant_revise, l.montant_bailleur ?? l.montant_revise,
   ]);
   const csv = '﻿' + [HEADERS, ...rows]
     .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
@@ -173,35 +156,27 @@ function exportToCsv(lignes: BudgetLigne[], filename: string) {
 
 function exportToXlsx(lignes: BudgetLigne[], filename: string) {
   const HEADERS = [
-    'Code WBS', 'Libellé', 'Catégorie', 'Financement Bailleur',
-    'Unité', 'Quantité', 'Coût Unitaire', 'Coût Total',
-    'Engagé', 'Décaissé', 'Solde disponible', 'Reste à payer',
+    'Code WBS', 'Libellé', 'Unité', 'Quantité', 'Coût Unitaire', 'Coût Total',
+    'Financement Bailleur',
   ];
   const rows = lignes.map(l => [
-    l.code_wbs || l.code_ligne, l.libelle || l.code_ligne, l.categorie_id,
-    l.bailleur_nom || l.bailleur_id,
+    l.code_wbs || l.code_ligne, l.libelle || l.code_ligne,
     l.unite || '', l.quantite ?? '', l.cout_unitaire ?? '',
-    l.montant_revise, l.montant_engage, l.montant_decaisse,
-    l.solde_disponible, l.reste_a_payer,
+    l.montant_revise, l.montant_bailleur ?? l.montant_revise,
   ]);
 
-  // Totals row (Coût Total, Engagé, Décaissé, Disponible, RAP — colonnes 8-12)
-  const numCols = [8, 9, 10, 11, 12] as const;
-  const totRow: (string | number)[] = ['TOTAL', '', '', '', '', '', ''];
-  for (const ci of numCols) {
-    totRow.push(lignes.reduce((s, l) => {
-      const vals = [l.montant_revise, l.montant_engage, l.montant_decaisse, l.solde_disponible, l.reste_a_payer];
-      return s + (vals[ci - 8] ?? 0);
-    }, 0));
-  }
+  const totRow: (string | number)[] = [
+    'TOTAL', '', '', '', '',
+    lignes.reduce((s, l) => s + l.montant_revise, 0),
+    '',
+  ];
 
   const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows, totRow]);
 
   // Column widths
   ws['!cols'] = [
-    { wch: 12 }, { wch: 30 }, { wch: 20 }, { wch: 18 },
-    { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
-    { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
+    { wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
+    { wch: 18 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -221,11 +196,7 @@ function printLignes(lignes: BudgetLigne[]) {
   const td = (val: string | number, align = 'left') =>
     `<td style="text-align:${align}">${val}</td>`;
 
-  const totRev   = lignes.reduce((s, l) => s + l.montant_revise,     0);
-  const totEng   = lignes.reduce((s, l) => s + l.montant_engage,     0);
-  const totDec   = lignes.reduce((s, l) => s + l.montant_decaisse,   0);
-  const totDispo = lignes.reduce((s, l) => s + l.solde_disponible,   0);
-  const totRap   = lignes.reduce((s, l) => s + l.reste_a_payer,      0);
+  const totRev = lignes.reduce((s, l) => s + l.montant_revise, 0);
 
   const date = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -254,28 +225,25 @@ function printLignes(lignes: BudgetLigne[]) {
 <table>
 <thead>
 <tr>
-  ${th('Code WBS')}${th('Libellé')}${th('Catégorie')}${th('Bailleur')}
+  ${th('Code WBS')}${th('Libellé')}
   ${th('Unité')}${th('Qté')}${th('Coût Unit.')}${th('Coût Total')}
-  ${th('Engagé')}${th('Décaissé')}${th('Disponible')}${th('RAP')}
+  ${th('Financement Bailleur')}
 </tr>
 </thead>
 <tbody>
 ${lignes.map(l => `<tr>
   ${td(l.code_wbs || l.code_ligne)}${td(l.libelle || l.code_ligne)}
-  ${td(l.categorie_id)}${td(l.bailleur_nom || l.bailleur_id)}
   ${td(l.unite || '—')}${td(l.quantite ?? '—', 'right')}
   ${td(l.cout_unitaire != null ? fmt(l.cout_unitaire) : '—', 'right')}
   ${td(fmt(l.montant_revise), 'right')}
-  ${td(fmt(l.montant_engage), 'right')}${td(fmt(l.montant_decaisse), 'right')}
-  ${td(fmt(l.solde_disponible), 'right')}${td(fmt(l.reste_a_payer), 'right')}
+  ${td(fmt(l.montant_bailleur ?? l.montant_revise), 'right')}
 </tr>`).join('')}
 </tbody>
 <tfoot>
 <tr>
-  <td colspan="7">TOTAL (${lignes.length} ligne${lignes.length > 1 ? 's' : ''})</td>
+  <td colspan="5">TOTAL (${lignes.length} ligne${lignes.length > 1 ? 's' : ''})</td>
   <td class="r">${fmt(totRev)}</td>
-  <td class="r">${fmt(totEng)}</td><td class="r">${fmt(totDec)}</td>
-  <td class="r">${fmt(totDispo)}</td><td class="r">${fmt(totRap)}</td>
+  <td></td>
 </tr>
 </tfoot>
 </table>
@@ -319,14 +287,13 @@ function formatRootCode(code: string): string {
 }
 
 function BudgetComponentSubtotalRow({ root, lignes }: { root: WBS; lignes: BudgetLigne[] }) {
-  const totalRevise    = sumBy(lignes, 'montant_revise');
-  const totalEngage    = sumBy(lignes, 'montant_engage');
-  const totalDecaisse  = sumBy(lignes, 'montant_decaisse');
-  const totalDisponible = sumBy(lignes, 'solde_disponible');
-  const totalRap       = sumBy(lignes, 'reste_a_payer');
+  const totalRevise = sumBy(lignes, 'montant_revise');
 
-  // Plafond bailleur (composantes racine uniquement, cf. WBSNodeForm) — même
-  // alerte de dépassement que sur la Matrice Financière PTBA.
+  // Plafond bailleur (composantes racine uniquement, cf. WBSNodeForm) —
+  // porté par la colonne "Financement Bailleur" pour cette ligne de
+  // sous-total (une composante n'a pas un bailleur unique comme une ligne,
+  // mais une enveloppe/plafond global) ; Disponible = Plafond − Coût Total,
+  // avec alerte rouge en cas de dépassement.
   const plafond = root.enveloppe_cible ?? null;
   const ecart = plafond != null ? plafond - totalRevise : null;
   const isOverBudget = ecart != null && ecart < 0;
@@ -336,7 +303,7 @@ function BudgetComponentSubtotalRow({ root, lignes }: { root: WBS; lignes: Budge
       <td className={`px-4 py-2.5 font-mono text-xs font-bold text-foreground whitespace-nowrap border-r ${isOverBudget ? 'bg-destructive/10 border-destructive/30' : 'bg-muted/40 border-border'}`}>
         {formatRootCode(root.code_wbs)}
       </td>
-      <td className="px-4 py-2.5" colSpan={3}>
+      <td className={`px-4 py-2.5 border-r-2 ${isOverBudget ? 'border-destructive/30' : 'border-border'}`}>
         <div className="flex items-center gap-1.5 flex-wrap font-bold text-foreground text-sm">
           <Layers className="h-3.5 w-3.5 shrink-0 text-primary" />
           <span className="truncate">{root.titre}</span>
@@ -350,28 +317,16 @@ function BudgetComponentSubtotalRow({ root, lignes }: { root: WBS; lignes: Budge
             </Badge>
           )}
         </div>
-        {plafond != null && (
-          <p className={`text-[11px] mt-0.5 ${isOverBudget ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
-            Plafond bailleur : {formatMoney(plafond)}
-            {!isOverBudget && ` — Reste à planifier : ${formatMoney(ecart!)}`}
-          </p>
-        )}
       </td>
       <td className="border-r-2 border-border" colSpan={3} />
       <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-foreground border-r-2 border-border">
         {formatMoney(totalRevise)}
       </td>
-      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-warning border-r-2 border-border">
-        {formatMoney(totalEngage)}
+      <td className="px-4 py-2.5 text-sm font-bold text-foreground">
+        {plafond != null ? formatMoney(plafond) : 'Non défini'}
       </td>
-      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-success border-r-2 border-border">
-        {formatMoney(totalDecaisse)}
-      </td>
-      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-primary">
-        {formatMoney(totalDisponible)}
-      </td>
-      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold text-muted-foreground border-r-2 border-border">
-        {formatMoney(totalRap)}
+      <td className={`px-4 py-2.5 text-right font-mono text-sm font-bold border-r-2 border-border ${isOverBudget ? 'text-destructive' : 'text-primary'}`}>
+        {plafond != null ? (isOverBudget ? `-${formatMoney(Math.abs(ecart!))}` : formatMoney(ecart!)) : '—'}
       </td>
       <td />
     </tr>
@@ -414,7 +369,6 @@ export function BudgetMatrix({
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const [filterBailleur,  setFilterBailleur]  = useState('');
-  const [filterCategorie, setFilterCategorie] = useState('');
   const [searchQuery,     setSearchQuery]     = useState('');
 
   // ── SlideOver (add / edit) ─────────────────────────────────────────────────
@@ -463,27 +417,18 @@ export function BudgetMatrix({
     }));
   }, [lignes, fundingSources]);
 
-  const categorieOptions = useMemo(() => {
-    const ids = [...new Set(lignes.map(l => l.categorie_id))];
-    return ids.map(id => ({
-      id,
-      nom: CATEGORIES_REF.find(c => c.id === id)?.nom || id,
-    }));
-  }, [lignes]);
-
   // ── Filtered lignes ────────────────────────────────────────────────────────
   const filteredLignes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return lignes.filter(l => {
-      if (filterBailleur  && l.bailleur_id  !== filterBailleur)  return false;
-      if (filterCategorie && l.categorie_id !== filterCategorie) return false;
+      if (filterBailleur && l.bailleur_id !== filterBailleur) return false;
       if (q) {
-        const hay = [l.libelle, l.code_ligne, l.code_wbs, l.bailleur_nom, l.bailleur_id, l.categorie_id].join(' ').toLowerCase();
+        const hay = [l.libelle, l.code_ligne, l.code_wbs, l.bailleur_nom, l.bailleur_id].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [lignes, filterBailleur, filterCategorie, searchQuery]);
+  }, [lignes, filterBailleur, searchQuery]);
 
   // ── Regroupement hiérarchique par composante WBS racine (même principe que
   // PTBAMatrix.tsx) : chaque ligne remonte à sa composante racine via
@@ -532,13 +477,19 @@ export function BudgetMatrix({
   }, [filteredLignes, wbsNodes]);
 
   // ── Totals ────────────────────────────────────────────────────────────────
-  const totals = useMemo(() => ({
-    montant_revise:     filteredLignes.reduce((s, l) => s + l.montant_revise,     0),
-    montant_engage:     filteredLignes.reduce((s, l) => s + l.montant_engage,     0),
-    montant_decaisse:   filteredLignes.reduce((s, l) => s + l.montant_decaisse,   0),
-    solde_disponible:   filteredLignes.reduce((s, l) => s + l.solde_disponible,   0),
-    reste_a_payer:      filteredLignes.reduce((s, l) => s + l.reste_a_payer,      0),
-  }), [filteredLignes]);
+  // plafond_global / disponible_global reprennent, à l'échelle du TOTAL
+  // GÉNÉRAL, la même logique que la colonne Financement Bailleur/Disponible
+  // des bandes de sous-total : somme des enveloppes des composantes affichées
+  // moins le Coût Total global (cf. Plafond Global déjà établi sur WBSPage/PTBAPage).
+  const totals = useMemo(() => {
+    const montantRevise = filteredLignes.reduce((s, l) => s + l.montant_revise, 0);
+    const plafondGlobal = groups.reduce((s, g) => s + (g.root.enveloppe_cible || 0), 0);
+    return {
+      montant_revise:    montantRevise,
+      plafond_global:    plafondGlobal,
+      disponible_global: plafondGlobal - montantRevise,
+    };
+  }, [filteredLignes, groups]);
 
   // ── Per-ligne history (selected) ──────────────────────────────────────────
   const selectedLigneHistory = useMemo(() =>
@@ -689,16 +640,11 @@ export function BudgetMatrix({
       code_ligne:      r.code_ligne,
       bailleur_id:     r.bailleur_id,
       bailleur_nom:    r.bailleur_nom,
-      categorie_id:    r.categorie_id,
       unite:           r.unite || undefined,
       quantite:        r.quantite || undefined,
       cout_unitaire:   r.cout_unitaire || undefined,
       montant_initial: r.montant_revise,
       montant_revise:  r.montant_revise,
-      montant_engage:   0,
-      montant_decaisse: 0,
-      solde_disponible: r.montant_revise,
-      reste_a_payer:    0,
     }));
     setImportSaving(true);
     setImportResultError(null);
@@ -738,11 +684,6 @@ export function BudgetMatrix({
         <Select wrapperClassName="w-auto" className="h-8 text-xs py-1" value={filterBailleur} onChange={e => setFilterBailleur(e.target.value)}>
           <option value="">Tous les bailleurs</option>
           {bailleurOptions.map(b => <option key={b.id} value={b.id}>{b.nom}</option>)}
-        </Select>
-
-        <Select wrapperClassName="w-auto" className="h-8 text-xs py-1" value={filterCategorie} onChange={e => setFilterCategorie(e.target.value)}>
-          <option value="">Toutes les catégories</option>
-          {categorieOptions.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
         </Select>
 
         {/* Search */}
@@ -829,24 +770,20 @@ export function BudgetMatrix({
 
           <thead className="sticky top-0 z-10">
             <tr className="bg-primary text-primary-foreground">
-              <th colSpan={7} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 bg-primary">
+              <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 bg-primary">
                 Valorisation WBS
               </th>
-              <th colSpan={1} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Budget</th>
-              <th colSpan={1} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Engagements</th>
-              <th colSpan={1} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Décaissements</th>
+              <th colSpan={4} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Budget</th>
               <th colSpan={2} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide border-r-2 border-primary-foreground/20 text-center">Soldes</th>
               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-center">Actions</th>
             </tr>
             <tr className="bg-primary/80 text-primary-foreground">
               {[
                 ['Code WBS', 'bg-primary/80 border-r'],
-                ['Libellé'], ['Catégorie'], ['Financement Bailleur', 'border-r-2'],
-                ['Unité'], ['Quantité', 'text-right'], ['Coût Unitaire', 'text-right border-r-2'],
+                ['Libellé', 'border-r-2'],
+                ['Unité'], ['Quantité', 'text-right'], ['Coût Unitaire', 'text-right'],
                 ['Coût Total', 'text-right border-r-2'],
-                ['Engagé', 'text-right border-r-2'],
-                ['Décaissé', 'text-right border-r-2'],
-                ['Disponible', 'text-right'], ['Reste à payer', 'text-right border-r-2'],
+                ['Financement Bailleur'], ['Disponible', 'text-right border-r-2'],
                 ['—', 'text-center'],
               ].map(([label, cls = '']) => (
                 <th key={label} className={`px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-b border-primary border-primary-foreground/20 ${cls}`}>
@@ -859,7 +796,7 @@ export function BudgetMatrix({
           <tbody className="divide-y divide-border">
             {filteredLignes.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
                   {lignes.length === 0
                     ? 'Aucune ligne budgétaire. Cliquez sur « Ajouter ligne » ou « Importer Excel ».'
                     : 'Aucune ligne ne correspond aux filtres appliqués.'}
@@ -890,7 +827,7 @@ export function BudgetMatrix({
                 {unassignedLignes.length > 0 && (
                   <Fragment>
                     <tr className="bg-muted/10">
-                      <td colSpan={13} className="px-4 py-1.5 text-[11px] uppercase font-semibold text-muted-foreground tracking-wide">
+                      <td colSpan={9} className="px-4 py-1.5 text-[11px] uppercase font-semibold text-muted-foreground tracking-wide">
                         Sans composante WBS ({unassignedLignes.length})
                       </td>
                     </tr>
@@ -916,14 +853,20 @@ export function BudgetMatrix({
           {filteredLignes.length > 0 && (
             <tfoot>
               <tr className="bg-primary/5 border-t-2 border-primary/30 font-bold">
-                <td colSpan={7} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
+                <td colSpan={5} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
                   TOTAL GÉNÉRAL ({filteredLignes.length} ligne{filteredLignes.length > 1 ? 's' : ''})
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-r-2 border-border">{formatMoney(totals.montant_revise)}</td>
-                <td className="px-4 py-3 text-right font-mono text-sm text-warning border-r-2 border-border">{formatMoney(totals.montant_engage)}</td>
-                <td className="px-4 py-3 text-right font-mono text-sm text-success border-r-2 border-border">{formatMoney(totals.montant_decaisse)}</td>
-                <td className="px-4 py-3 text-right font-mono text-sm text-primary">{formatMoney(totals.solde_disponible)}</td>
-                <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground border-r-2 border-border">{formatMoney(totals.reste_a_payer)}</td>
+                <td className="px-4 py-3 text-sm text-foreground">
+                  {totals.plafond_global > 0 ? formatMoney(totals.plafond_global) : 'Non défini'}
+                </td>
+                <td className={`px-4 py-3 text-right font-mono text-sm border-r-2 border-border ${totals.disponible_global < 0 ? 'text-destructive' : 'text-primary'}`}>
+                  {totals.plafond_global > 0
+                    ? (totals.disponible_global < 0
+                        ? `-${formatMoney(Math.abs(totals.disponible_global))}`
+                        : formatMoney(totals.disponible_global))
+                    : '—'}
+                </td>
                 <td />
               </tr>
             </tfoot>
@@ -1080,7 +1023,6 @@ export function BudgetMatrix({
                 <tr className="bg-muted/50 sticky top-0">
                   <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Composante</th>
                   <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Bailleur</th>
-                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Catégorie</th>
                   <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Coût Total</th>
                   <th className="px-3 py-2 text-center font-semibold text-muted-foreground">Statut</th>
                 </tr>
@@ -1090,7 +1032,6 @@ export function BudgetMatrix({
                   <tr key={r.rowIndex} className={`${r.isValid ? '' : 'bg-destructive/5'}`}>
                     <td className="px-3 py-2 font-medium text-foreground">{r.libelle || <span className="text-destructive italic">—</span>}</td>
                     <td className="px-3 py-2 text-muted-foreground">{r.bailleur_nom || <span className="text-destructive italic">Inconnu</span>}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{r.categorie_id || <span className="text-destructive italic">Inconnue</span>}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatMoney(r.montant_revise)}</td>
                     <td className="px-3 py-2 text-center">
                       {r.isValid

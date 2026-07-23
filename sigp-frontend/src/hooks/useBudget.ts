@@ -36,16 +36,18 @@ interface BudgetLineRow {
   parent_id: string | null;
   code_ligne: string;
   libelle: string;
-  categorie: string | null;
   montant_prevu: number;
+  // Non exposé sur BudgetLigne (Engagements retiré de BudgetMatrix) — lu
+  // uniquement pour calculer solde_disponible, encore consommé par
+  // ProjectDisbursementTab (alerte de dépassement à la saisie).
   montant_engage: number;
-  montant_paye: number;
   ordre: number;
   wbs_id: string | null;
   unite: string | null;
   quantite: number | null;
   cout_unitaire: number | null;
   funding_source_id: string | null;
+  montant_bailleur: number | null;
   created_at: string;
   updated_at: string;
   wbs_nodes: WbsNodeEmbed | null;
@@ -54,9 +56,9 @@ interface BudgetLineRow {
 
 const VERSION_SELECT = 'id, project_id, version, nom, statut, montant_total, approuve_par, approuve_le, created_at, updated_at';
 const LINE_SELECT = `
-  id, version_id, parent_id, code_ligne, libelle, categorie, montant_prevu,
-  montant_engage, montant_paye, ordre, wbs_id, unite, quantite, cout_unitaire,
-  funding_source_id, created_at, updated_at,
+  id, version_id, parent_id, code_ligne, libelle, montant_prevu, montant_engage,
+  ordre, wbs_id, unite, quantite, cout_unitaire,
+  funding_source_id, montant_bailleur, created_at, updated_at,
   wbs_nodes(id, code, libelle),
   funding_sources(id, nom)
 `;
@@ -80,9 +82,7 @@ function adaptVersionSummary(row: BudgetVersionRow): BudgetVersion {
 }
 
 function adaptLine(row: BudgetLineRow): BudgetLigne {
-  const prevu  = row.montant_prevu  ?? 0;
-  const engage = row.montant_engage ?? 0;
-  const paye   = row.montant_paye   ?? 0;
+  const prevu = row.montant_prevu ?? 0;
   return {
     id:                row.id,
     budget_version_id: row.version_id,
@@ -90,18 +90,15 @@ function adaptLine(row: BudgetLineRow): BudgetLigne {
     code_ligne:        row.code_ligne,
     wbs_id:            row.wbs_id,
     code_wbs:          row.wbs_nodes?.code ?? row.code_ligne,
-    categorie_id:      row.categorie ?? '',
     unite:             row.unite,
     quantite:          row.quantite,
     cout_unitaire:     row.cout_unitaire,
     bailleur_id:       row.funding_source_id ?? '',
     bailleur_nom:      row.funding_sources?.nom,
+    montant_bailleur:  row.montant_bailleur,
     montant_initial:   prevu,
     montant_revise:    prevu,
-    montant_engage:    engage,
-    montant_decaisse:  paye,
-    solde_disponible:  Math.max(0, prevu - engage),
-    reste_a_payer:     Math.max(0, engage - paye),
+    solde_disponible:  Math.max(0, prevu - (row.montant_engage ?? 0)),
     libelle:           row.wbs_nodes?.libelle ?? row.libelle,
   };
 }
@@ -209,9 +206,10 @@ export function useCreateBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
-      versionId: string; codeLigne: string; libelle: string; categorie?: string;
-      montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number;
-      wbsId?: string; unite?: string; quantite?: number; coutUnitaire?: number; fundingSourceId?: string;
+      versionId: string; codeLigne: string; libelle: string;
+      montantPrevu?: number; ordre?: number;
+      wbsId?: string; unite?: string; quantite?: number; coutUnitaire?: number;
+      fundingSourceId?: string; montantBailleur?: number;
     }) =>
       invokeEdgeFunction<{ data: BudgetLineRow }>('budget-lines-create', payload),
     onSuccess: () => {
@@ -226,10 +224,11 @@ export function useUpdateBudgetLine(versionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...payload }: {
-      id: string; codeLigne?: string; libelle?: string; categorie?: string;
-      montantPrevu?: number; montantEngage?: number; montantPaye?: number; ordre?: number;
+      id: string; codeLigne?: string; libelle?: string;
+      montantPrevu?: number; ordre?: number;
       wbsId?: string | null; unite?: string | null; quantite?: number | null;
       coutUnitaire?: number | null; fundingSourceId?: string | null;
+      montantBailleur?: number | null;
     }) =>
       invokeEdgeFunction<{ data: BudgetLineRow }>('budget-lines-update', { id, ...payload }),
     onSuccess: () => {
