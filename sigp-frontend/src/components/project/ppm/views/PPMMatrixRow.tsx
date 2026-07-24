@@ -53,17 +53,21 @@ function PPMMatrixRowComponent({ ligne, wbsLabel, canManage, canDelete, onEdit, 
   return (
     <tr className="hover:bg-muted/30 transition-colors group">
 
-      {/* Description du Marché + Référence + Badge WBS */}
+      {/* Référence du marché */}
+      <td className={CELL}>
+        <span className="font-mono font-semibold text-foreground whitespace-nowrap">{ligne.reference_marche}</span>
+      </td>
+
+      {/* Description du Marché + Badge WBS */}
       <td className={CELL}>
         <div className="font-semibold text-foreground whitespace-normal min-w-[220px]">{ligne.description}</div>
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          <span className="text-[11px] font-mono text-muted-foreground">{ligne.reference_marche}</span>
-          {wbsLabel && (
+        {wbsLabel && (
+          <div className="mt-1">
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
               {wbsLabel.code} — {wbsLabel.titre}
             </Badge>
-          )}
-        </div>
+          </div>
+        )}
       </td>
 
       {/* Type */}

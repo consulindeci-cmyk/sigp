@@ -187,15 +187,16 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
     setConfirmingDelete(false);
   }, [ligne, isOpen]);
 
-  // Référence par défaut à la création — n'écrase jamais une saisie déjà
-  // commencée par l'utilisateur (le champ reste éditable) ; attend la fin du
-  // chargement des marchés existants pour ne pas suggérer un compteur en
-  // retard sur la réalité (ex: "001" avant que la vraie liste n'ait chargé).
+  // Référence 100% générée automatiquement à la création — champ non
+  // modifiable par l'utilisateur (cf. demande explicite), donc toujours
+  // resynchronisée sur la suggestion la plus fraîche tant que la modale de
+  // création reste ouverte ; attend la fin du chargement des marchés
+  // existants pour ne pas figer un compteur en retard sur la réalité
+  // (ex: "001" avant que la vraie liste n'ait chargé).
   useEffect(() => {
-    if (isOpen && !ligne && !isLoadingExisting && !reference.trim()) {
+    if (isOpen && !ligne && !isLoadingExisting) {
       setReference(suggestedReference);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, ligne, isLoadingExisting, suggestedReference]);
 
   // Fetch available budget for UI feedback (formule identique à
@@ -302,12 +303,12 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                   <input
                     id="ppm-ref"
                     type="text"
-                    className={fieldClass(touched && !reference.trim())}
+                    className={INPUT_CLASS}
                     value={reference}
-                    onChange={e => setReference(e.target.value)}
-                    placeholder="Ex: AOI-001/2026"
+                    disabled
+                    readOnly
                   />
-                  {touched && !reference.trim() && <p className={ERR_CLASS}>Référence requise.</p>}
+                  <p className="text-[11px] text-muted-foreground mt-1">Générée automatiquement, non modifiable.</p>
                 </div>
                 <div className="col-span-2">
                   <label className={LABEL_CLASS} htmlFor="ppm-desc">Description / Intitulé du marché *</label>

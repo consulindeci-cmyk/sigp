@@ -25,7 +25,7 @@ const TH = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-r bor
 const TH_RIGHT = `${TH} text-right`
 const TH_LAST = 'px-3 py-2.5 text-xs font-semibold text-muted-foreground border-b border-border bg-muted/30 whitespace-nowrap text-right'
 
-const COLUMN_COUNT = 8; // 7 colonnes métier + Actions
+const COLUMN_COUNT = 9; // Référence + 7 colonnes métier + Actions
 
 export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick, onDeleteLigne }: PPMMatrixProps) {
   const [filterBailleur,  setFilterBailleur]  = useState('');
@@ -151,6 +151,7 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
         <table className="w-full text-sm text-left border-collapse table-auto min-w-[1100px]">
           <thead className="sticky top-0 z-20">
             <tr className="bg-primary text-primary-foreground">
+              <th className={`${TH} bg-primary/80 text-primary-foreground`}>Référence</th>
               <th className={`${TH} bg-primary/80 text-primary-foreground`}>Description du Marché</th>
               <th className={`${TH} bg-primary/80 text-primary-foreground`}>Type</th>
               <th className={`${TH} bg-primary/80 text-primary-foreground`}>Méthode d'acquisition</th>
@@ -190,7 +191,7 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
           {filteredLignes.length > 0 && (
             <tfoot>
               <tr className="bg-primary/5 border-t-2 border-primary/30 font-bold">
-                <td colSpan={6} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
+                <td colSpan={7} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
                   TOTAL GÉNÉRAL ({filteredLignes.length} marché{filteredLignes.length > 1 ? 's' : ''})
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-sm text-foreground">
