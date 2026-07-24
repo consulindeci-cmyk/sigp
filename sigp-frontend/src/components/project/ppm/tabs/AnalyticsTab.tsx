@@ -15,7 +15,7 @@ import type { PPMLigne, PPMVersion, CategorieAchat, MethodePassation, StatutLign
 
 const CAT_LABELS: Record<CategorieAchat, string> = {
   TRAVAUX:                  'Travaux',
-  BIENS:                    'Biens',
+  BIENS:                    'Fournitures',
   SERVICES_CONSULTANTS:     'Consultants',
   SERVICES_NON_CONSULTANTS: 'Svcs non-consultants',
 };
@@ -84,11 +84,13 @@ function PieLabel(props: PieLabelRenderProps) {
 interface AnalyticsTabProps {
   lignes: PPMLigne[];
   activeVersion: PPMVersion | undefined;
+  /** Devise du projet — le PPM n'a plus de devise propre à la ligne. */
+  devise?: string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function AnalyticsTab({ lignes, activeVersion }: AnalyticsTabProps) {
+export function AnalyticsTab({ lignes, activeVersion, devise = 'XOF' }: AnalyticsTabProps) {
 
   // Budget par catégorie (PieChart)
   const catData = useMemo(() => {
@@ -361,8 +363,8 @@ export function AnalyticsTab({ lignes, activeVersion }: AnalyticsTabProps) {
                 iconSize={8}
                 wrapperStyle={{ fontSize: '11px' }}
               />
-              <Bar dataKey="count"   name="Marchés"        fill="hsl(var(--primary))" radius={[4,4,0,0]} maxBarSize={60} />
-              <Bar dataKey="montant" name="Budget (XOF)"   fill="hsl(var(--warning))" radius={[4,4,0,0]} maxBarSize={60} />
+              <Bar dataKey="count"   name="Marchés"                 fill="hsl(var(--primary))" radius={[4,4,0,0]} maxBarSize={60} />
+              <Bar dataKey="montant" name={`Budget (${devise})`}    fill="hsl(var(--warning))" radius={[4,4,0,0]} maxBarSize={60} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

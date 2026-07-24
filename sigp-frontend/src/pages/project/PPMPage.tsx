@@ -224,7 +224,7 @@ export default function PPMPage() {
             )}
 
             {activeTab === 'BI' && (
-              <AnalyticsTab lignes={lignes} activeVersion={activeVersion} />
+              <AnalyticsTab lignes={lignes} activeVersion={activeVersion} devise={projectDevise} />
             )}
           </>
         )}
