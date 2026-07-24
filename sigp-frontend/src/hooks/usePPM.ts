@@ -224,7 +224,7 @@ export async function fetchPpmMarcheList(projectId: string): Promise<PpmMarcheDt
     .select(PPM_MARCHE_SELECT)
     .eq('project_id', projectId)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
+    .order('code', { ascending: true })
     .limit(100);
   if (error) throw error;
   return (data as unknown as PpmMarcheRow[]).map(rowToDto);
