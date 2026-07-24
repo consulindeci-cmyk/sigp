@@ -234,13 +234,14 @@ export function RiskSlideOver({
             <label className="text-xs font-medium text-foreground" htmlFor="risk-desc">
               Description <span className="text-destructive">*</span>
             </label>
-            <Input
+            <Textarea
               id="risk-desc"
               value={form.description}
               onChange={e => set('description', e.target.value)}
               placeholder="Décrire le risque identifié…"
               disabled={readOnly}
               error={!!errors.description}
+              rows={3}
             />
             {errors.description && (
               <p className="text-xs text-destructive">{errors.description}</p>
