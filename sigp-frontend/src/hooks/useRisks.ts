@@ -115,7 +115,7 @@ export function useRisks(projectId: string) {
         .select(RISQUE_SELECT)
         .eq('project_id', projectId)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false })
+        .order('code', { ascending: true })
         .limit(100)
       if (error) throw error
       const rows = data as unknown as RisqueRow[]
