@@ -19,14 +19,16 @@ import type { DataTableFilter } from '@/components/ui/data-table/types';
 // <table> entièrement propre à cet écran plutôt que de modifier le composant
 // partagé (qui est utilisé par une vingtaine d'autres modules).
 
-// Matrice 3×3 stricte : mêmes seuils ET mêmes tokens de couleur thème que
-// RiskMatrixCard.tsx (bg-success/warning/destructive) — pas de couleurs
-// Tailwind codées en dur, pour rester cohérent avec le thème clair/sombre
-// de l'app.
+// Matrice 3×3 stricte : mêmes seuils que RiskMatrixCard.tsx/RiskSlideOver.tsx.
+// Rendu "pastel" façon Excel obtenu via les tokens de couleur du thème
+// atténués en opacité (bg-*/15) plutôt que des teintes Tailwind fixes
+// (bg-emerald-50 etc.) — le fond reste clair/doux tout en s'adaptant
+// automatiquement au mode sombre (le texte, lui, garde la couleur pleine
+// pour un bon contraste dans les deux modes).
 function bucketFor(score: number): { bg: string; text: string; label: string } {
-  if (score <= 4) return { bg: 'bg-success',     text: 'text-success-foreground',     label: 'FAIBLE' };
-  if (score <= 6) return { bg: 'bg-warning',     text: 'text-warning-foreground',     label: 'MOYEN'  };
-  return           { bg: 'bg-destructive', text: 'text-destructive-foreground', label: 'ÉLEVÉ'  };
+  if (score <= 4) return { bg: 'bg-success/15',     text: 'text-success',     label: 'FAIBLE' };
+  if (score <= 6) return { bg: 'bg-warning/15',     text: 'text-warning',     label: 'MOYEN'  };
+  return           { bg: 'bg-destructive/15', text: 'text-destructive', label: 'ÉLEVÉ'  };
 }
 
 interface RiskRegistryTableProps {
@@ -100,11 +102,17 @@ export function RiskRegistryTable({
       accessorKey: 'niveau_criticite',
       header: 'Criticité',
       size: 130,
+      // Le fond/texte de couleur sont appliqués directement sur le <td>
+      // (cf. boucle de rendu du tbody) plutôt que sur un wrapper interne :
+      // un <td> correspond par définition à toute la cellule, donc aucun
+      // risque de ne pas couvrir 100% (contrairement à un height:100% sur
+      // un div enfant, peu fiable selon les navigateurs dans une cellule de
+      // tableau dont la hauteur est dictée par une autre colonne).
       cell: ({ row }) => {
         const { criticite } = row.original;
         const b = bucketFor(criticite);
         return (
-          <div className={cn('flex flex-col items-center justify-center gap-0 h-full py-2 font-bold', b.bg, b.text)}>
+          <div className="flex flex-col items-center justify-center gap-0 py-2 font-bold">
             <span className="text-base leading-tight tabular-nums">{criticite}</span>
             <span className="text-[10px] font-bold uppercase tracking-wide leading-tight">({b.label})</span>
           </div>
@@ -192,11 +200,18 @@ export function RiskRegistryTable({
             <tbody>
               {table.getRowModel().rows.map((row, rowIndex) => (
                 <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-background' : 'bg-muted/30'}>
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="border border-border align-middle p-0">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map(cell => {
+                    const isCriticite = cell.column.id === 'niveau_criticite';
+                    const bucket = isCriticite ? bucketFor(row.original.criticite) : null;
+                    return (
+                      <td
+                        key={cell.id}
+                        className={cn('border border-border align-middle p-0', bucket && [bucket.bg, bucket.text])}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
