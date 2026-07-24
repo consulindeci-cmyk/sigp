@@ -237,6 +237,7 @@ export default function PPMPage() {
         onSave={handleSaveForm}
         onDelete={deleteLigne}
         projectId={resolvedProjectId}
+        canManage={canManage}
         canDelete={canDelete}
       />
     </div>

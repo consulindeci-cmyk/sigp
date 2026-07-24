@@ -34,10 +34,17 @@ interface PPMFormSlideOverProps {
   onSave: (data: Omit<PPMLigne, 'id' | 'version_hash' | 'ppm_version_id'>) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
   projectId: string;
+  /** Rôle habilité à créer/modifier (miroir de requireRole côté ppm-create/
+   * ppm-update). Le bouton "Voir détails" de la Matrice ouvre cette même
+   * fenêtre pour tout le monde (y compris lecture seule) — sans ce garde,
+   * un utilisateur sans droit d'écriture verrait un formulaire pleinement
+   * éditable et un bouton Enregistrer qui échoue silencieusement (403)
+   * côté serveur. */
+  canManage?: boolean;
   canDelete?: boolean;
 }
 
-export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, projectId, canDelete }: PPMFormSlideOverProps) {
+export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, projectId, canManage = true, canDelete }: PPMFormSlideOverProps) {
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [error,           setError]           = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -254,12 +261,17 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
       <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
         <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
           <ModalTitle>
-            {ligne ? 'Modifier la ligne de marché' : 'Nouvelle ligne de marché'}
+            {ligne ? (canManage ? 'Modifier la ligne de marché' : 'Détails de la ligne de marché') : 'Nouvelle ligne de marché'}
           </ModalTitle>
         </ModalHeader>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6">
+          {!canManage && (
+            <div className="mb-6 p-3 bg-muted/30 border border-border rounded-lg text-sm text-muted-foreground">
+              Lecture seule — vous n'avez pas les droits pour modifier ce marché.
+            </div>
+          )}
           {error && (
             <div className="mb-6 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3 text-destructive">
               <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -268,6 +280,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
           )}
 
           <form id="ppm-form" onSubmit={handleSubmit} className="space-y-8">
+          <fieldset disabled={!canManage} className="contents">
 
             {/* Section 1 : Identification & Rattachement */}
             <section>
@@ -441,6 +454,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                 </div>
               )}
             </section>
+          </fieldset>
 
           </form>
         </div>
@@ -492,18 +506,20 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
               onClick={onClose}
               disabled={isSubmitting}
             >
-              Annuler
+              {canManage ? 'Annuler' : 'Fermer'}
             </Button>
-            <Button
-              type="submit"
-              form="ppm-form"
-              variant="default"
-              size="sm"
-              disabled={isSubmitting}
-              leftIcon={<Save size={14} />}
-            >
-              {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
-            </Button>
+            {canManage && (
+              <Button
+                type="submit"
+                form="ppm-form"
+                variant="default"
+                size="sm"
+                disabled={isSubmitting}
+                leftIcon={<Save size={14} />}
+              >
+                {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+              </Button>
+            )}
           </div>
         </div>
       </ModalContent>
