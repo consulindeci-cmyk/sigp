@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { PPMVersion, StatutPPM } from '@/types';
 import { ppmKeys, fetchPpmMarcheList, type PpmMarcheDto } from './usePPM';
@@ -13,36 +13,33 @@ function deriveVersionStatut(dtos: PpmMarcheDto[]): StatutPPM {
   return 'BROUILLON';
 }
 
+// Il n'existe qu'un seul document PPM synthétique par projet (pas de vraies
+// versions multiples ni de circuit d'approbation réel — cf. suppression de
+// l'onglet Workflow d'Approbation, qui simulait un sélecteur de version sans
+// aucun effet sur les données réellement affichées). Ce hook expose donc un
+// unique `version`, jamais un tableau à sélectionner.
 export function usePPMVersions(projectId: string) {
-  const syntheticVersionId = `${projectId}-ppm-v1`;
-  const [activeVersionId, setActiveVersionId] = useState<string>(syntheticVersionId);
-
   const query = useQuery({
-    queryKey:  ppmKeys.list(projectId),
-    queryFn:   () => fetchPpmMarcheList(projectId),
-    enabled:   !!projectId,
-
+    queryKey: ppmKeys.list(projectId),
+    queryFn:  () => fetchPpmMarcheList(projectId),
+    enabled:  !!projectId,
   });
 
   const dtos: PpmMarcheDto[] = query.data ?? [];
 
-  const versions: PPMVersion[] = useMemo(() => [
-    {
-      id:                       syntheticVersionId,
-      projet_id:                projectId,
-      numero_version:           'V1.0',
-      statut:                   deriveVersionStatut(dtos),
-      date_creation:            dtos[0]?.createdAt ?? new Date().toISOString(),
-      cree_par:                 '',
-      budget_version_reference: `${projectId}-budget`,
-      lignes:                   [],
-    },
-  ], [syntheticVersionId, projectId, dtos]);
+  const version: PPMVersion = useMemo(() => ({
+    id:                       `${projectId}-ppm-v1`,
+    projet_id:                projectId,
+    numero_version:           'V1.0',
+    statut:                   deriveVersionStatut(dtos),
+    date_creation:            dtos[0]?.createdAt ?? new Date().toISOString(),
+    cree_par:                 '',
+    budget_version_reference: `${projectId}-budget`,
+    lignes:                   [],
+  }), [projectId, dtos]);
 
   return {
-    versions,
-    activeVersionId,
-    setActiveVersionId,
+    version,
     isLoading: query.isLoading,
   };
 }

@@ -7,13 +7,11 @@ import { usePPM } from '@/hooks/usePPM';
 import { usePPMVersions } from '@/hooks/usePPMVersions';
 import { useProject } from '@/hooks/useProjects';
 import { formatMoney } from '@/utils/format';
-import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
 import { PPMFormSlideOver } from '@/components/project/ppm/forms/PPMFormSlideOver';
-import { WorkflowTab } from '@/components/project/ppm/tabs/WorkflowTab';
 import { AnalyticsTab } from '@/components/project/ppm/tabs/AnalyticsTab';
 import ContractsPage from '@/pages/project/ContractsPage';
-import { LayoutGrid, GitCommit, TrendingUp, FileSignature, Download, Plus, Loader2, Package } from 'lucide-react';
+import { LayoutGrid, TrendingUp, FileSignature, Download, Plus, Loader2, Package } from 'lucide-react';
 import { PPMLigne } from '@/types';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
@@ -38,10 +36,9 @@ function renderStatusBadge(statut?: string) {
 }
 
 const TABS = [
-  { key: 'MATRIX',    label: 'Matrice Globale',         icon: LayoutGrid },
-  { key: 'WORKFLOW',  label: "Workflow d'Approbation",  icon: GitCommit },
-  { key: 'BI',        label: 'Analytics PPM',           icon: TrendingUp },
-  { key: 'CONTRACTS', label: 'Contrats',                icon: FileSignature },
+  { key: 'MATRIX',    label: 'Matrice Globale', icon: LayoutGrid },
+  { key: 'BI',        label: 'Analytics PPM',   icon: TrendingUp },
+  { key: 'CONTRACTS', label: 'Contrats',        icon: FileSignature },
 ] as const
 
 type Tab = typeof TABS[number]['key']
@@ -51,8 +48,8 @@ export default function PPMPage() {
   const { activeProjectId } = useUIStore();
   const resolvedProjectId = urlProjectId || activeProjectId || '';
 
-  const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions(resolvedProjectId);
-  const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(resolvedProjectId, activeVersionId);
+  const { version: activeVersion, isLoading: isLoadingVersions } = usePPMVersions(resolvedProjectId);
+  const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(resolvedProjectId);
   const { data: project } = useProject(resolvedProjectId);
   const projectDevise = project?.devise || 'XOF';
 
@@ -79,8 +76,6 @@ export default function PPMPage() {
       </div>
     );
   }
-
-  const activeVersion = versions.find(v => v.id === activeVersionId);
 
   const handleOpenForm = (id?: string) => {
     setSelectedLigneId(id || null);
@@ -147,27 +142,15 @@ export default function PPMPage() {
 
       {/* ── KPI STRIP (uniquement pour les onglets PPM natifs) ──────────────── */}
       {activeTab !== 'CONTRACTS' && (
-        <div className="shrink-0 flex flex-wrap items-center justify-between gap-4 px-4 py-2.5 border-b border-border bg-muted/10">
-          <div className="flex items-center gap-6">
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Montant Total Estimé (PPM)</p>
-              <p className="text-sm font-bold text-foreground tabular-nums">{formatMoney(totalEstimeBase)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Lignes de Marché</p>
-              <p className="text-sm font-bold text-foreground">{lignes.length} {lignes.length > 1 ? 'Lignes' : 'Ligne'}</p>
-            </div>
+        <div className="shrink-0 flex flex-wrap items-center gap-6 px-4 py-2.5 border-b border-border bg-muted/10">
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Montant Total Estimé (PPM)</p>
+            <p className="text-sm font-bold text-foreground tabular-nums">{formatMoney(totalEstimeBase)}</p>
           </div>
-          <VersionSelector
-            versions={versions.map(v => ({
-              id: v.id,
-              label: v.numero_version,
-              isActive: v.id === activeVersionId,
-              statut: v.statut
-            }))}
-            selectedId={activeVersionId}
-            onChange={setActiveVersionId}
-          />
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Lignes de Marché</p>
+            <p className="text-sm font-bold text-foreground">{lignes.length} {lignes.length > 1 ? 'Lignes' : 'Ligne'}</p>
+          </div>
         </div>
       )}
 
@@ -187,9 +170,6 @@ export default function PPMPage() {
             >
               <Icon size={14} />
               {tab.label}
-              {tab.key === 'WORKFLOW' && (
-                <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">Démo</Badge>
-              )}
             </button>
           )
         })}
@@ -217,10 +197,6 @@ export default function PPMPage() {
                   onDeleteLigne={deleteLigne}
                 />
               </div>
-            )}
-
-            {activeTab === 'WORKFLOW' && (
-              <WorkflowTab versions={versions} activeVersion={activeVersion} />
             )}
 
             {activeTab === 'BI' && (
