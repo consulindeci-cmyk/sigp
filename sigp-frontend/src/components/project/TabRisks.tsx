@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 
 import type { Risque, NiveauRisque } from '@/types';
-import { RISK_CATEGORIES, STATUT_RISQUE_OPTIONS } from '@/mocks/risksMocks';
+import { RISK_CATEGORIES } from '@/mocks/risksMocks';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { DataTable } from '@/components/ui/data-table/DataTable';
@@ -42,7 +42,6 @@ const NIVEAU_FILTER_OPTIONS = [
 ];
 
 const CATEGORIE_FILTER_OPTIONS = RISK_CATEGORIES.map(c => ({ label: c, value: c }));
-const STATUT_FILTER_OPTIONS    = STATUT_RISQUE_OPTIONS.map(o => ({ label: o.label, value: o.value }));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -59,10 +58,6 @@ function niveauVariant(n: NiveauRisque): 'destructive' | 'warning' | 'success' {
   return 'success';
 }
 
-function fmtStatut(s: string) {
-  return STATUT_RISQUE_OPTIONS.find(o => o.value === s)?.label ?? s;
-}
-
 function nextCode(risques: Risque[]): string {
   const max = risques.reduce((m, r) => {
     const n = parseInt(r.code_risque.replace('RSQ-', ''), 10);
@@ -72,12 +67,11 @@ function nextCode(risques: Risque[]): string {
 }
 
 function doExportCsv(risques: Risque[]) {
-  const headers = ['N°', 'Catégorie', 'Description du Risque', 'P', 'I', 'Criticité', 'Niveau', "Stratégie d'atténuation", 'Responsable', 'Statut', 'Date identification', 'Date révision'];
+  const headers = ['N°', 'Catégorie', 'Description du Risque', 'P', 'I', 'Criticité', 'Niveau', "Stratégie d'atténuation"];
   const rows = risques.map(r => [
     r.code_risque, r.categorie, r.description,
     r.probabilite, r.impact, r.criticite, r.niveau_criticite,
-    r.strategie ?? '', r.responsable, fmtStatut(r.statut),
-    r.date_identification, r.date_revision_prevue ?? '',
+    r.strategie ?? '',
   ]);
   const csv = '﻿' + [headers, ...rows]
     .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
@@ -91,17 +85,16 @@ function doExportCsv(risques: Risque[]) {
 }
 
 function doExportXlsx(risques: Risque[]) {
-  const headers = ['N°', 'Catégorie', 'Description du Risque', 'P', 'I', 'Criticité', 'Niveau', "Stratégie d'atténuation", 'Responsable', 'Statut', 'Date ID', 'Date révision'];
+  const headers = ['N°', 'Catégorie', 'Description du Risque', 'P', 'I', 'Criticité', 'Niveau', "Stratégie d'atténuation"];
   const rows = risques.map(r => [
     r.code_risque, r.categorie, r.description,
     r.probabilite, r.impact, r.criticite, r.niveau_criticite,
-    r.strategie ?? '', r.responsable, fmtStatut(r.statut),
-    r.date_identification, r.date_revision_prevue ?? '',
+    r.strategie ?? '',
   ]);
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   ws['!cols'] = [
     { wch: 10 }, { wch: 18 }, { wch: 45 }, { wch: 4 }, { wch: 4 },
-    { wch: 10 }, { wch: 12 }, { wch: 50 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 16 },
+    { wch: 10 }, { wch: 12 }, { wch: 50 },
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Registre des Risques');
@@ -156,10 +149,7 @@ export default function TabRisks() {
 
   const alertRisques = useMemo(() =>
     risques
-      .filter(r =>
-        r.niveau_criticite === 'ELEVE' &&
-        r.statut !== 'MAÎTRISÉ' && r.statut !== 'CLOS',
-      )
+      .filter(r => r.niveau_criticite === 'ELEVE')
       .sort((a, b) => b.criticite - a.criticite),
     [risques],
   );
@@ -171,12 +161,6 @@ export default function TabRisks() {
       .map(([name, count]) => ({ name: name.slice(0, 9), count: count ?? 0 }))
       .sort((a, b) => b.count - a.count);
   }, [risques]);
-
-  const responsableOptions = useMemo(() =>
-    [...new Set(risques.map(r => r.responsable))]
-      .filter(Boolean).sort().map(v => ({ label: v, value: v })),
-    [risques],
-  );
 
   // ── Handlers ────────────────────────────────────────────────────────────
 
@@ -212,20 +196,15 @@ export default function TabRisks() {
       );
     } else {
       const dto: Partial<Risque> = {
-        projet_id:            projectId,
-        code_risque:          nextCode(risques),
-        description:          payload.description,
-        categorie:            payload.categorie,
-        probabilite:          payload.probabilite,
-        impact:               payload.impact,
+        projet_id:        projectId,
+        code_risque:      nextCode(risques),
+        description:      payload.description,
+        categorie:        payload.categorie,
+        probabilite:      payload.probabilite,
+        impact:           payload.impact,
         criticite,
-        niveau_criticite:     niveau,
-        statut:               payload.statut,
-        responsable:          payload.responsable,
-        responsableId:        payload.responsableId,
-        strategie:            payload.strategie,
-        date_identification:  payload.date_identification,
-        date_revision_prevue: payload.date_revision_prevue,
+        niveau_criticite: niveau,
+        strategie:        payload.strategie,
       };
       createMutation.mutate(dto, { onSuccess: () => setSlideOpen(false), onError });
     }
@@ -374,7 +353,6 @@ export default function TabRisks() {
                 </Badge>
                 <span className="text-foreground">
                   <strong>{r.code_risque}</strong> — {r.description}
-                  <span className="ml-2 text-muted-foreground">({r.responsable})</span>
                 </span>
               </div>
             ))}
@@ -485,10 +463,8 @@ export default function TabRisks() {
           searchKey="description"
           searchPlaceholder="Rechercher un risque…"
           filters={[
-            { id: 'niveau_criticite', title: 'Niveau',      options: NIVEAU_FILTER_OPTIONS    },
-            { id: 'categorie',        title: 'Catégorie',   options: CATEGORIE_FILTER_OPTIONS  },
-            { id: 'statut',           title: 'Statut',      options: STATUT_FILTER_OPTIONS     },
-            { id: 'responsable',      title: 'Responsable', options: responsableOptions        },
+            { id: 'niveau_criticite', title: 'Niveau',    options: NIVEAU_FILTER_OPTIONS    },
+            { id: 'categorie',        title: 'Catégorie', options: CATEGORIE_FILTER_OPTIONS },
           ]}
         />
       </div>
@@ -498,7 +474,6 @@ export default function TabRisks() {
         open={slideOpen}
         onOpenChange={open => { setSlideOpen(open); if (!open) setSlideError(null); }}
         mode={slideMode}
-        projectId={projectId}
         risque={selected}
         onSave={handleSave}
         onDelete={handleDeleteFromSlideOver}

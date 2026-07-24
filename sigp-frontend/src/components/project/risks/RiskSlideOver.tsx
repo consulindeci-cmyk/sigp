@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
-import type { Risque, NiveauRisque, RisqueCategorie, StatutRisque } from '@/types';
-import { RISK_CATEGORIES, STATUT_RISQUE_OPTIONS } from '@/mocks/risksMocks';
+import type { Risque, NiveauRisque, RisqueCategorie } from '@/types';
+import { RISK_CATEGORIES } from '@/mocks/risksMocks';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalClose,
 } from '@/components/ui/overlays/Modal';
 import { Button } from '@/components/ui/forms/Button';
-import { Input } from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
 import { Select } from '@/components/ui/forms/Select';
 import { Badge } from '@/components/ui/data-display/Badge';
-import { useOrganisationMembersForPicker } from '@/hooks/useGovernance';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -19,11 +17,7 @@ interface FormState {
   categorie: RisqueCategorie;
   probabilite: '1' | '2' | '3';
   impact: '1' | '2' | '3';
-  responsableId: string;
   strategie: string;
-  statut: StatutRisque;
-  date_identification: string;
-  date_revision_prevue: string;
 }
 
 export interface RiskSlideOverSavePayload {
@@ -31,19 +25,13 @@ export interface RiskSlideOverSavePayload {
   categorie: RisqueCategorie;
   probabilite: 1 | 2 | 3;
   impact: 1 | 2 | 3;
-  responsable: string;
-  responsableId: string;
   strategie?: string;
-  statut: StatutRisque;
-  date_identification: string;
-  date_revision_prevue?: string;
 }
 
 export interface RiskSlideOverProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   mode: 'new' | 'edit' | 'view';
-  projectId: string;
   risque?: Risque | null;
   onSave: (payload: RiskSlideOverSavePayload, id?: string) => void;
   onDelete?: (id: string) => void;
@@ -92,17 +80,13 @@ const INIT: FormState = {
   categorie: 'Technique',
   probabilite: '1',
   impact: '1',
-  responsableId: '',
   strategie: '',
-  statut: 'OUVERT',
-  date_identification: new Date().toISOString().slice(0, 10),
-  date_revision_prevue: '',
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function RiskSlideOver({
-  open, onOpenChange, mode, projectId, risque, onSave, onDelete,
+  open, onOpenChange, mode, risque, onSave, onDelete,
   canDelete = true, isSaving = false, isDeleting = false, error = null,
 }: RiskSlideOverProps) {
   const [form, setForm] = useState<FormState>(INIT);
@@ -111,33 +95,15 @@ export function RiskSlideOver({
 
   const readOnly = mode === 'view';
 
-  // Vivier de l'organisation pour le sélecteur Responsable —
-  // risques.responsable_id est une vraie FK vers users(id), plus de saisie libre.
-  const { data: orgMembers = [], isLoading: isLoadingMembers } = useOrganisationMembersForPicker(projectId);
-
-  // Si le responsable actuellement assigné n'est plus actif (ou n'est plus
-  // dans la liste pour une autre raison), on l'injecte quand même comme
-  // option pour ne pas silencieusement vider/réinitialiser le champ à l'édition.
-  const responsableOptions = useMemo(() => {
-    if (risque?.responsableId && !orgMembers.some(m => m.id === risque.responsableId)) {
-      return [...orgMembers, { id: risque.responsableId, displayName: risque.responsable || 'Utilisateur inconnu' }];
-    }
-    return orgMembers;
-  }, [orgMembers, risque]);
-
   useEffect(() => {
     if (!open) { setConfirmDelete(false); return; }
     if ((mode === 'edit' || mode === 'view') && risque) {
       setForm({
-        description:         risque.description,
-        categorie:           risque.categorie,
-        probabilite:         String(risque.probabilite) as '1' | '2' | '3',
-        impact:              String(risque.impact) as '1' | '2' | '3',
-        responsableId:       risque.responsableId ?? '',
-        strategie:           risque.strategie ?? '',
-        statut:              risque.statut,
-        date_identification: risque.date_identification,
-        date_revision_prevue: risque.date_revision_prevue ?? '',
+        description: risque.description,
+        categorie:   risque.categorie,
+        probabilite: String(risque.probabilite) as '1' | '2' | '3',
+        impact:      String(risque.impact) as '1' | '2' | '3',
+        strategie:   risque.strategie ?? '',
       });
     } else {
       setForm(INIT);
@@ -161,8 +127,6 @@ export function RiskSlideOver({
   function validate(): boolean {
     const e: Partial<Record<keyof FormState, string>> = {};
     if (!form.description.trim()) e.description = 'La description est requise.';
-    if (!form.responsableId) e.responsableId = 'Le responsable est requis.';
-    if (!form.date_identification) e.date_identification = 'La date est requise.';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -172,19 +136,13 @@ export function RiskSlideOver({
   // avant réponse du serveur, qui masquait tout échec 403/réseau).
   function handleSave() {
     if (!validate()) return;
-    const selectedMember = responsableOptions.find(m => m.id === form.responsableId);
     onSave(
       {
-        description:         form.description.trim(),
-        categorie:           form.categorie,
-        probabilite:         Number(form.probabilite) as 1 | 2 | 3,
-        impact:              Number(form.impact) as 1 | 2 | 3,
-        responsableId:       form.responsableId,
-        responsable:         selectedMember?.displayName ?? '',
-        strategie:           form.strategie || undefined,
-        statut:              form.statut,
-        date_identification: form.date_identification,
-        date_revision_prevue: form.date_revision_prevue || undefined,
+        description: form.description.trim(),
+        categorie:   form.categorie,
+        probabilite: Number(form.probabilite) as 1 | 2 | 3,
+        impact:      Number(form.impact) as 1 | 2 | 3,
+        strategie:   form.strategie || undefined,
       },
       risque?.id,
     );
@@ -299,77 +257,6 @@ export function RiskSlideOver({
             </div>
           </div>
 
-          {/* Responsable */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground" htmlFor="risk-resp">
-              Responsable <span className="text-destructive">*</span>
-            </label>
-            <Select
-              id="risk-resp"
-              value={form.responsableId}
-              onChange={e => set('responsableId', e.target.value)}
-              disabled={readOnly || isLoadingMembers}
-              error={!!errors.responsableId}
-            >
-              <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
-              {responsableOptions.map(m => (
-                <option key={m.id} value={m.id}>{m.displayName}</option>
-              ))}
-            </Select>
-            {errors.responsableId && (
-              <p className="text-xs text-destructive">{errors.responsableId}</p>
-            )}
-          </div>
-
-          {/* Statut */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground" htmlFor="risk-statut">
-              Statut
-            </label>
-            <Select
-              id="risk-statut"
-              value={form.statut}
-              onChange={e => set('statut', e.target.value as StatutRisque)}
-              disabled={readOnly}
-            >
-              {STATUT_RISQUE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </Select>
-          </div>
-
-          {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground" htmlFor="risk-date-id">
-                Date d'identification <span className="text-destructive">*</span>
-              </label>
-              <Input
-                id="risk-date-id"
-                type="date"
-                value={form.date_identification}
-                onChange={e => set('date_identification', e.target.value)}
-                disabled={readOnly}
-                error={!!errors.date_identification}
-              />
-              {errors.date_identification && (
-                <p className="text-xs text-destructive">{errors.date_identification}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground" htmlFor="risk-date-rev">
-                Date de révision prévue
-              </label>
-              <Input
-                id="risk-date-rev"
-                type="date"
-                value={form.date_revision_prevue}
-                onChange={e => set('date_revision_prevue', e.target.value)}
-                disabled={readOnly}
-              />
-            </div>
-          </div>
-
           {/* Stratégie d'atténuation */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground" htmlFor="risk-strategie">
@@ -401,8 +288,6 @@ export function RiskSlideOver({
                 <span className="text-foreground font-medium">
                   {new Date(risque.updatedAt).toLocaleDateString('fr-FR')}
                 </span>
-                <span className="text-muted-foreground">Responsable</span>
-                <span className="text-foreground font-medium">{risque.responsable || '—'}</span>
               </div>
             </div>
           )}

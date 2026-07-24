@@ -24,8 +24,6 @@ export type RisqueCategorie =
   | 'Environnemental' | 'Social' | 'Sécurité' | 'Institutionnel' | 'Gouvernance'
   | 'Politique' | 'Ressources Humaines';
 
-export type StatutRisque = 'OUVERT' | 'EN_COURS' | 'MAÎTRISÉ' | 'CLOS';
-
 export interface User {
   id: string;
   prenom: string;
@@ -150,15 +148,10 @@ export interface Risque {
   impact: 1 | 2 | 3;
   criticite: number;         // calculée = probabilite × impact (1–9)
   niveau_criticite: NiveauRisque;
-  statut: StatutRisque;
-  responsable: string;
-  responsableId?: string | null;
   // Stratégie d'atténuation — champ texte libre simple (remplace l'ancienne
   // liste fermée Éviter/Réduire/Transférer/Accepter, et fusionne l'ancien
   // plan_mitigation, supprimé).
   strategie?: string | null;
-  date_identification: string;
-  date_revision_prevue?: string;
   createdAt: string;
   updatedAt: string;
 }
