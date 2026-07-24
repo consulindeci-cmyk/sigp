@@ -1,12 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { ColumnDef } from '@tanstack/react-table';
+import { flexRender, type ColumnDef } from '@tanstack/react-table';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Wallet, TrendingUp, Clock, AlertTriangle, AlertCircle, Plus, Eye, Edit, Trash2, Download } from 'lucide-react';
-import { DataTable } from '@/components/ui/data-table/DataTable';
+import { Wallet, TrendingUp, Clock, AlertTriangle, AlertCircle, Plus, Eye, Edit, Trash2, Download, PiggyBank } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useDataTable } from '@/components/ui/data-table/hooks/useDataTable';
+import { DataTableToolbar } from '@/components/ui/data-table/DataTableToolbar';
+import { DataTablePagination } from '@/components/ui/data-table/DataTablePagination';
+import { DataTableEmpty } from '@/components/ui/data-table/DataTableEmpty';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
@@ -22,11 +26,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { useFundingSources } from '@/hooks/useFundingSources';
 import { useContracts } from '@/hooks/useContracts';
 import { useBudget, useBudgetVersion } from '@/hooks/useBudget';
+import { useProject } from '@/hooks/useProjects';
 import type { Contract } from '@/types/contract';
 import type { BudgetLigne } from '@/types/budget';
+import type { Disbursement, DisbursementStatut } from '@/types/disbursement';
 import {
   useDisbursements, useCreateDisbursement, useUpdateDisbursement, useDeleteDisbursement,
-  type Disbursement, type DisbursementStatut,
 } from '@/hooks/useDisbursements';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -34,9 +39,9 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function exportCsv(records: Disbursement[]) {
-  const HEADERS = ['Référence', 'Source', 'Statut', 'Montant', 'Date prévue', 'Date réelle', 'Description'];
+  const HEADERS = ['Référence', 'Source', 'Statut', 'Montant', 'Devise', 'Date prévue', 'Date réelle', 'Description'];
   const rows = records.map(r => [
-    r.reference ?? '', r.fundingSourceNom ?? '', STATUT_LABELS[r.statut], String(r.montant),
+    r.reference ?? '', r.fundingSourceNom ?? '', STATUT_LABELS[r.statut], String(r.montant), r.devise,
     r.datePrevue ?? '', r.dateReelle ?? '', r.description ?? '',
   ]);
   const content = '﻿' + [HEADERS, ...rows]
@@ -84,8 +89,9 @@ function formatDate(dateStr: string | null): string {
   } catch { return '—'; }
 }
 
-function formatMontant(value: number): string {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value);
+function formatMontant(value: number, devise?: string): string {
+  const n = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value);
+  return devise ? `${n} ${devise}` : n;
 }
 
 function statutVariant(statut: DisbursementStatut): 'success' | 'warning' | 'secondary' | 'destructive' {
@@ -290,7 +296,7 @@ function DisbursementSlideOver({
 
               <div className="bg-muted/40 rounded-lg p-4 text-center">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Montant</p>
-                <p className="font-mono text-[16px] font-bold text-foreground">{formatMontant(record.montant)}</p>
+                <p className="font-mono text-[16px] font-bold text-foreground">{formatMontant(record.montant, record.devise)}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
@@ -423,29 +429,51 @@ function DisbursementSlideOver({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Column definitions
+// Registre — rendu "feuille de calcul Excel" (même approche que
+// RiskRegistryTable.tsx : distinct du <DataTable> générique partagé par une
+// vingtaine d'autres modules, pour ne pas en changer l'apparence partout.
+// Réutilise le même moteur tanstack (useDataTable) et les mêmes sous-
+// composants (toolbar, pagination, états vide/chargement), avec un rendu de
+// <table> propre à cet écran : en-tête bg-primary, bordures nettes
+// border-border, pas de troncature, cellule Statut remplie sur toute sa
+// hauteur avec des tokens de couleur du thème atténués (bg-*/15) — pastel
+// tout en restant compatible clair/sombre.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildDisbursementColumns(
-  onView:     (r: Disbursement) => void,
-  onEdit:     (r: Disbursement) => void,
-  onDelete:   (id: string) => void,
-  canManage:  boolean,
-  canDelete:  boolean,
-): ColumnDef<Disbursement, unknown>[] {
-  return [
+function statutBucket(statut: DisbursementStatut): { bg: string; text: string } {
+  switch (statut) {
+    case 'DECAISSE':            return { bg: 'bg-success/15',     text: 'text-success' };
+    case 'DEMANDE':
+    case 'APPROUVE':             return { bg: 'bg-warning/15',     text: 'text-warning' };
+    case 'REJETE':               return { bg: 'bg-destructive/15', text: 'text-destructive' };
+    default:                     return { bg: 'bg-muted/40',       text: 'text-muted-foreground' }; // PLANIFIE
+  }
+}
+
+const DISB_TH = 'px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-primary-foreground border border-primary/70 whitespace-nowrap select-none';
+
+function DisbursementRegistryTable({
+  records, onView, onEdit, onDelete, canManage, canDelete,
+}: {
+  records: Disbursement[];
+  onView: (r: Disbursement) => void;
+  onEdit: (r: Disbursement) => void;
+  onDelete: (id: string) => void;
+  canManage: boolean;
+  canDelete: boolean;
+}) {
+  const columns = useMemo((): ColumnDef<Disbursement, unknown>[] => [
     {
       id: 'identification',
       accessorKey: 'reference',
       header: 'Référence & Source',
-      meta: { isSticky: true } as Record<string, unknown>,
       cell: ({ row }) => {
         const { reference, fundingSourceNom, description } = row.original;
         return (
-          <div className="flex flex-col gap-0.5 min-w-[200px] max-w-[280px]">
+          <div className="flex flex-col gap-0.5 px-3 py-2 whitespace-normal break-words">
             <span className="font-mono text-[12px] font-semibold text-foreground">{reference || '—'}</span>
-            <span className="text-[13px] font-medium text-foreground truncate">{fundingSourceNom || '—'}</span>
-            {description && <span className="text-[10px] text-muted-foreground truncate">{description}</span>}
+            <span className="text-[13px] font-medium text-foreground">{fundingSourceNom || '—'}</span>
+            {description && <span className="text-[10px] text-muted-foreground">{description}</span>}
           </div>
         );
       },
@@ -455,27 +483,35 @@ function buildDisbursementColumns(
       header: 'Statut',
       cell: ({ getValue }) => {
         const s = getValue() as DisbursementStatut;
-        return <Badge variant={statutVariant(s)} className="text-[11px] w-max">{STATUT_LABELS[s]}</Badge>;
+        return (
+          <div className="flex items-center justify-center py-2 font-bold">
+            {STATUT_LABELS[s]}
+          </div>
+        );
       },
     },
     {
       accessorKey: 'montant',
       header: 'Montant',
-      meta: { align: 'right' } as Record<string, unknown>,
       cell: ({ row }) => (
-        <span className={`font-mono text-[12px] font-semibold ${row.original.statut === 'DECAISSE' ? 'text-success' : 'text-muted-foreground'}`}>
-          {formatMontant(row.original.montant)}
+        <span className={cn(
+          'block px-3 py-2 text-right font-mono text-[12px] font-semibold whitespace-nowrap',
+          row.original.statut === 'DECAISSE' ? 'text-success' : 'text-muted-foreground',
+        )}>
+          {formatMontant(row.original.montant, row.original.devise)}
         </span>
       ),
     },
     {
       accessorKey: 'datePrevue',
       header: 'Date prévue',
-      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ row }) => {
         const late = isLate(row.original);
         return (
-          <span className={`font-mono text-[12px] ${late ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+          <span className={cn(
+            'block px-3 py-2 text-center font-mono text-[12px] whitespace-nowrap',
+            late ? 'text-destructive font-semibold' : 'text-muted-foreground',
+          )}>
             {formatDate(row.original.datePrevue)}
           </span>
         );
@@ -484,17 +520,17 @@ function buildDisbursementColumns(
     {
       accessorKey: 'dateReelle',
       header: 'Date réelle',
-      meta: { align: 'center' } as Record<string, unknown>,
       cell: ({ getValue }) => (
-        <span className="font-mono text-[12px] text-muted-foreground">{formatDate(getValue() as string | null)}</span>
+        <span className="block px-3 py-2 text-center font-mono text-[12px] text-muted-foreground whitespace-nowrap">
+          {formatDate(getValue() as string | null)}
+        </span>
       ),
     },
     {
       id: 'actions',
-      enableHiding: false,
-      meta: { align: 'right' } as Record<string, unknown>,
+      header: 'Actions',
       cell: ({ row }) => (
-        <div className="flex items-center gap-1 justify-end">
+        <div className="flex items-center gap-1 justify-center px-2 py-1.5">
           <Button variant="ghost" size="sm" aria-label="Voir les détails" onClick={() => onView(row.original)}><Eye className="h-3.5 w-3.5" /></Button>
           {canManage && (
             <Button variant="ghost" size="sm" aria-label="Modifier" onClick={() => onEdit(row.original)}><Edit className="h-3.5 w-3.5" /></Button>
@@ -505,7 +541,69 @@ function buildDisbursementColumns(
         </div>
       ),
     },
-  ];
+  ], [onView, onEdit, onDelete, canManage, canDelete]);
+
+  const { table } = useDataTable({ data: records, columns });
+
+  return (
+    <div className="flex flex-col bg-background border border-border rounded-lg overflow-hidden min-w-0">
+      <DataTableToolbar
+        table={table}
+        searchKey="reference"
+        searchPlaceholder="Rechercher par référence..."
+        filters={[
+          {
+            id: 'statut', title: 'Statut',
+            options: [
+              { label: 'Décaissé',  value: 'DECAISSE' },
+              { label: 'Approuvé',  value: 'APPROUVE' },
+              { label: 'Demandé',   value: 'DEMANDE' },
+              { label: 'Planifié',  value: 'PLANIFIE' },
+              { label: 'Rejeté',    value: 'REJETE' },
+            ],
+          },
+        ]}
+      />
+
+      <div className="w-full overflow-x-auto overflow-y-hidden">
+        {records.length === 0 || table.getRowModel().rows.length === 0 ? (
+          <DataTableEmpty />
+        ) : (
+          <table className="w-full min-w-max border-collapse text-sm">
+            <thead className="sticky top-0 z-20 bg-primary">
+              {table.getHeaderGroups().map(headerGroup => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map(header => (
+                    <th key={header.id} className={cn(DISB_TH, ['statut', 'datePrevue', 'dateReelle', 'actions'].includes(header.column.id) && 'text-center', header.column.id === 'montant' && 'text-right')}>
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+
+            <tbody>
+              {table.getRowModel().rows.map((row, rowIndex) => (
+                <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-background' : 'bg-muted/30'}>
+                  {row.getVisibleCells().map(cell => {
+                    const isStatut = cell.column.id === 'statut';
+                    const bucket = isStatut ? statutBucket(row.original.statut) : null;
+                    return (
+                      <td key={cell.id} className={cn('border border-border align-middle p-0', bucket && [bucket.bg, bucket.text])}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <DataTablePagination table={table} />
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -530,6 +628,9 @@ export default function ProjectDisbursementTab() {
   const { data: budgetVersion } = useBudgetVersion(projectId, budget?.version_active_id);
   const budgetLignes = useMemo(() => budgetVersion?.lignes ?? [], [budgetVersion]);
   const budgetLigneIds = useMemo(() => budgetLignes.map(l => l.id), [budgetLignes]);
+
+  const { data: project } = useProject(projectId);
+  const projectDevise = project?.devise || 'XOF';
 
   const { data: records = [] } = useDisbursements(projectId, fundingSourceIds, budgetLigneIds, contractIds);
   const createMutation = useCreateDisbursement(projectId, fundingSourceIds, budgetLigneIds, contractIds);
@@ -583,11 +684,9 @@ export default function ProjectDisbursementTab() {
     }
   }
 
-  const { montantTotal, montantDecaisse, enAttente, enRetard, decaisseCount } = useMemo(() => {
-    const totalPrevu = records.reduce((s, r) => s + r.montant, 0);
+  const { montantDecaisse, enAttente, enRetard, decaisseCount } = useMemo(() => {
     const totalDecaisse = records.filter(r => r.statut === 'DECAISSE').reduce((s, r) => s + r.montant, 0);
     return {
-      montantTotal: totalPrevu,
       montantDecaisse: totalDecaisse,
       enAttente: records.filter(r => r.statut === 'DEMANDE' || r.statut === 'APPROUVE').length,
       enRetard: records.filter(isLate).length,
@@ -595,7 +694,18 @@ export default function ProjectDisbursementTab() {
     };
   }, [records]);
 
-  const tauxDec = montantTotal > 0 ? Math.round((montantDecaisse / montantTotal) * 100) : 0;
+  // Budget de référence pour le taux de décaissement : somme des lignes
+  // budgétaires réelles (montant_revise) si elles existent, avec repli sur
+  // l'enveloppe globale du projet (project.budgetTotal) — même logique que
+  // le "taux de décaissement" déjà calculé côté portefeuille projets
+  // (cf. useProjects.ts : bud.prevu > 0 ? bud.prevu : project.budgetTotal).
+  const budgetTotalRef = useMemo(() => {
+    const sommeLignes = budgetLignes.reduce((s, l) => s + (l.montant_revise ?? 0), 0);
+    return sommeLignes > 0 ? sommeLignes : Number(project?.budgetTotal ?? 0);
+  }, [budgetLignes, project?.budgetTotal]);
+
+  const tauxDec = budgetTotalRef > 0 ? Math.round((montantDecaisse / budgetTotalRef) * 100) : 0;
+  const resteADecaisser = budgetTotalRef - montantDecaisse;
 
   // Évolution mensuelle — dérivée des vrais enregistrements (prévu vs décaissé par mois)
   const chartData = useMemo(() => {
@@ -613,16 +723,11 @@ export default function ProjectDisbursementTab() {
       .map(([mois, v]) => ({ mois, prevu: Math.round(v.prevu / 1_000_000 * 10) / 10, recu: Math.round(v.recu / 1_000_000 * 10) / 10 }));
   }, [records]);
 
-  const columns = useMemo(
-    () => buildDisbursementColumns(openView, openEdit, openDeleteModal, canManage, canDelete),
-    [canManage, canDelete]
-  );
-
   return (
     <section aria-label="Suivi des Décaissements" className="flex flex-col gap-6">
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Total Décaissements"
           value={records.length}
@@ -631,11 +736,18 @@ export default function ProjectDisbursementTab() {
           description={`${decaisseCount} décaissé${decaisseCount > 1 ? 's' : ''}`}
         />
         <StatCard
-          title="Taux de décaissement (registre)"
+          title="Taux de décaissement"
           value={`${tauxDec}%`}
           icon={<Wallet className="h-4 w-4 text-success" aria-hidden="true" />}
           iconVariant="success"
-          description="Décaissé / Total des décaissements enregistrés ici"
+          description="Décaissé / Budget total du projet"
+        />
+        <StatCard
+          title="Reste à décaisser"
+          value={formatMontant(resteADecaisser, projectDevise)}
+          icon={<PiggyBank className={`h-4 w-4 ${resteADecaisser < 0 ? 'text-destructive' : 'text-info'}`} aria-hidden="true" />}
+          iconVariant={resteADecaisser < 0 ? 'destructive' : 'info'}
+          description="Budget total − Décaissé"
         />
         <StatCard
           title="En Attente"
@@ -710,23 +822,13 @@ export default function ProjectDisbursementTab() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={records}
-            searchKey="reference"
-            searchPlaceholder="Rechercher par référence..."
-            filters={[
-              {
-                id: 'statut', title: 'Statut',
-                options: [
-                  { label: 'Décaissé',  value: 'DECAISSE' },
-                  { label: 'Approuvé',  value: 'APPROUVE' },
-                  { label: 'Demandé',   value: 'DEMANDE' },
-                  { label: 'Planifié',  value: 'PLANIFIE' },
-                  { label: 'Rejeté',    value: 'REJETE' },
-                ],
-              },
-            ]}
+          <DisbursementRegistryTable
+            records={records}
+            onView={openView}
+            onEdit={openEdit}
+            onDelete={openDeleteModal}
+            canManage={canManage}
+            canDelete={canDelete}
           />
         </CardContent>
       </Card>

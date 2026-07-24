@@ -2,29 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions'
 import { dashboardKeys } from '@/hooks/useDashboard'
-
-export type DisbursementStatut = 'PLANIFIE' | 'DEMANDE' | 'APPROUVE' | 'DECAISSE' | 'REJETE'
-
-export interface Disbursement {
-  id: string
-  fundingSourceId: string | null
-  fundingSourceNom: string | null
-  // budget_ligne_id/contract_id/budget_version_id sont de vraies colonnes,
-  // fixées à la création uniquement (disbursements-update ne les accepte
-  // pas — cf. useUpdateDisbursement ci-dessous) : sans elles, un décaissement
-  // ne déclenchait jamais recalc_budget_ligne_montants côté montant_paye,
-  // laissant l'AC de l'EVM et la colonne "Décaissé" du Budget figés à zéro
-  // (cf. audit Décaissements).
-  budgetLigneId: string | null
-  contractId: string | null
-  budgetVersionId: string | null
-  statut: DisbursementStatut
-  montant: number
-  datePrevue: string | null
-  dateReelle: string | null
-  reference: string | null
-  description: string | null
-}
+import type { Disbursement, DisbursementStatut } from '@/types/disbursement'
 
 interface DisbursementRow {
   id: string
@@ -34,6 +12,7 @@ interface DisbursementRow {
   budget_version_id: string | null
   statut: string
   montant: number
+  devise: string
   date_prevue: string | null
   date_reelle: string | null
   reference: string | null
@@ -51,7 +30,7 @@ interface DisbursementRow {
 // composant à partir des listes déjà chargées (useContracts/useBudgetVersion).
 const DISBURSEMENT_SELECT = `
   id, funding_source_id, budget_ligne_id, contract_id, budget_version_id,
-  statut, montant, date_prevue, date_reelle,
+  statut, montant, devise, date_prevue, date_reelle,
   reference, description, funding_source:funding_sources(nom)
 `
 
@@ -66,6 +45,7 @@ function adaptDisbursement(row: DisbursementRow): Disbursement {
     budgetVersionId: row.budget_version_id,
     statut: row.statut as DisbursementStatut,
     montant: Number(row.montant ?? 0),
+    devise: row.devise,
     datePrevue: row.date_prevue,
     dateReelle: row.date_reelle,
     reference: row.reference,
