@@ -23,12 +23,12 @@ const CATEGORIE_LABELS: Record<CategorieAchat, string> = {
 };
 
 const METHODE_LABELS: Record<MethodePassation, string> = {
-  AOI:  'AOI',
-  AON:  'AON',
-  CF:   'Demande de prix',
-  ED:   'Entente directe',
-  QCBS: 'QCBS',
-  LCS:  'LCS',
+  AOI:  "Appel d'Offres International (AOI)",
+  AON:  "Appel d'Offres National (AON)",
+  AOPI: "Appel d'Offres Privé International",
+  SFQC: 'Sélection Fondée sur Qualité et Coût (SFQC)',
+  ED:   'Recrutement direct',
+  DP:   'Demande de prix',
 };
 
 const STATUT_LABELS: Record<StatutLignePPM, string> = {
@@ -137,7 +137,10 @@ export function PPMDetailModal({ open, onClose, ligne, projectId, canManage, onE
             <Field label="Ligne Budgétaire" value={budgetLigne ? `${budgetLigne.code_ligne} — ${budgetLigne.libelle}` : 'Non rattachée'} />
             <Field label="Type de marché" value={CATEGORIE_LABELS[ligne.categorie]} />
             <Field label="Méthode d'acquisition" value={METHODE_LABELS[ligne.methode]} />
-            <Field label="Revue bailleur" value={ligne.type_revue === 'PRIOR' ? 'A priori' : 'A posteriori'} />
+            <Field
+              label="Revue bailleur"
+              value={ligne.type_revue === 'PRIOR' ? 'A priori (Approbation BID avant signature)' : 'A posteriori (Vérification après signature)'}
+            />
           </SectionCard>
 
           <SectionCard title="Données Financières">

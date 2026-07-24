@@ -33,12 +33,12 @@ const CATEGORIE_BADGE_VARIANT: Record<CategorieAchat, 'default' | 'success' | 'w
 };
 
 const METHODE_LABELS: Record<MethodePassation, string> = {
-  AOI:  'AOI',
-  AON:  'AON',
-  CF:   'Demande de prix',
-  ED:   'Entente directe',
-  QCBS: 'QCBS',
-  LCS:  'LCS',
+  AOI:  "Appel d'Offres International (AOI)",
+  AON:  "Appel d'Offres National (AON)",
+  AOPI: "Appel d'Offres Privé International",
+  SFQC: 'Sélection Fondée sur Qualité et Coût (SFQC)',
+  ED:   'Recrutement direct',
+  DP:   'Demande de prix',
 };
 
 function formatDateFR(dateStr?: string): string {
@@ -87,7 +87,7 @@ function PPMMatrixRowComponent({ ligne, wbsLabel, devise, canManage, canDelete, 
       {/* Revue bailleur */}
       <td className={CELL}>
         <Badge variant={ligne.type_revue === 'PRIOR' ? 'info' : 'secondary'} className="text-[11px] whitespace-nowrap">
-          {ligne.type_revue === 'PRIOR' ? 'A priori' : 'A posteriori'}
+          {ligne.type_revue === 'PRIOR' ? 'A priori (Approbation BID avant signature)' : 'A posteriori (Vérification après signature)'}
         </Badge>
       </td>
 

@@ -30,10 +30,10 @@ const CAT_COLORS: Record<CategorieAchat, string> = {
 const METHODE_COLORS: Record<MethodePassation, string> = {
   AOI:  'hsl(var(--primary))',
   AON:  'hsl(var(--success))',
-  QCBS: 'hsl(var(--warning))',
-  LCS:  'hsl(var(--info))',
-  CF:   'hsl(var(--destructive))',
-  ED:   'hsl(213 60% 50%)',
+  AOPI: 'hsl(213 60% 50%)',
+  SFQC: 'hsl(var(--warning))',
+  ED:   'hsl(var(--info))',
+  DP:   'hsl(var(--destructive))',
 };
 
 const STATUT_LABELS: Record<StatutLignePPM, string> = {

@@ -16,7 +16,15 @@ export interface PPMVersion {
   lignes: PPMLigne[];
 }
 
-export type MethodePassation = 'AOI' | 'AON' | 'CF' | 'ED' | 'QCBS' | 'LCS';
+// Harmonisé sur la légende officielle des méthodes de passation (cf.
+// PPMFormSlideOver.tsx/PPMMatrixRow.tsx/PPMDetailModal.tsx pour les libellés
+// complets) — remplace l'ancien jeu AOI/AON/CF/ED/QCBS/LCS : QCBS devient
+// SFQC (sigle français), CF devient DP, LCS est retiré (absent de la
+// légende), AOPI est ajouté. `methode` est une colonne text libre côté
+// ppm_marches (aucune contrainte CHECK) — pas de migration nécessaire, mais
+// les marchés déjà créés avec un ancien code (QCBS/CF/LCS) ne matcheront
+// plus aucun libellé tant qu'ils ne sont pas réenregistrés.
+export type MethodePassation = 'AOI' | 'AON' | 'AOPI' | 'SFQC' | 'ED' | 'DP';
 export type CategorieAchat = 'TRAVAUX' | 'BIENS' | 'SERVICES_NON_CONSULTANTS' | 'SERVICES_CONSULTANTS';
 export type TypeRevue = 'PRIOR' | 'POST'; 
 export type StatutLignePPM = 'PLANIFIE' | 'DAO_EN_PREPARATION' | 'DAO_LANCE' | 'OFFRES_RECUES' | 'EVALUATION' | 'ANO_EN_ATTENTE' | 'ANO_OBTENU' | 'ATTRIBUE' | 'CONTRAT_SIGNE' | 'EXECUTION' | 'CLOTURE' | 'ANNULE';

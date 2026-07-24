@@ -19,12 +19,12 @@ const CATEGORIE_OPTIONS: { value: CategorieAchat; label: string }[] = [
 ];
 
 const METHODE_OPTIONS: { value: MethodePassation; label: string }[] = [
-  { value: 'AOI',  label: 'AOI — Appel d\'offres international' },
-  { value: 'AON',  label: 'AON — Appel d\'offres national' },
-  { value: 'QCBS', label: 'QCBS — Qualité-coût (consultants)' },
-  { value: 'LCS',  label: 'LCS — Moindre coût' },
-  { value: 'CF',   label: 'Demande de prix' },
-  { value: 'ED',   label: 'Entente directe' },
+  { value: 'AOI',  label: "Appel d'Offres International (AOI)" },
+  { value: 'AON',  label: "Appel d'Offres National (AON)" },
+  { value: 'AOPI', label: "Appel d'Offres Privé International" },
+  { value: 'SFQC', label: 'Sélection Fondée sur Qualité et Coût (SFQC)' },
+  { value: 'ED',   label: 'Recrutement direct' },
+  { value: 'DP',   label: 'Demande de prix' },
 ];
 
 interface PPMFormSlideOverProps {
@@ -385,8 +385,8 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
                     value={typeRevue}
                     onChange={e => setTypeRevue(e.target.value as PPMLigne['type_revue'])}
                   >
-                    <option value="PRIOR">A priori</option>
-                    <option value="POST">A posteriori</option>
+                    <option value="PRIOR">A priori (Approbation BID avant signature)</option>
+                    <option value="POST">A posteriori (Vérification après signature)</option>
                   </select>
                 </div>
               </div>
