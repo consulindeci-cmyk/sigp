@@ -3,12 +3,10 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 
 interface UpdateDisbursementBody {
   id: string;
-  contractId?: string;
-  statut?: 'PLANIFIE' | 'DEMANDE' | 'APPROUVE' | 'DECAISSE' | 'REJETE';
   montant?: number;
-  datePrevue?: string;
-  dateReelle?: string;
-  reference?: string;
+  // Date unique du décaissement — écrite dans les deux colonnes réelles
+  // date_prevue/date_reelle (cf. disbursements-create).
+  date?: string;
   description?: string;
 }
 
@@ -42,27 +40,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (body.contractId) {
-      const { data: contract, error } = await admin
-        .from('contracts')
-        .select('id')
-        .eq('id', body.contractId)
-        .is('deleted_at', null)
-        .maybeSingle();
-      if (error) throw error;
-      if (!contract) return json({ error: 'Contrat introuvable' }, 404);
-    }
-
     const updatePayload: Record<string, unknown> = {
       updated_by: profile.id,
       updated_at: new Date().toISOString(),
     };
-    if (body.contractId !== undefined) updatePayload.contract_id = body.contractId;
-    if (body.statut !== undefined) updatePayload.statut = body.statut;
     if (body.montant !== undefined) updatePayload.montant = body.montant;
-    if (body.datePrevue !== undefined) updatePayload.date_prevue = body.datePrevue;
-    if (body.dateReelle !== undefined) updatePayload.date_reelle = body.dateReelle;
-    if (body.reference !== undefined) updatePayload.reference = body.reference;
+    if (body.date !== undefined) {
+      updatePayload.date_prevue = body.date;
+      updatePayload.date_reelle = body.date;
+    }
     if (body.description !== undefined) updatePayload.description = body.description;
 
     const { data: updated, error: updateError } = await admin

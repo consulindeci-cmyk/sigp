@@ -4,13 +4,14 @@ import { authorize, requireRole } from '../_shared/authorize.ts';
 interface CreateDisbursementBody {
   budgetVersionId?: string;
   budgetLineId?: string;
-  contractId?: string;
-  fundingSourceId?: string;
-  statut?: 'PLANIFIE' | 'DEMANDE' | 'APPROUVE' | 'DECAISSE' | 'REJETE';
   montant: number;
   devise?: string;
-  datePrevue?: string;
-  dateReelle?: string;
+  // Date unique du décaissement (simplification : plus de distinction
+  // prévue/réelle ni de statut de workflow — un décaissement créé
+  // représente directement un paiement effectué). Écrite dans les deux
+  // colonnes réelles date_prevue/date_reelle pour ne pas nécessiter de
+  // migration de schéma.
+  date?: string;
   reference?: string;
   description?: string;
 }
@@ -27,9 +28,13 @@ Deno.serve(async (req: Request) => {
     if (body.montant === undefined || body.montant === null) {
       return json({ error: 'montant est obligatoire' }, 400);
     }
+    // Ligne Budgétaire désormais obligatoire (Source de financement/Contrat
+    // retirés du formulaire) — c'est le seul chemin restant pour résoudre
+    // l'organisation et déclencher recalc_budget_ligne_montants.
+    if (!body.budgetLineId) {
+      return json({ error: 'budgetLineId est obligatoire' }, 400);
+    }
 
-    // Réplique DisbursementService.validateRelations : cohérence croisée
-    // entre budgetVersionId / budgetLineId / fundingSourceId, tous facultatifs.
     let budgetVersionProjectId: string | undefined;
 
     if (body.budgetVersionId) {
@@ -44,58 +49,28 @@ Deno.serve(async (req: Request) => {
       budgetVersionProjectId = version.project_id;
     }
 
-    if (body.budgetLineId) {
-      const { data: line, error } = await admin
-        .from('budget_lignes')
-        .select('id, version_id')
-        .eq('id', body.budgetLineId)
-        .is('deleted_at', null)
-        .maybeSingle();
-      if (error) throw error;
-      if (!line) return json({ error: 'Ligne budgétaire introuvable' }, 404);
-      if (body.budgetVersionId && line.version_id !== body.budgetVersionId) {
-        return json(
-          { error: "La ligne budgétaire n'appartient pas à la version budgétaire indiquée" },
-          409,
-        );
-      }
-      if (!budgetVersionProjectId) {
-        const { data: version, error: versionError } = await admin
-          .from('budget_versions')
-          .select('project_id')
-          .eq('id', line.version_id)
-          .maybeSingle();
-        if (versionError) throw versionError;
-        budgetVersionProjectId = version?.project_id ?? undefined;
-      }
+    const { data: line, error: lineError } = await admin
+      .from('budget_lignes')
+      .select('id, version_id')
+      .eq('id', body.budgetLineId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (lineError) throw lineError;
+    if (!line) return json({ error: 'Ligne budgétaire introuvable' }, 404);
+    if (body.budgetVersionId && line.version_id !== body.budgetVersionId) {
+      return json(
+        { error: "La ligne budgétaire n'appartient pas à la version budgétaire indiquée" },
+        409,
+      );
     }
-
-    if (body.fundingSourceId) {
-      const { data: source, error } = await admin
-        .from('funding_sources')
-        .select('id, project_id')
-        .eq('id', body.fundingSourceId)
-        .is('deleted_at', null)
+    if (!budgetVersionProjectId) {
+      const { data: version, error: versionError } = await admin
+        .from('budget_versions')
+        .select('project_id')
+        .eq('id', line.version_id)
         .maybeSingle();
-      if (error) throw error;
-      if (!source) return json({ error: 'Source de financement introuvable' }, 404);
-      if (budgetVersionProjectId && source.project_id !== budgetVersionProjectId) {
-        return json(
-          { error: "La source de financement n'appartient pas au même projet que la version budgétaire" },
-          409,
-        );
-      }
-    }
-
-    if (body.contractId) {
-      const { data: contract, error } = await admin
-        .from('contracts')
-        .select('id')
-        .eq('id', body.contractId)
-        .is('deleted_at', null)
-        .maybeSingle();
-      if (error) throw error;
-      if (!contract) return json({ error: 'Contrat introuvable' }, 404);
+      if (versionError) throw versionError;
+      budgetVersionProjectId = version?.project_id ?? undefined;
     }
 
     // Résout l'organisation à partir du premier chemin disponible (mêmes
@@ -106,28 +81,17 @@ Deno.serve(async (req: Request) => {
       if (body.budgetVersionId) {
         const { data } = await admin.rpc('budget_version_organisation_id', { p_version_id: body.budgetVersionId });
         resolvedOrgId = data ?? null;
-      } else if (body.budgetLineId) {
+      } else {
         const { data } = await admin.rpc('budget_line_organisation_id', { p_line_id: body.budgetLineId });
         resolvedOrgId = data ?? null;
-      } else if (body.fundingSourceId) {
-        const { data } = await admin.rpc('funding_source_organisation_id', { p_funding_source_id: body.fundingSourceId });
-        resolvedOrgId = data ?? null;
-      } else if (body.contractId) {
-        const { data: contract } = await admin.from('contracts').select('project_id').eq('id', body.contractId).maybeSingle();
-        if (contract?.project_id) {
-          const { data } = await admin.rpc('project_organisation_id', { p_project_id: contract.project_id });
-          resolvedOrgId = data ?? null;
-        }
       }
-      // Aucune référence fournie : pas de moyen de rattacher à une organisation
-      // → réservé à ADMIN, même traitement que les entités orphelines.
       if (!resolvedOrgId || resolvedOrgId !== profile.organisation_id) {
         return json({ error: "Ce décaissement n'appartient pas à votre organisation" }, 403);
       }
     }
 
     // Devise par défaut = devise_defaut de l'organisation du projet résolu ;
-    // repli XOF si aucun projet n'a pu être résolu (décaissement orphelin).
+    // repli XOF si aucun projet n'a pu être résolu.
     let devise = body.devise;
     if (!devise && budgetVersionProjectId) {
       const { data: orgDevise } = await admin.rpc('project_devise_defaut', { p_project_id: budgetVersionProjectId });
@@ -140,14 +104,19 @@ Deno.serve(async (req: Request) => {
       .insert({
         id: crypto.randomUUID(),
         budget_version_id: body.budgetVersionId ?? null,
-        budget_ligne_id: body.budgetLineId ?? null,
-        contract_id: body.contractId ?? null,
-        funding_source_id: body.fundingSourceId ?? null,
-        statut: body.statut ?? 'PLANIFIE',
+        budget_ligne_id: body.budgetLineId,
+        // Statut/Source de financement/Contrat retirés du formulaire et des
+        // payloads (cf. simplification) — un décaissement créé représente
+        // directement un paiement effectué : statut fixé à 'DECAISSE' (non
+        // client-contrôlable), condition requise par
+        // recalc_budget_ligne_montants pour compter ce montant dans
+        // montant_paye (sinon l'AC de l'EVM et la colonne "Décaissé" du
+        // Budget restent figés à zéro).
+        statut: 'DECAISSE',
         montant: body.montant,
         devise,
-        date_prevue: body.datePrevue ?? null,
-        date_reelle: body.dateReelle ?? null,
+        date_prevue: body.date ?? null,
+        date_reelle: body.date ?? null,
         reference: body.reference ?? null,
         description: body.description ?? null,
         created_by: profile.id,

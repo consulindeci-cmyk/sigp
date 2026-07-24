@@ -5,13 +5,12 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Wallet, TrendingUp, Clock, AlertTriangle, AlertCircle, Plus, Eye, Edit, Trash2, Download, PiggyBank } from 'lucide-react';
+import { Wallet, TrendingUp, Plus, Eye, Edit, Trash2, Download, PiggyBank, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useDataTable } from '@/components/ui/data-table/hooks/useDataTable';
 import { DataTableToolbar } from '@/components/ui/data-table/DataTableToolbar';
 import { DataTablePagination } from '@/components/ui/data-table/DataTablePagination';
 import { DataTableEmpty } from '@/components/ui/data-table/DataTableEmpty';
-import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Input } from '@/components/ui/forms/Input';
 import { Select } from '@/components/ui/forms/Select';
@@ -27,22 +26,36 @@ import { useFundingSources } from '@/hooks/useFundingSources';
 import { useContracts } from '@/hooks/useContracts';
 import { useBudget, useBudgetVersion } from '@/hooks/useBudget';
 import { useProject } from '@/hooks/useProjects';
-import type { Contract } from '@/types/contract';
 import type { BudgetLigne } from '@/types/budget';
-import type { Disbursement, DisbursementStatut } from '@/types/disbursement';
+import type { Disbursement } from '@/types/disbursement';
 import {
   useDisbursements, useCreateDisbursement, useUpdateDisbursement, useDeleteDisbursement,
 } from '@/hooks/useDisbursements';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Référence automatique (DEC-001, DEC-002...) — même principe que le N° des
+// Risques (RSQ-XXX) et la Référence des marchés PPM : calculée côté client à
+// partir du plus grand numéro existant, affichée en lecture seule.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function nextReference(records: Disbursement[]): string {
+  const max = records.reduce((m, r) => {
+    const n = parseInt((r.reference ?? '').replace('DEC-', ''), 10);
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  return `DEC-${String(max + 1).padStart(3, '0')}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CSV Export
 // ─────────────────────────────────────────────────────────────────────────────
 
-function exportCsv(records: Disbursement[]) {
-  const HEADERS = ['Référence', 'Source', 'Statut', 'Montant', 'Devise', 'Date prévue', 'Date réelle', 'Description'];
+function exportCsv(records: Disbursement[], budgetLignes: BudgetLigne[]) {
+  const HEADERS = ['Référence', 'Ligne Budgétaire', 'Montant', 'Devise', 'Date', 'Description'];
   const rows = records.map(r => [
-    r.reference ?? '', r.fundingSourceNom ?? '', STATUT_LABELS[r.statut], String(r.montant), r.devise,
-    r.datePrevue ?? '', r.dateReelle ?? '', r.description ?? '',
+    r.reference ?? '',
+    budgetLignes.find(l => l.id === r.budgetLigneId)?.code_ligne ?? '',
+    String(r.montant), r.devise, r.date ?? '', r.description ?? '',
   ]);
   const content = '﻿' + [HEADERS, ...rows]
     .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))
@@ -59,13 +72,8 @@ function exportCsv(records: Disbursement[]) {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STATUT_LABELS: Record<DisbursementStatut, string> = {
-  PLANIFIE: 'Planifié', DEMANDE: 'Demandé', APPROUVE: 'Approuvé', DECAISSE: 'Décaissé', REJETE: 'Rejeté',
-};
-
 const CHART_COLORS = {
-  prevu: 'hsl(var(--muted-foreground))',
-  recu:  'hsl(var(--primary))',
+  recu: 'hsl(var(--primary))',
 };
 
 const tooltipStyle = {
@@ -94,48 +102,25 @@ function formatMontant(value: number, devise?: string): string {
   return devise ? `${n} ${devise}` : n;
 }
 
-function statutVariant(statut: DisbursementStatut): 'success' | 'warning' | 'secondary' | 'destructive' {
-  switch (statut) {
-    case 'DECAISSE': return 'success';
-    case 'DEMANDE':
-    case 'APPROUVE': return 'warning';
-    case 'REJETE':   return 'destructive';
-    default:         return 'secondary';
-  }
-}
-
-function isLate(r: Disbursement): boolean {
-  if (r.statut === 'DECAISSE' || r.statut === 'REJETE' || !r.datePrevue) return false;
-  return new Date(r.datePrevue) < new Date();
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Controlled form state
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface DisbFormValues {
-  fundingSourceId: string; budgetLigneId: string; contractId: string;
-  statut: string; montant: string;
-  datePrevue: string; dateReelle: string; reference: string; description: string;
+  budgetLigneId: string; montant: string; date: string; description: string;
 }
 
 type DisbFormErrors = Partial<Record<keyof DisbFormValues, string>>;
 
 const EMPTY_FORM: DisbFormValues = {
-  fundingSourceId: '', budgetLigneId: '', contractId: '', statut: 'PLANIFIE', montant: '',
-  datePrevue: '', dateReelle: '', reference: '', description: '',
+  budgetLigneId: '', montant: '', date: '', description: '',
 };
 
 function recordToForm(r: Disbursement): DisbFormValues {
   return {
-    fundingSourceId: r.fundingSourceId ?? '',
     budgetLigneId: r.budgetLigneId ?? '',
-    contractId: r.contractId ?? '',
-    statut: r.statut,
     montant: String(r.montant),
-    datePrevue: r.datePrevue ?? '',
-    dateReelle: r.dateReelle ?? '',
-    reference: r.reference ?? '',
+    date: r.date ?? '',
     description: r.description ?? '',
   };
 }
@@ -166,28 +151,26 @@ type SlideOverMode = 'view' | 'edit' | 'new';
 
 function DisbursementSlideOver({
   open, onOpenChange, record, mode, onSave,
-  fundingSourceOptions, contractOptions, budgetLigneOptions, allDisbursements,
-  canSetDecaisse, isSaving, error,
+  budgetLigneOptions, suggestedReference, projectDevise,
+  isSaving, error,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   record: Disbursement | null;
   mode: SlideOverMode;
   onSave?: (data: Partial<Disbursement>) => void;
-  fundingSourceOptions: { id: string; nom: string }[];
-  contractOptions: Contract[];
   budgetLigneOptions: BudgetLigne[];
-  allDisbursements: Disbursement[];
-  canSetDecaisse: boolean;
+  suggestedReference: string;
+  projectDevise: string;
   isSaving?: boolean;
   error?: string | null;
 }) {
   const [values, setValues] = useState<DisbFormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<DisbFormErrors>({});
   const readOnly = mode === 'view';
-  // budget_ligne_id/funding_source_id sont fixés à la création côté serveur
-  // (disbursements-update ne les accepte pas) — désactivés en édition pour
-  // ne pas laisser croire qu'un changement ici serait pris en compte.
+  // budget_ligne_id est fixé à la création côté serveur (disbursements-update
+  // ne l'accepte pas) — désactivé en édition pour ne pas laisser croire
+  // qu'un changement ici serait pris en compte.
   const isCreationOnlyFieldsLocked = mode === 'edit';
 
   useEffect(() => {
@@ -198,37 +181,17 @@ function DisbursementSlideOver({
   }, [open, mode, record?.id]);
 
   function set(k: keyof DisbFormValues, v: string) {
-    setValues(prev => {
-      // Un décaissement marqué Décaissé sans date réelle est une incohérence
-      // de saisie (l'acte de paiement a forcément une date) — auto-remplie
-      // avec aujourd'hui si absente, reste modifiable ensuite.
-      const next = { ...prev, [k]: v };
-      if (k === 'statut' && v === 'DECAISSE' && !prev.dateReelle) {
-        next.dateReelle = new Date().toISOString().slice(0, 10);
-      }
-      return next;
-    });
+    setValues(prev => ({ ...prev, [k]: v }));
     if (errors[k]) setErrors(prev => ({ ...prev, [k]: undefined }));
   }
 
   const selectedLigne = budgetLigneOptions.find(l => l.id === values.budgetLigneId) ?? null;
-  const selectedContrat = contractOptions.find(c => c.id === values.contractId) ?? null;
-
-  // Reste à liquider du contrat = montant contractuel − somme des décaissements
-  // déjà DECAISSE sur ce même contrat (hors le présent enregistrement, en édition).
-  const contratDejaDecaisse = useMemo(() => {
-    if (!selectedContrat) return 0;
-    return allDisbursements
-      .filter(d => d.contractId === selectedContrat.id && d.statut === 'DECAISSE' && d.id !== record?.id)
-      .reduce((s, d) => s + d.montant, 0);
-  }, [allDisbursements, selectedContrat, record?.id]);
 
   function validate(): boolean {
     const errs: DisbFormErrors = {};
     if (!values.montant || Number(values.montant) <= 0) errs.montant = 'Montant requis (> 0)';
-    if (!values.fundingSourceId && !values.budgetLigneId && !values.contractId) {
-      errs.fundingSourceId = 'Requis si aucune ligne budgétaire ou contrat n\'est sélectionné';
-    }
+    if (!values.budgetLigneId) errs.budgetLigneId = 'Ligne budgétaire requise';
+    if (!values.date) errs.date = 'Date requise';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -236,15 +199,11 @@ function DisbursementSlideOver({
   function handleSave() {
     if (!validate()) return;
     onSave?.({
-      fundingSourceId: values.fundingSourceId || null,
       budgetLigneId: values.budgetLigneId || null,
-      contractId: values.contractId || null,
       budgetVersionId: selectedLigne?.budget_version_id || null,
-      statut: values.statut as DisbursementStatut,
       montant: Number(values.montant),
-      datePrevue: values.datePrevue || null,
-      dateReelle: values.dateReelle || null,
-      reference: values.reference.trim() || null,
+      devise: projectDevise,
+      date: values.date || null,
       description: values.description.trim() || null,
     });
   }
@@ -263,30 +222,21 @@ function DisbursementSlideOver({
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {readOnly && record ? (
             <div className="flex flex-col gap-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Référence</p>
-                  <p className="font-mono text-[14px] font-semibold text-foreground">{record.reference || '—'}</p>
-                </div>
-                <Badge variant={statutVariant(record.statut)} className="text-[12px]">{STATUT_LABELS[record.statut]}</Badge>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Référence</p>
+                <p className="font-mono text-[14px] font-semibold text-foreground">{record.reference || '—'}</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border pt-4">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Source de financement</p>
-                  <p className="text-[13px] font-semibold text-foreground">{record.fundingSourceNom || '—'}</p>
-                </div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Ligne Budgétaire</p>
                   <p className="text-[13px] font-semibold text-foreground">
                     {budgetLigneOptions.find(l => l.id === record.budgetLigneId)?.code_ligne || '—'}
                   </p>
                 </div>
-                <div className="sm:col-span-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Contrat</p>
-                  <p className="text-[13px] font-semibold text-foreground">
-                    {contractOptions.find(c => c.id === record.contractId)?.reference || '—'}
-                  </p>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date du décaissement</p>
+                  <p className="font-mono text-[13px] text-foreground">{formatDate(record.date)}</p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
@@ -298,43 +248,22 @@ function DisbursementSlideOver({
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Montant</p>
                 <p className="font-mono text-[16px] font-bold text-foreground">{formatMontant(record.montant, record.devise)}</p>
               </div>
-
-              <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date prévue</p>
-                  <p className="font-mono text-[13px] text-foreground">{formatDate(record.datePrevue)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Date réelle</p>
-                  <p className="font-mono text-[13px] text-foreground">{formatDate(record.dateReelle)}</p>
-                </div>
-              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FRow id="dis-source" label="Source de financement" error={errors.fundingSourceId}>
-                <Select
-                  id="dis-source"
-                  value={values.fundingSourceId}
-                  onChange={e => set('fundingSourceId', e.target.value)}
-                  disabled={isCreationOnlyFieldsLocked}
-                >
-                  <option value="">Aucune</option>
-                  {fundingSourceOptions.map(fs => <option key={fs.id} value={fs.id}>{fs.nom}</option>)}
-                </Select>
-                {isCreationOnlyFieldsLocked && (
-                  <span className="text-[10px] text-muted-foreground">Non modifiable après création.</span>
-                )}
+              <FRow id="dis-ref" label="N°" full>
+                <Input id="dis-ref" value={record?.reference ?? suggestedReference} disabled readOnly />
+                <span className="text-[10px] text-muted-foreground">Généré automatiquement, non modifiable.</span>
               </FRow>
 
-              <FRow id="dis-budget-ligne" label="Ligne Budgétaire">
+              <FRow id="dis-budget-ligne" label="Ligne Budgétaire" error={errors.budgetLigneId} full>
                 <Select
                   id="dis-budget-ligne"
                   value={values.budgetLigneId}
                   onChange={e => set('budgetLigneId', e.target.value)}
                   disabled={isCreationOnlyFieldsLocked}
                 >
-                  <option value="">Aucune</option>
+                  <option value="">-- Sélectionner --</option>
                   {budgetLigneOptions.map(l => (
                     <option key={l.id} value={l.id}>{l.code_ligne} — {l.libelle}</option>
                   ))}
@@ -344,63 +273,30 @@ function DisbursementSlideOver({
                 )}
               </FRow>
 
-              <FRow id="dis-contrat" label="Contrat" full>
-                <Select id="dis-contrat" value={values.contractId} onChange={e => set('contractId', e.target.value)}>
-                  <option value="">Aucun</option>
-                  {contractOptions.map(c => (
-                    <option key={c.id} value={c.id}>{c.reference} — {c.intitule}</option>
-                  ))}
-                </Select>
-              </FRow>
-
-              <FRow id="dis-ref" label="Référence">
-                <Input id="dis-ref" value={values.reference} onChange={e => set('reference', e.target.value)} placeholder="DEC-XXX-XXXX" />
-              </FRow>
-
-              <FRow id="dis-statut" label="Statut">
-                <Select id="dis-statut" value={values.statut} onChange={e => set('statut', e.target.value)}>
-                  {Object.entries(STATUT_LABELS)
-                    .filter(([value]) => value !== 'DECAISSE' || canSetDecaisse || values.statut === 'DECAISSE')
-                    .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </Select>
-                {!canSetDecaisse && (
-                  <span className="text-[10px] text-muted-foreground">
-                    Seul un rôle Financier peut marquer un décaissement comme Décaissé.
-                  </span>
-                )}
-              </FRow>
-
-              <FRow id="dis-montant" label="Montant" error={errors.montant}>
+              <FRow id="dis-montant" label={`Montant (${projectDevise})`} error={errors.montant}>
                 <Input id="dis-montant" type="number" min={0} value={values.montant} onChange={e => set('montant', e.target.value)} placeholder="0" />
               </FRow>
 
-              <FRow id="dis-datep" label="Date prévue">
-                <Input id="dis-datep" type="date" value={values.datePrevue} onChange={e => set('datePrevue', e.target.value)} />
+              <FRow id="dis-date" label="Date du décaissement" error={errors.date}>
+                <Input id="dis-date" type="date" value={values.date} onChange={e => set('date', e.target.value)} />
               </FRow>
 
-              <FRow id="dis-dater" label="Date réelle">
-                <Input id="dis-dater" type="date" value={values.dateReelle} onChange={e => set('dateReelle', e.target.value)} />
-              </FRow>
-
-              <FRow id="dis-desc" label="Description" full>
+              <FRow id="dis-desc" label="Description / Justification" full>
                 <Input id="dis-desc" value={values.description} onChange={e => set('description', e.target.value)} placeholder="Objet du décaissement" />
               </FRow>
             </div>
           )}
 
-          {!readOnly && (selectedLigne || selectedContrat) && Number(values.montant) >= 0 && (() => {
+          {!readOnly && selectedLigne && Number(values.montant) >= 0 && (() => {
             const montant = Number(values.montant) || 0;
-            const solde = selectedLigne
-              ? selectedLigne.solde_disponible
-              : Math.max(0, (selectedContrat?.montant_initial_base ?? 0) - contratDejaDecaisse);
-            const label = selectedLigne ? 'Solde disponible (ligne budgétaire)' : 'Reste à liquider (contrat)';
+            const solde = selectedLigne.solde_disponible;
             const depasse = montant > solde;
             return (
               <div className={`mt-4 p-3 rounded-md text-sm border flex items-center justify-between ${
                 depasse ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-success/10 border-success/20 text-success'
               }`}>
-                <span className="font-medium">{label} :</span>
-                <span className="font-mono font-bold">{formatMontant(solde)}</span>
+                <span className="font-medium">Solde disponible (ligne budgétaire) :</span>
+                <span className="font-mono font-bold">{formatMontant(solde, projectDevise)}</span>
               </div>
             );
           })()}
@@ -433,29 +329,18 @@ function DisbursementSlideOver({
 // RiskRegistryTable.tsx : distinct du <DataTable> générique partagé par une
 // vingtaine d'autres modules, pour ne pas en changer l'apparence partout.
 // Réutilise le même moteur tanstack (useDataTable) et les mêmes sous-
-// composants (toolbar, pagination, états vide/chargement), avec un rendu de
-// <table> propre à cet écran : en-tête bg-primary, bordures nettes
-// border-border, pas de troncature, cellule Statut remplie sur toute sa
-// hauteur avec des tokens de couleur du thème atténués (bg-*/15) — pastel
-// tout en restant compatible clair/sombre.
+// composants (toolbar, pagination, état vide), avec un rendu de <table>
+// propre à cet écran : en-tête bg-primary, bordures nettes border-border,
+// pas de troncature.
 // ─────────────────────────────────────────────────────────────────────────────
-
-function statutBucket(statut: DisbursementStatut): { bg: string; text: string } {
-  switch (statut) {
-    case 'DECAISSE':            return { bg: 'bg-success/15',     text: 'text-success' };
-    case 'DEMANDE':
-    case 'APPROUVE':             return { bg: 'bg-warning/15',     text: 'text-warning' };
-    case 'REJETE':               return { bg: 'bg-destructive/15', text: 'text-destructive' };
-    default:                     return { bg: 'bg-muted/40',       text: 'text-muted-foreground' }; // PLANIFIE
-  }
-}
 
 const DISB_TH = 'px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-primary-foreground border border-primary/70 whitespace-nowrap select-none';
 
 function DisbursementRegistryTable({
-  records, onView, onEdit, onDelete, canManage, canDelete,
+  records, budgetLigneOptions, onView, onEdit, onDelete, canManage, canDelete,
 }: {
   records: Disbursement[];
+  budgetLigneOptions: BudgetLigne[];
   onView: (r: Disbursement) => void;
   onEdit: (r: Disbursement) => void;
   onDelete: (id: string) => void;
@@ -466,26 +351,15 @@ function DisbursementRegistryTable({
     {
       id: 'identification',
       accessorKey: 'reference',
-      header: 'Référence & Source',
+      header: 'Référence',
       cell: ({ row }) => {
-        const { reference, fundingSourceNom, description } = row.original;
+        const { reference, budgetLigneId, description } = row.original;
+        const ligne = budgetLigneOptions.find(l => l.id === budgetLigneId);
         return (
           <div className="flex flex-col gap-0.5 px-3 py-2 whitespace-normal break-words">
             <span className="font-mono text-[12px] font-semibold text-foreground">{reference || '—'}</span>
-            <span className="text-[13px] font-medium text-foreground">{fundingSourceNom || '—'}</span>
+            <span className="text-[13px] font-medium text-foreground">{ligne ? `${ligne.code_ligne} — ${ligne.libelle}` : '—'}</span>
             {description && <span className="text-[10px] text-muted-foreground">{description}</span>}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: 'statut',
-      header: 'Statut',
-      cell: ({ getValue }) => {
-        const s = getValue() as DisbursementStatut;
-        return (
-          <div className="flex items-center justify-center py-2 font-bold">
-            {STATUT_LABELS[s]}
           </div>
         );
       },
@@ -494,32 +368,14 @@ function DisbursementRegistryTable({
       accessorKey: 'montant',
       header: 'Montant',
       cell: ({ row }) => (
-        <span className={cn(
-          'block px-3 py-2 text-right font-mono text-[12px] font-semibold whitespace-nowrap',
-          row.original.statut === 'DECAISSE' ? 'text-success' : 'text-muted-foreground',
-        )}>
+        <span className="block px-3 py-2 text-right font-mono text-[12px] font-semibold text-success whitespace-nowrap">
           {formatMontant(row.original.montant, row.original.devise)}
         </span>
       ),
     },
     {
-      accessorKey: 'datePrevue',
-      header: 'Date prévue',
-      cell: ({ row }) => {
-        const late = isLate(row.original);
-        return (
-          <span className={cn(
-            'block px-3 py-2 text-center font-mono text-[12px] whitespace-nowrap',
-            late ? 'text-destructive font-semibold' : 'text-muted-foreground',
-          )}>
-            {formatDate(row.original.datePrevue)}
-          </span>
-        );
-      },
-    },
-    {
-      accessorKey: 'dateReelle',
-      header: 'Date réelle',
+      accessorKey: 'date',
+      header: 'Date',
       cell: ({ getValue }) => (
         <span className="block px-3 py-2 text-center font-mono text-[12px] text-muted-foreground whitespace-nowrap">
           {formatDate(getValue() as string | null)}
@@ -541,29 +397,13 @@ function DisbursementRegistryTable({
         </div>
       ),
     },
-  ], [onView, onEdit, onDelete, canManage, canDelete]);
+  ], [budgetLigneOptions, onView, onEdit, onDelete, canManage, canDelete]);
 
   const { table } = useDataTable({ data: records, columns });
 
   return (
     <div className="flex flex-col bg-background border border-border rounded-lg overflow-hidden min-w-0">
-      <DataTableToolbar
-        table={table}
-        searchKey="reference"
-        searchPlaceholder="Rechercher par référence..."
-        filters={[
-          {
-            id: 'statut', title: 'Statut',
-            options: [
-              { label: 'Décaissé',  value: 'DECAISSE' },
-              { label: 'Approuvé',  value: 'APPROUVE' },
-              { label: 'Demandé',   value: 'DEMANDE' },
-              { label: 'Planifié',  value: 'PLANIFIE' },
-              { label: 'Rejeté',    value: 'REJETE' },
-            ],
-          },
-        ]}
-      />
+      <DataTableToolbar table={table} searchKey="reference" searchPlaceholder="Rechercher par référence..." />
 
       <div className="w-full overflow-x-auto overflow-y-hidden">
         {records.length === 0 || table.getRowModel().rows.length === 0 ? (
@@ -574,7 +414,7 @@ function DisbursementRegistryTable({
               {table.getHeaderGroups().map(headerGroup => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map(header => (
-                    <th key={header.id} className={cn(DISB_TH, ['statut', 'datePrevue', 'dateReelle', 'actions'].includes(header.column.id) && 'text-center', header.column.id === 'montant' && 'text-right')}>
+                    <th key={header.id} className={cn(DISB_TH, ['date', 'actions'].includes(header.column.id) && 'text-center', header.column.id === 'montant' && 'text-right')}>
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
                   ))}
@@ -585,15 +425,11 @@ function DisbursementRegistryTable({
             <tbody>
               {table.getRowModel().rows.map((row, rowIndex) => (
                 <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-background' : 'bg-muted/30'}>
-                  {row.getVisibleCells().map(cell => {
-                    const isStatut = cell.column.id === 'statut';
-                    const bucket = isStatut ? statutBucket(row.original.statut) : null;
-                    return (
-                      <td key={cell.id} className={cn('border border-border align-middle p-0', bucket && [bucket.bg, bucket.text])}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    );
-                  })}
+                  {row.getVisibleCells().map(cell => (
+                    <td key={cell.id} className="border border-border align-middle p-0">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -615,12 +451,13 @@ export default function ProjectDisbursementTab() {
   const activeProjectId = useUIStore(s => s.activeProjectId);
   const projectId = urlProjectId || activeProjectId || '';
 
+  // Sources de financement / Contrats retirés du formulaire (cf.
+  // simplification), mais conservés en lecture ici : uniquement pour que les
+  // décaissements créés AVANT ce changement (rattachés seulement à l'un de
+  // ces deux, sans ligne budgétaire) restent visibles dans le registre.
   const { data: fundingSources = [] } = useFundingSources(projectId);
   const fundingSourceIds = useMemo(() => fundingSources.map(s => s.id), [fundingSources]);
 
-  // Contrats et lignes budgétaires réels du projet — pour le rattachement
-  // (disbursements.contract_id/budget_ligne_id) qui déclenche réellement
-  // recalc_budget_ligne_montants côté montant_paye (cf. audit Décaissements).
   const { data: contracts = [] } = useContracts(projectId);
   const contractIds = useMemo(() => contracts.map(c => c.id), [contracts]);
 
@@ -642,11 +479,6 @@ export default function ProjectDisbursementTab() {
   const currentRole = useAuthStore(s => s.user?.role);
   const canManage = !!currentRole && ['COORDINATEUR', 'CHARGE_PROGRAMME', 'FINANCIER', 'ADMIN', 'SUPER_ADMIN'].includes(currentRole);
   const canDelete = currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
-  // Séparation des tâches : seul un rôle Financier (ou Admin) peut marquer un
-  // décaissement comme réellement Décaissé — les autres rôles autorisés à
-  // gérer les décaissements (COORDINATEUR/CHARGE_PROGRAMME) peuvent créer/
-  // planifier/demander, mais pas exécuter l'acte de paiement final.
-  const canSetDecaisse = currentRole === 'FINANCIER' || currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN';
 
   const [slideOverOpen, setSlideOverOpen]   = useState(false);
   const [slideOverMode, setSlideOverMode]   = useState<SlideOverMode>('new');
@@ -674,25 +506,27 @@ export default function ProjectDisbursementTab() {
     });
   }
 
+  // N° suggéré pour un nouveau décaissement — affiché en lecture seule dans
+  // le formulaire (même principe que le N° des Risques et la Référence des
+  // marchés PPM), calculé ici pour rester synchronisé avec la liste
+  // réellement chargée. Attribué uniquement à la création, jamais recalculé
+  // en édition (record.reference fait foi).
+  const suggestedReference = useMemo(() => nextReference(records), [records]);
+
   function handleSave(data: Partial<Disbursement>) {
     setSaveError(null);
     const onError = (err: unknown) => setSaveError(extractErrorMessage(err));
     if (slideOverMode === 'new') {
-      createMutation.mutate(data, { onSuccess: () => setSlideOverOpen(false), onError });
+      createMutation.mutate({ ...data, reference: suggestedReference }, { onSuccess: () => setSlideOverOpen(false), onError });
     } else if (selectedRecord) {
       updateMutation.mutate({ id: selectedRecord.id, ...data }, { onSuccess: () => setSlideOverOpen(false), onError });
     }
   }
 
-  const { montantDecaisse, enAttente, enRetard, decaisseCount } = useMemo(() => {
-    const totalDecaisse = records.filter(r => r.statut === 'DECAISSE').reduce((s, r) => s + r.montant, 0);
-    return {
-      montantDecaisse: totalDecaisse,
-      enAttente: records.filter(r => r.statut === 'DEMANDE' || r.statut === 'APPROUVE').length,
-      enRetard: records.filter(isLate).length,
-      decaisseCount: records.filter(r => r.statut === 'DECAISSE').length,
-    };
-  }, [records]);
+  // Tout décaissement enregistré représente désormais un paiement déjà
+  // effectué (plus de statut de workflow) — la somme couvre tous les
+  // enregistrements chargés.
+  const montantDecaisse = useMemo(() => records.reduce((s, r) => s + r.montant, 0), [records]);
 
   // Budget de référence pour le taux de décaissement : somme des lignes
   // budgétaires réelles (montant_revise) si elles existent, avec repli sur
@@ -707,33 +541,30 @@ export default function ProjectDisbursementTab() {
   const tauxDec = budgetTotalRef > 0 ? Math.round((montantDecaisse / budgetTotalRef) * 100) : 0;
   const resteADecaisser = budgetTotalRef - montantDecaisse;
 
-  // Évolution mensuelle — dérivée des vrais enregistrements (prévu vs décaissé par mois)
+  // Évolution mensuelle — montant décaissé par mois, dérivé de la date unique
+  // du décaissement (plus de distinction prévu/réel).
   const chartData = useMemo(() => {
-    const byMonth = new Map<string, { prevu: number; recu: number }>();
+    const byMonth = new Map<string, number>();
     for (const r of records) {
-      if (!r.datePrevue) continue;
-      const month = r.datePrevue.slice(0, 7);
-      const entry = byMonth.get(month) ?? { prevu: 0, recu: 0 };
-      entry.prevu += r.montant;
-      if (r.statut === 'DECAISSE') entry.recu += r.montant;
-      byMonth.set(month, entry);
+      if (!r.date) continue;
+      const month = r.date.slice(0, 7);
+      byMonth.set(month, (byMonth.get(month) ?? 0) + r.montant);
     }
     return Array.from(byMonth.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([mois, v]) => ({ mois, prevu: Math.round(v.prevu / 1_000_000 * 10) / 10, recu: Math.round(v.recu / 1_000_000 * 10) / 10 }));
+      .map(([mois, montant]) => ({ mois, montant: Math.round(montant / 1_000_000 * 10) / 10 }));
   }, [records]);
 
   return (
     <section aria-label="Suivi des Décaissements" className="flex flex-col gap-6">
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           title="Total Décaissements"
           value={records.length}
           icon={<TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />}
           iconVariant="primary"
-          description={`${decaisseCount} décaissé${decaisseCount > 1 ? 's' : ''}`}
         />
         <StatCard
           title="Taux de décaissement"
@@ -749,20 +580,6 @@ export default function ProjectDisbursementTab() {
           iconVariant={resteADecaisser < 0 ? 'destructive' : 'info'}
           description="Budget total − Décaissé"
         />
-        <StatCard
-          title="En Attente"
-          value={enAttente}
-          icon={<Clock className="h-4 w-4 text-warning" aria-hidden="true" />}
-          iconVariant="warning"
-          description="Demandés ou approuvés"
-        />
-        <StatCard
-          title="En Retard"
-          value={enRetard}
-          icon={<AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />}
-          iconVariant="destructive"
-          description="Non décaissés à échéance"
-        />
       </div>
 
       {/* Évolution Chart */}
@@ -771,17 +588,13 @@ export default function ProjectDisbursementTab() {
           <CardTitle className="text-base">Évolution mensuelle des décaissements (M)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div role="img" aria-label="Graphique évolution mensuelle des décaissements prévus et reçus" className="h-[240px]">
+          <div role="img" aria-label="Graphique évolution mensuelle des décaissements" className="h-[240px]">
             {chartData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Aucun décaissement enregistré</div>
             ) : (
               <ResponsiveContainer width="99%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="gradPrevu" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={CHART_COLORS.prevu} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={CHART_COLORS.prevu} stopOpacity={0} />
-                    </linearGradient>
                     <linearGradient id="gradRecu" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor={CHART_COLORS.recu} stopOpacity={0.3} />
                       <stop offset="95%" stopColor={CHART_COLORS.recu} stopOpacity={0} />
@@ -792,8 +605,7 @@ export default function ProjectDisbursementTab() {
                   <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}M`, undefined]} />
                   <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span className="text-[11px] text-muted-foreground">{v}</span>} />
-                  <Area type="monotone" dataKey="prevu" name="Prévu" stroke={CHART_COLORS.prevu} fill="url(#gradPrevu)" strokeWidth={2} dot={false} />
-                  <Area type="monotone" dataKey="recu"  name="Décaissé"  stroke={CHART_COLORS.recu}  fill="url(#gradRecu)"  strokeWidth={2} dot={false} />
+                  <Area type="monotone" dataKey="montant" name="Décaissé" stroke={CHART_COLORS.recu} fill="url(#gradRecu)" strokeWidth={2} dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -801,12 +613,12 @@ export default function ProjectDisbursementTab() {
         </CardContent>
       </Card>
 
-      {/* DataTable */}
+      {/* Registre */}
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Registre des décaissements ({records.length})</CardTitle>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" aria-label="Exporter CSV" onClick={() => exportCsv(records)}>
+            <Button variant="outline" size="sm" aria-label="Exporter CSV" onClick={() => exportCsv(records, budgetLignes)}>
               <Download className="h-4 w-4 mr-1.5" aria-hidden="true" />
               CSV
             </Button>
@@ -824,6 +636,7 @@ export default function ProjectDisbursementTab() {
         <CardContent className="p-0">
           <DisbursementRegistryTable
             records={records}
+            budgetLigneOptions={budgetLignes}
             onView={openView}
             onEdit={openEdit}
             onDelete={openDeleteModal}
@@ -840,11 +653,9 @@ export default function ProjectDisbursementTab() {
         record={selectedRecord}
         mode={slideOverMode}
         onSave={handleSave}
-        fundingSourceOptions={fundingSources}
-        contractOptions={contracts}
         budgetLigneOptions={budgetLignes}
-        allDisbursements={records}
-        canSetDecaisse={canSetDecaisse}
+        suggestedReference={suggestedReference}
+        projectDevise={projectDevise}
         isSaving={createMutation.isPending || updateMutation.isPending}
         error={saveError}
       />

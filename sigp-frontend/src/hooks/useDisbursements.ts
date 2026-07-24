@@ -2,52 +2,41 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
 import { invokeEdgeFunction } from '@/lib/supabaseFunctions'
 import { dashboardKeys } from '@/hooks/useDashboard'
-import type { Disbursement, DisbursementStatut } from '@/types/disbursement'
+import type { Disbursement } from '@/types/disbursement'
 
 interface DisbursementRow {
   id: string
-  funding_source_id: string | null
   budget_ligne_id: string | null
-  contract_id: string | null
   budget_version_id: string | null
-  statut: string
   montant: number
   devise: string
   date_prevue: string | null
   date_reelle: string | null
   reference: string | null
   description: string | null
-  funding_source: { nom: string } | { nom: string }[] | null
 }
 
 // disbursements n'a pas de project_id direct — filtré via funding_source_id/
-// budget_ligne_id/contract_id (voir useDisbursements ci-dessous). budget_
-// ligne_id/contract_id ne sont volontairement PAS embarqués via la syntaxe
-// PostgREST `budget_ligne:budget_lignes(...)` : contrairement à
-// funding_source_id (FK réelle, déjà fonctionnelle), rien ne garantit une FK
-// réelle sur ces deux colonnes (cf. incident useTasks.ts — un embed sur une
-// relation non déclarée renvoie 400). Les libellés sont résolus côté
-// composant à partir des listes déjà chargées (useContracts/useBudgetVersion).
+// budget_ligne_id/contract_id (voir useDisbursements ci-dessous). Ces deux
+// derniers filtres sont conservés uniquement pour ne pas faire disparaître
+// les décaissements créés AVANT la simplification (rattachés seulement à une
+// Source de financement ou un Contrat, champs désormais retirés du
+// formulaire) — tout nouveau décaissement est systématiquement rattaché à
+// une Ligne Budgétaire (obligatoire).
 const DISBURSEMENT_SELECT = `
-  id, funding_source_id, budget_ligne_id, contract_id, budget_version_id,
-  statut, montant, devise, date_prevue, date_reelle,
-  reference, description, funding_source:funding_sources(nom)
+  id, budget_ligne_id, budget_version_id,
+  montant, devise, date_prevue, date_reelle,
+  reference, description
 `
 
 function adaptDisbursement(row: DisbursementRow): Disbursement {
-  const fs = Array.isArray(row.funding_source) ? row.funding_source[0] : row.funding_source
   return {
     id: row.id,
-    fundingSourceId: row.funding_source_id,
-    fundingSourceNom: fs?.nom ?? null,
     budgetLigneId: row.budget_ligne_id,
-    contractId: row.contract_id,
     budgetVersionId: row.budget_version_id,
-    statut: row.statut as DisbursementStatut,
     montant: Number(row.montant ?? 0),
     devise: row.devise,
-    datePrevue: row.date_prevue,
-    dateReelle: row.date_reelle,
+    date: row.date_reelle ?? row.date_prevue,
     reference: row.reference,
     description: row.description,
   }
@@ -77,7 +66,7 @@ export function useDisbursements(
         .select(DISBURSEMENT_SELECT)
         .or(clauses.join(','))
         .is('deleted_at', null)
-        .order('date_prevue', { ascending: false })
+        .order('reference', { ascending: true })
         .limit(200)
       if (error) throw error
       return (data as unknown as DisbursementRow[]).map(adaptDisbursement)
@@ -97,18 +86,15 @@ export function useCreateDisbursement(
   return useMutation({
     mutationFn: async (dto: Partial<Disbursement>) => {
       const { data } = await invokeEdgeFunction<{ data: DisbursementRow }>('disbursements-create', {
-        fundingSourceId: dto.fundingSourceId || undefined,
         // disbursements-create attend `budgetLineId` (anglais) et non
         // `budgetLigneId` — sans ce mapping, le rattachement à la ligne
         // budgétaire échouait silencieusement à chaque création (aucune
         // erreur renvoyée, budget_ligne_id restait null en base).
         budgetLineId: dto.budgetLigneId || undefined,
-        contractId: dto.contractId || undefined,
         budgetVersionId: dto.budgetVersionId || undefined,
-        statut: dto.statut,
         montant: dto.montant,
-        datePrevue: dto.datePrevue || undefined,
-        dateReelle: dto.dateReelle || undefined,
+        devise: dto.devise || undefined,
+        date: dto.date || undefined,
         reference: dto.reference || undefined,
         description: dto.description || undefined,
       })
@@ -126,21 +112,15 @@ export function useUpdateDisbursement(
 ) {
   const qc = useQueryClient()
   return useMutation({
-    // disbursements-update n'accepte QUE contractId parmi les champs de
-    // rattachement (budgetLigneId/fundingSourceId/budgetVersionId sont fixés
-    // à la création — cf. commentaire sur Disbursement plus haut). Les
-    // envoyer quand même serait sans effet côté serveur et laisserait croire
-    // à tort qu'ils sont modifiables ; on ne transmet donc que ce qui compte
-    // réellement, en cohérence avec les sélecteurs désactivés en mode édition.
+    // disbursements-update n'accepte plus que montant/date/description —
+    // budgetLigneId/budgetVersionId sont fixés à la création (cf. Disbursement
+    // plus haut) et reference est générée une fois pour toutes, jamais
+    // renvoyée ici.
     mutationFn: async ({ id, ...dto }: Partial<Disbursement> & { id: string }) => {
       const { data } = await invokeEdgeFunction<{ data: DisbursementRow }>('disbursements-update', {
         id,
-        contractId: dto.contractId !== undefined ? (dto.contractId || null) : undefined,
-        statut: dto.statut,
         montant: dto.montant,
-        datePrevue: dto.datePrevue || undefined,
-        dateReelle: dto.dateReelle || undefined,
-        reference: dto.reference || undefined,
+        date: dto.date || undefined,
         description: dto.description || undefined,
       })
       return adaptDisbursement(data)
