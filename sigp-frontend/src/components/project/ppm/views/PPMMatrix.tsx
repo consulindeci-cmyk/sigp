@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { PPMLigne } from '@/types/ppm';
 import { PPMMatrixRow } from './PPMMatrixRow';
+import { PPMDetailModal } from './PPMDetailModal';
 import { useWBS } from '@/hooks/useWBS';
 import { useProject } from '@/hooks/useProjects';
 import { formatMoney } from '@/utils/format';
@@ -57,10 +58,18 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
     [filteredLignes],
   );
 
-  // ── Détails / Étapes (lecture seule pour l'instant — pas de vue dédiée,
-  // renvoie sur la même fiche que Modifier) ──────────────────────────────────
+  // ── Détails (fiche de consultation en lecture seule, PPMDetailModal) ───────
+  const [detailLigneId, setDetailLigneId] = useState<string | null>(null);
+  const detailLigne = detailLigneId ? lignes.find(l => l.id === detailLigneId) ?? null : null;
+
   function handleViewDetails(id: string) {
-    onRowClick?.(id);
+    setDetailLigneId(id);
+  }
+
+  function handleEditFromDetail() {
+    const id = detailLigneId;
+    setDetailLigneId(null);
+    if (id) onRowClick?.(id);
   }
 
   // ── Suppression avec confirmation ──────────────────────────────────────────
@@ -219,6 +228,16 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* ── Fiche détails (lecture seule) ─────────────────────────────────── */}
+      <PPMDetailModal
+        open={!!detailLigneId}
+        onClose={() => setDetailLigneId(null)}
+        ligne={detailLigne}
+        projectId={projectId}
+        canManage={canManage}
+        onEdit={handleEditFromDetail}
+      />
     </div>
   )
 }
