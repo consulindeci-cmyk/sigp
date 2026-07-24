@@ -12,12 +12,14 @@ function bucketFor(score: number): Omit<MatrixCell, 'v'> {
   return { cls: 'bg-destructive', textCls: 'text-destructive-foreground', countCls: 'bg-destructive-foreground/20 text-destructive-foreground' };
 }
 
-// Rows: P=1 (top) → P=3 (bottom) | Columns: I=1 (left) → I=3 (right)
-const MATRIX: MatrixCell[][] = [1, 2, 3].map(p =>
+// Rows: P=3 (top) → P=1 (bottom) | Columns: I=1 (left) → I=3 (right) — la
+// probabilité augmente vers le haut, conforme à l'étiquette "Probabilité ↑"
+// et au standard du secteur (case la plus critique en haut à droite).
+const P_VALUES = [3, 2, 1];
+const MATRIX: MatrixCell[][] = P_VALUES.map(p =>
   [1, 2, 3].map(i => ({ v: p * i, ...bucketFor(p * i) })),
 );
 
-const P_LABELS = ['P=1', 'P=2', 'P=3'];
 const I_LABELS = ['I=1', 'I=2', 'I=3'];
 
 interface RiskMatrixCardProps {
@@ -45,34 +47,38 @@ export function RiskMatrixCard({ risks = [] }: RiskMatrixCardProps) {
 
         {/* Grille + labels colonnes */}
         <div className="flex flex-col gap-2">
-          {MATRIX.map((row, rowIdx) => (
-            <div key={rowIdx} className="flex items-center gap-2">
-              <span className="w-8 text-[10px] text-muted-foreground font-semibold text-right shrink-0">
-                {P_LABELS[rowIdx]}
-              </span>
-              {row.map((cell, colIdx) => {
-                const count = getRiskCount(rowIdx + 1, colIdx + 1);
-                return (
-                  <div
-                    key={colIdx}
-                    className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-lg flex items-center justify-center text-xl font-bold shadow-sm transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cell.cls} ${cell.textCls}`}
-                    role="cell"
-                    aria-label={`P=${rowIdx + 1} × I=${colIdx + 1} = ${cell.v}${count > 0 ? ` (${count} risque${count > 1 ? 's' : ''})` : ''}`}
-                    tabIndex={0}
-                  >
-                    {cell.v}
-                    {count > 0 && (
-                      <span
-                        className={`absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center leading-none ${cell.countCls}`}
-                      >
-                        {count}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+          {MATRIX.map((row, rowIdx) => {
+            const p = P_VALUES[rowIdx];
+            return (
+              <div key={rowIdx} className="flex items-center gap-2">
+                <span className="w-8 text-[10px] text-muted-foreground font-semibold text-right shrink-0">
+                  {`P=${p}`}
+                </span>
+                {row.map((cell, colIdx) => {
+                  const i = colIdx + 1;
+                  const count = getRiskCount(p, i);
+                  return (
+                    <div
+                      key={colIdx}
+                      className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-lg flex items-center justify-center text-xl font-bold shadow-sm transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cell.cls} ${cell.textCls}`}
+                      role="cell"
+                      aria-label={`P=${p} × I=${i} = ${cell.v}${count > 0 ? ` (${count} risque${count > 1 ? 's' : ''})` : ''}`}
+                      tabIndex={0}
+                    >
+                      {cell.v}
+                      {count > 0 && (
+                        <span
+                          className={`absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center leading-none ${cell.countCls}`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
 
           {/* Labels colonnes */}
           <div className="flex items-center gap-2 mt-1">

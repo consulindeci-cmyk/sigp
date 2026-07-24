@@ -3,10 +3,9 @@ import { useParams } from 'react-router-dom';
 import { useRisks, useCreateRisk, useUpdateRisk, useDeleteRisk } from '@/hooks/useRisks';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
-import type { ColumnDef } from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import {
-  AlertTriangle, AlertCircle, Download, FileSpreadsheet, Plus, Eye, Pencil, Trash2,
+  AlertTriangle, AlertCircle, Download, FileSpreadsheet, Plus,
   Shield, ShieldAlert, CheckCircle2,
 } from 'lucide-react';
 import {
@@ -14,16 +13,16 @@ import {
 } from 'recharts';
 
 import type { Risque, NiveauRisque } from '@/types';
-import { RISK_CATEGORIES } from '@/mocks/risksMocks';
+import { RISK_CATEGORIES } from '@/constants/risks';
 import { StatCard } from '@/components/ui/data-display/StatCard';
 import { Badge } from '@/components/ui/data-display/Badge';
-import { DataTable } from '@/components/ui/data-table/DataTable';
 import { Button } from '@/components/ui/forms/Button';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle,
   ModalDescription, ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
 import { RiskMatrixCard } from './risks/RiskMatrixCard';
+import { RiskRegistryTable } from './risks/RiskRegistryTable';
 import { RiskSlideOver } from './risks/RiskSlideOver';
 import type { RiskSlideOverSavePayload } from './risks/RiskSlideOver';
 
@@ -232,98 +231,6 @@ export default function TabRisks() {
     });
   }, [toDelete, deleteMutation]);
 
-  // ── Columns ─────────────────────────────────────────────────────────────
-
-  const columns = useMemo((): ColumnDef<Risque, unknown>[] => [
-    {
-      accessorKey: 'code_risque',
-      header: 'N°',
-      size: 100,
-      meta: { isSticky: true } as Record<string, unknown>,
-    },
-    {
-      accessorKey: 'categorie',
-      header: 'Catégorie',
-      size: 140,
-    },
-    {
-      accessorKey: 'description',
-      header: 'Description du Risque',
-      size: 280,
-      cell: ({ row }) => (
-        <span className="block max-w-[260px] truncate" title={row.original.description}>
-          {row.original.description}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'probabilite',
-      header: 'P',
-      size: 50,
-      meta: { align: 'center' } as Record<string, unknown>,
-    },
-    {
-      accessorKey: 'impact',
-      header: 'I',
-      size: 50,
-      meta: { align: 'center' } as Record<string, unknown>,
-    },
-    {
-      accessorKey: 'niveau_criticite',
-      header: 'Criticité',
-      size: 160,
-      cell: ({ row }) => {
-        const { criticite, niveau_criticite } = row.original;
-        return (
-          <div className="flex items-center gap-2">
-            <span className="font-bold font-mono text-sm w-4 text-center shrink-0">{criticite}</span>
-            <Badge variant={niveauVariant(niveau_criticite)}>
-              {NIVEAU_LABEL[niveau_criticite]}
-            </Badge>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: 'strategie',
-      header: "Stratégie d'atténuation",
-      size: 260,
-      cell: ({ row }) => {
-        const s = row.original.strategie;
-        return s
-          ? <span className="block max-w-[240px] truncate" title={s}>{s}</span>
-          : <span className="text-muted-foreground">—</span>;
-      },
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      size: 110,
-      meta: { align: 'center', isStickyRight: true } as Record<string, unknown>,
-      cell: ({ row }) => (
-        <div className="flex items-center justify-center gap-0.5">
-          <Button variant="ghost" size="icon" className="h-7 w-7"
-            onClick={() => handleView(row.original)} title="Consulter">
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          {canManage && (
-            <Button variant="ghost" size="icon" className="h-7 w-7"
-              onClick={() => handleEdit(row.original)} title="Modifier">
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {canDelete && (
-            <Button variant="ghost" size="icon"
-              className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => openDeleteModal(row.original)} title="Supprimer">
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ], [handleView, handleEdit, openDeleteModal, canManage, canDelete]);
-
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -461,16 +368,16 @@ export default function TabRisks() {
           </div>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={risques}
+        <RiskRegistryTable
+          risques={risques}
           isLoading={isLoading}
-          searchKey="description"
-          searchPlaceholder="Rechercher un risque…"
-          filters={[
-            { id: 'niveau_criticite', title: 'Niveau',    options: NIVEAU_FILTER_OPTIONS    },
-            { id: 'categorie',        title: 'Catégorie', options: CATEGORIE_FILTER_OPTIONS },
-          ]}
+          canManage={canManage}
+          canDelete={canDelete}
+          niveauFilterOptions={NIVEAU_FILTER_OPTIONS}
+          categorieFilterOptions={CATEGORIE_FILTER_OPTIONS}
+          onView={handleView}
+          onEdit={handleEdit}
+          onDelete={openDeleteModal}
         />
       </div>
 

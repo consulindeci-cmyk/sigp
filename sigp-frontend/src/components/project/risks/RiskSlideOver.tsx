@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { Risque, NiveauRisque, RisqueCategorie } from '@/types';
-import { RISK_CATEGORIES } from '@/mocks/risksMocks';
+import { RISK_CATEGORIES } from '@/constants/risks';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalClose,
 } from '@/components/ui/overlays/Modal';
