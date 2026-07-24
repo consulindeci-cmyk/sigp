@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
-import type { PPMLigne, CategorieAchat, MethodePassation, StatutLignePPM } from '@/types/ppm';
+import type { PPMLigne, CategorieAchat, MethodePassation } from '@/types/ppm';
 import { formatCurrency } from '@/lib/utils';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalFooter, ModalClose,
 } from '@/components/ui/overlays/Modal';
-import { Badge } from '@/components/ui/data-display/Badge';
 import { Button } from '@/components/ui/forms/Button';
 import { Pencil } from 'lucide-react';
 import { useWBS } from '@/hooks/useWBS';
@@ -29,38 +28,6 @@ const METHODE_LABELS: Record<MethodePassation, string> = {
   SFQC: 'Sélection Fondée sur Qualité et Coût (SFQC)',
   ED:   'Recrutement direct',
   DP:   'Demande de prix',
-};
-
-const STATUT_LABELS: Record<StatutLignePPM, string> = {
-  PLANIFIE:           'Planifié',
-  DAO_EN_PREPARATION: 'DAO en préparation',
-  DAO_LANCE:          'DAO lancé',
-  OFFRES_RECUES:      'Offres reçues',
-  EVALUATION:         'Évaluation',
-  ANO_EN_ATTENTE:     'ANO en attente',
-  ANO_OBTENU:         'ANO obtenu',
-  ATTRIBUE:           'Attribué',
-  CONTRAT_SIGNE:      'Contrat signé',
-  EXECUTION:          'En exécution',
-  CLOTURE:            'Clôturé',
-  ANNULE:             'Annulé',
-};
-
-type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'warning' | 'success' | 'info' | 'outline';
-
-const STATUT_VARIANT: Record<StatutLignePPM, BadgeVariant> = {
-  PLANIFIE:           'outline',
-  DAO_EN_PREPARATION: 'secondary',
-  DAO_LANCE:          'warning',
-  OFFRES_RECUES:      'warning',
-  EVALUATION:         'warning',
-  ANO_EN_ATTENTE:     'info',
-  ANO_OBTENU:         'info',
-  ATTRIBUE:           'info',
-  CONTRAT_SIGNE:      'success',
-  EXECUTION:          'success',
-  CLOTURE:            'secondary',
-  ANNULE:             'destructive',
 };
 
 function formatDateFR(dateStr?: string): string {
@@ -122,12 +89,7 @@ export function PPMDetailModal({ open, onClose, ligne, projectId, canManage, onE
     <Modal open={open} onOpenChange={o => { if (!o) onClose(); }}>
       <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
         <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <ModalTitle className="font-mono">{ligne.reference_marche}</ModalTitle>
-            <Badge variant={STATUT_VARIANT[ligne.statut]} className="text-[11px]">
-              {STATUT_LABELS[ligne.statut]}
-            </Badge>
-          </div>
+          <ModalTitle className="font-mono">{ligne.reference_marche}</ModalTitle>
           <p className="text-sm text-muted-foreground">{ligne.description}</p>
         </ModalHeader>
 

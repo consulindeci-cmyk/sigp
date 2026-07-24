@@ -6,10 +6,9 @@ import {
   type PieLabelRenderProps,
 } from 'recharts';
 import { TrendingUp } from 'lucide-react';
-import { Badge } from '@/components/ui/data-display/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/data-display/Card';
 import { formatMoney } from '@/utils/format';
-import type { PPMLigne, PPMVersion, CategorieAchat, MethodePassation, StatutLignePPM } from '@/types';
+import type { PPMLigne, PPMVersion, CategorieAchat, MethodePassation } from '@/types';
 
 // ─── Labels & couleurs ───────────────────────────────────────────────────────
 
@@ -34,21 +33,6 @@ const METHODE_COLORS: Record<MethodePassation, string> = {
   SFQC: 'hsl(var(--warning))',
   ED:   'hsl(var(--info))',
   DP:   'hsl(var(--destructive))',
-};
-
-const STATUT_LABELS: Record<StatutLignePPM, string> = {
-  PLANIFIE:           'Planifié',
-  DAO_EN_PREPARATION: 'DAO en prépa.',
-  DAO_LANCE:          'DAO lancé',
-  OFFRES_RECUES:      'Offres reçues',
-  EVALUATION:         'Évaluation',
-  ANO_EN_ATTENTE:     'ANO en attente',
-  ANO_OBTENU:         'ANO obtenu',
-  ATTRIBUE:           'Attribué',
-  CONTRAT_SIGNE:      'Contrat signé',
-  EXECUTION:          'En exécution',
-  CLOTURE:            'Clôturé',
-  ANNULE:             'Annulé',
 };
 
 // ─── Custom PieChart label ────────────────────────────────────────────────────
@@ -114,21 +98,6 @@ export function AnalyticsTab({ lignes, activeVersion, devise = 'XOF' }: Analytic
     }));
   }, [lignes]);
 
-  // Marchés par statut (BarChart)
-  const statutData = useMemo(() => {
-    const map: Partial<Record<StatutLignePPM, { count: number; montant: number }>> = {};
-    lignes.forEach(l => {
-      if (!map[l.statut]) map[l.statut] = { count: 0, montant: 0 };
-      map[l.statut]!.count  += 1;
-      map[l.statut]!.montant += l.montant_estime_base;
-    });
-    return Object.entries(map).map(([k, v]) => ({
-      name:    STATUT_LABELS[k as StatutLignePPM] ?? k,
-      marchés: v?.count   ?? 0,
-      montant: v?.montant ?? 0,
-    }));
-  }, [lignes]);
-
   // Revue PRIOR vs POST (BarChart)
   const revueData = useMemo(() => [
     {
@@ -144,10 +113,9 @@ export function AnalyticsTab({ lignes, activeVersion, devise = 'XOF' }: Analytic
   ], [lignes]);
 
   // KPIs
-  const totalBase   = lignes.reduce((s, l) => s + l.montant_estime_base, 0);
-  const priorCount  = lignes.filter(l => l.type_revue === 'PRIOR').length;
-  const postCount   = lignes.filter(l => l.type_revue === 'POST').length;
-  const activeCount = lignes.filter(l => !['CLOTURE', 'ANNULE'].includes(l.statut)).length;
+  const totalBase  = lignes.reduce((s, l) => s + l.montant_estime_base, 0);
+  const priorCount = lignes.filter(l => l.type_revue === 'PRIOR').length;
+  const postCount  = lignes.filter(l => l.type_revue === 'POST').length;
 
   if (lignes.length === 0) {
     return (
@@ -171,9 +139,9 @@ export function AnalyticsTab({ lignes, activeVersion, devise = 'XOF' }: Analytic
             color: 'text-primary',
           },
           {
-            label: 'Marchés actifs',
-            value: String(activeCount),
-            sub:   `sur ${lignes.length} marché${lignes.length > 1 ? 's' : ''}`,
+            label: 'Nombre de marchés',
+            value: String(lignes.length),
+            sub:   `Version ${activeVersion?.numero_version ?? '—'}`,
             color: 'text-success',
           },
           {
@@ -274,60 +242,6 @@ export function AnalyticsTab({ lignes, activeVersion, devise = 'XOF' }: Analytic
           </CardContent>
         </Card>
       </div>
-
-      {/* ── BarChart: marchés par statut ───────────────────────────────────── */}
-      {statutData.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Répartition des marchés par statut</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={statutData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  allowDecimals={false}
-                  axisLine={false}
-                  tickLine={false}
-                  width={24}
-                />
-                <Tooltip
-                  formatter={(value) => [value, 'Marchés']}
-                  contentStyle={{ fontSize: '11px', borderRadius: '6px' }}
-                />
-                <Bar
-                  dataKey="marchés"
-                  fill="hsl(var(--primary))"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={48}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-
-            {/* Summary badges */}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {statutData.map(s => (
-                <div
-                  key={s.name}
-                  className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-1.5"
-                >
-                  <span className="text-[11px] text-muted-foreground">{s.name}</span>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                    {s.marchés}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* ── BarChart: PRIOR vs POST ─────────────────────────────────────────── */}
       <Card>

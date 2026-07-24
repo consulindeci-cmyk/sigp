@@ -6,16 +6,12 @@ interface CreatePpmMarcheBody {
   code: string;
   intitule: string;
   type: 'FOURNITURES' | 'TRAVAUX' | 'SERVICES' | 'CONSULTANTS';
-  statut?: string;
   montantEstime?: number;
-  montantSigne?: number;
   dateLancementPrevu?: string;
   dateSoumissionPrevu?: string;
   dateAttribution?: string;
   dateSignature?: string;
   dateFinPrevue?: string;
-  dateFinEffective?: string;
-  titulaire?: string;
   notes?: string;
   // Rattachement WBS/Budget + méthode/revue — colonnes dédiées (cf. migration
   // 20260828100000), remplacent le JSON __PPM_META__ auparavant planqué dans
@@ -105,16 +101,17 @@ Deno.serve(async (req: Request) => {
         code: body.code.trim(),
         intitule: body.intitule.trim(),
         type: body.type,
-        statut: body.statut ?? 'EN_PREPARATION',
+        // Suivi d'exécution (statut/titulaire/montant signé/date fin
+        // effective) n'est plus géré par ce module — statut reste écrit avec
+        // une valeur fixe (colonne sans défaut DB réel) mais n'est plus
+        // pilotable depuis la création du marché.
+        statut: 'EN_PREPARATION',
         montant_estime: body.montantEstime ?? null,
-        montant_signe: body.montantSigne ?? null,
         date_lancement_prevu: body.dateLancementPrevu ?? null,
         date_soumission_prevu: body.dateSoumissionPrevu ?? null,
         date_attribution: body.dateAttribution ?? null,
         date_signature: body.dateSignature ?? null,
         date_fin_prevue: body.dateFinPrevue ?? null,
-        date_fin_effective: body.dateFinEffective ?? null,
-        titulaire: body.titulaire ?? null,
         notes: body.notes ?? null,
         wbs_id: body.wbsId ?? null,
         budget_ligne_id: body.budgetLigneId ?? null,

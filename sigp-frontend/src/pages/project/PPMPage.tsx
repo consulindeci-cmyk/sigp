@@ -96,19 +96,18 @@ export default function PPMPage() {
     const HEADERS = [
       'Référence', 'WBS', 'Description', 'Catégorie', 'Méthode', 'Revue',
       'Montant Estimé', 'Devise',
-      'Date Avis / Publication', 'Date Signature Contrat', 'Statut',
+      'Date Avis / Publication', 'Date Signature Contrat',
     ];
     const rows = lignes.map(l => [
       l.reference_marche, l.wbs_id, l.description, l.categorie, l.methode, l.type_revue,
       l.montant_estime_base, projectDevise,
       l.dates_cles.lancement_dao_prevue ?? '',
       l.dates_cles.signature_contrat_prevue ?? '',
-      l.statut,
     ]);
     const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows]);
     ws['!cols'] = [
       { wch: 18 }, { wch: 12 }, { wch: 35 }, { wch: 22 }, { wch: 8 }, { wch: 7 },
-      { wch: 16 }, { wch: 6 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
+      { wch: 16 }, { wch: 6 }, { wch: 16 }, { wch: 16 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `PPM ${activeVersion?.numero_version ?? 'Export'}`);

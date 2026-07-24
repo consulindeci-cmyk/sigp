@@ -162,6 +162,11 @@ export default function TabRisks() {
       .sort((a, b) => b.count - a.count);
   }, [risques]);
 
+  // N° suggéré pour un nouveau risque — affiché en lecture seule dans le
+  // formulaire (même principe que la Référence du marché côté PPM), calculé
+  // ici pour rester synchronisé avec la liste réellement chargée.
+  const suggestedCode = useMemo(() => nextCode(risques), [risques]);
+
   // ── Handlers ────────────────────────────────────────────────────────────
 
   const handleOpenNew = useCallback(() => {
@@ -475,6 +480,7 @@ export default function TabRisks() {
         onOpenChange={open => { setSlideOpen(open); if (!open) setSlideError(null); }}
         mode={slideMode}
         risque={selected}
+        suggestedCode={suggestedCode}
         onSave={handleSave}
         onDelete={handleDeleteFromSlideOver}
         canDelete={canDelete}

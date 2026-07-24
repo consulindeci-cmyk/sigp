@@ -31,7 +31,6 @@ const COLUMN_COUNT = 9; // Référence + 7 colonnes métier + Actions
 
 export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick, onDeleteLigne }: PPMMatrixProps) {
   const [filterCategorie, setFilterCategorie] = useState('');
-  const [filterStatut,    setFilterStatut]    = useState('');
 
   const { data: wbsData } = useWBS(projectId);
   const wbsById = useMemo(() => {
@@ -47,11 +46,10 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
 
   const filteredLignes = useMemo(() => {
     return lignes.filter(l => {
-      if (filterCategorie && !l.categorie.startsWith(filterCategorie))                  return false;
-      if (filterStatut    && !matchStatutGroupe(l.statut, filterStatut))                return false;
+      if (filterCategorie && !l.categorie.startsWith(filterCategorie)) return false;
       return true;
     });
-  }, [lignes, filterCategorie, filterStatut]);
+  }, [lignes, filterCategorie]);
 
   const totalEstime = useMemo(
     () => filteredLignes.reduce((s, l) => s + l.montant_estime_base, 0),
@@ -118,24 +116,10 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
           <option value="SERVICES_NON_CONSULTANTS">Services autres</option>
         </select>
 
-        <select
-          className={SELECT_CLASS}
-          value={filterStatut}
-          onChange={e => setFilterStatut(e.target.value)}
-          aria-label="Filtrer par statut"
-        >
-          <option value="">Tous les Statuts</option>
-          <option value="PLANIFICATION">Planification</option>
-          <option value="PASSATION">En cours de passation</option>
-          <option value="SIGNE">Contrat Signé / Exécution</option>
-          <option value="CLOTURE">Clôturé</option>
-          <option value="ANNULE">Annulé</option>
-        </select>
-
-        {(filterCategorie || filterStatut) && (
+        {filterCategorie && (
           <button
             className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-            onClick={() => { setFilterCategorie(''); setFilterStatut(''); }}
+            onClick={() => setFilterCategorie('')}
           >
             Réinitialiser
           </button>
@@ -240,25 +224,4 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
       />
     </div>
   )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers filtre statut
-// ─────────────────────────────────────────────────────────────────────────────
-
-function matchStatutGroupe(statut: string, groupe: string): boolean {
-  switch (groupe) {
-    case 'PLANIFICATION':
-      return statut === 'PLANIFIE' || statut === 'DAO_EN_PREPARATION';
-    case 'PASSATION':
-      return ['DAO_LANCE', 'OFFRES_RECUES', 'EVALUATION', 'ANO_EN_ATTENTE', 'ANO_OBTENU', 'ATTRIBUE'].includes(statut);
-    case 'SIGNE':
-      return statut === 'CONTRAT_SIGNE' || statut === 'EXECUTION';
-    case 'CLOTURE':
-      return statut === 'CLOTURE';
-    case 'ANNULE':
-      return statut === 'ANNULE';
-    default:
-      return true;
-  }
 }

@@ -52,12 +52,6 @@ export interface PPMLigne {
   // devise/taux de change propres à la ligne).
   montant_estime_base: number;
 
-  // Attribution — renseignés une fois le marché attribué/signé (colonnes
-  // réelles ppm_marches.montant_signe/titulaire/date_fin_effective)
-  montant_signe?: number;
-  titulaire?: string;
-  date_fin_effective?: string;
-
   // Chronogramme — seules 2 dates ont un usage réel dans le formulaire
   // (Section 3 "Calendrier & Jalons"), chacune adossée à une colonne réelle
   // de longue date (date_lancement_prevu, date_signature).
@@ -66,7 +60,6 @@ export interface PPMLigne {
     signature_contrat_prevue: string; // Date Signature du Contrat
   };
 
-  statut: StatutLignePPM;
   version_hash: string;
 }
 

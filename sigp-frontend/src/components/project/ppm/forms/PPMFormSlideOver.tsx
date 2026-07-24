@@ -116,17 +116,6 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
 
   const [montantDevise, setMontantDevise] = useState(0);
 
-  // ── Champs conservés en arrière-plan (retirés de l'UI par la restructuration
-  // précédente mais PAS supprimés en base) : le Statut (workflow de
-  // passation) et les informations d'Attribution (titulaire/montant signé/
-  // date fin effective) correspondent à de vraies colonnes ppm_marches — les
-  // masquer sans les préserver aurait silencieusement écrasé ces valeurs à la
-  // moindre modification d'un marché existant. Initialisées depuis `ligne`
-  // comme avant, simplement plus rendues à l'écran.
-  const [statut,           setStatut]           = useState<PPMLigne['statut']>('PLANIFIE');
-  const [montantSigne,     setMontantSigne]     = useState('');
-  const [titulaire,        setTitulaire]        = useState('');
-  const [dateFinEffective, setDateFinEffective] = useState('');
   const [dates, setDates] = useState({
     lancement_dao_prevue:         '',
     signature_contrat_prevue:     '',
@@ -144,11 +133,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
       setCategorie(ligne.categorie);
       setMethode(ligne.methode);
       setTypeRevue(ligne.type_revue);
-      setStatut(ligne.statut);
       setMontantDevise(ligne.montant_estime_base);
-      setMontantSigne(ligne.montant_signe != null ? String(ligne.montant_signe) : '');
-      setTitulaire(ligne.titulaire ?? '');
-      setDateFinEffective(ligne.date_fin_effective ?? '');
       setDates({
         lancement_dao_prevue:     ligne.dates_cles.lancement_dao_prevue     || '',
         signature_contrat_prevue: ligne.dates_cles.signature_contrat_prevue || '',
@@ -161,11 +146,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
       setCategorie('TRAVAUX');
       setMethode('AOI');
       setTypeRevue('POST');
-      setStatut('PLANIFIE');
       setMontantDevise(0);
-      setMontantSigne('');
-      setTitulaire('');
-      setDateFinEffective('');
       setDates({ lancement_dao_prevue: '', signature_contrat_prevue: '' });
     }
     setError(null);
@@ -219,11 +200,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
         categorie,
         methode,
         type_revue:           typeRevue,
-        statut,
         montant_estime_base:  montantDevise,
-        montant_signe:        montantSigne ? Number(montantSigne) : undefined,
-        titulaire:            titulaire.trim() || undefined,
-        date_fin_effective:   dateFinEffective || undefined,
         dates_cles:           dates,
       });
       onClose();

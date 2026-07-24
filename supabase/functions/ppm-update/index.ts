@@ -6,16 +6,12 @@ interface UpdatePpmMarcheBody {
   code?: string;
   intitule?: string;
   type?: 'FOURNITURES' | 'TRAVAUX' | 'SERVICES' | 'CONSULTANTS';
-  statut?: string;
   montantEstime?: number;
-  montantSigne?: number;
   dateLancementPrevu?: string;
   dateSoumissionPrevu?: string;
   dateAttribution?: string;
   dateSignature?: string;
   dateFinPrevue?: string;
-  dateFinEffective?: string;
-  titulaire?: string;
   notes?: string;
   // Rattachement WBS/Budget + méthode/revue — colonnes dédiées (cf. migration
   // 20260828100000). wbsId/budgetLigneId acceptent explicitement `null` pour
@@ -99,16 +95,12 @@ Deno.serve(async (req: Request) => {
     if (body.code !== undefined) updatePayload.code = body.code.trim();
     if (body.intitule !== undefined) updatePayload.intitule = body.intitule.trim();
     if (body.type !== undefined) updatePayload.type = body.type;
-    if (body.statut !== undefined) updatePayload.statut = body.statut;
     if (body.montantEstime !== undefined) updatePayload.montant_estime = body.montantEstime;
-    if (body.montantSigne !== undefined) updatePayload.montant_signe = body.montantSigne;
     if (body.dateLancementPrevu !== undefined) updatePayload.date_lancement_prevu = body.dateLancementPrevu;
     if (body.dateSoumissionPrevu !== undefined) updatePayload.date_soumission_prevu = body.dateSoumissionPrevu;
     if (body.dateAttribution !== undefined) updatePayload.date_attribution = body.dateAttribution;
     if (body.dateSignature !== undefined) updatePayload.date_signature = body.dateSignature;
     if (body.dateFinPrevue !== undefined) updatePayload.date_fin_prevue = body.dateFinPrevue;
-    if (body.dateFinEffective !== undefined) updatePayload.date_fin_effective = body.dateFinEffective;
-    if (body.titulaire !== undefined) updatePayload.titulaire = body.titulaire;
     if (body.notes !== undefined) updatePayload.notes = body.notes;
     if (body.wbsId !== undefined) updatePayload.wbs_id = body.wbsId;
     if (body.budgetLigneId !== undefined) updatePayload.budget_ligne_id = body.budgetLigneId;

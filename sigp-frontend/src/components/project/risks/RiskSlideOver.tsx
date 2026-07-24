@@ -6,6 +6,7 @@ import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalClose,
 } from '@/components/ui/overlays/Modal';
 import { Button } from '@/components/ui/forms/Button';
+import { Input } from '@/components/ui/forms/Input';
 import { Textarea } from '@/components/ui/forms/Textarea';
 import { Select } from '@/components/ui/forms/Select';
 import { Badge } from '@/components/ui/data-display/Badge';
@@ -33,6 +34,10 @@ export interface RiskSlideOverProps {
   onOpenChange: (v: boolean) => void;
   mode: 'new' | 'edit' | 'view';
   risque?: Risque | null;
+  /** N° suggéré pour un nouveau risque (RSQ-XXX) — affiché en lecture seule
+   * tant qu'aucun `risque` n'existe encore ; ignoré en édition/consultation
+   * où `risque.code_risque` fait foi. */
+  suggestedCode?: string;
   onSave: (payload: RiskSlideOverSavePayload, id?: string) => void;
   onDelete?: (id: string) => void;
   canDelete?: boolean;
@@ -86,7 +91,7 @@ const INIT: FormState = {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function RiskSlideOver({
-  open, onOpenChange, mode, risque, onSave, onDelete,
+  open, onOpenChange, mode, risque, suggestedCode, onSave, onDelete,
   canDelete = true, isSaving = false, isDeleting = false, error = null,
 }: RiskSlideOverProps) {
   const [form, setForm] = useState<FormState>(INIT);
@@ -164,13 +169,26 @@ export function RiskSlideOver({
         {/* ── Header ── */}
         <ModalHeader className="px-6 py-4 border-b border-border shrink-0 space-y-1">
           <ModalTitle>{title}</ModalTitle>
-          {risque && (
-            <p className="text-xs text-muted-foreground">{risque.code_risque}</p>
-          )}
         </ModalHeader>
 
         {/* ── Body ── */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+          {/* N° — généré automatiquement, jamais modifiable (même principe
+              que la Référence du marché côté PPM) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground" htmlFor="risk-code">
+              N°
+            </label>
+            <Input
+              id="risk-code"
+              type="text"
+              value={risque?.code_risque ?? suggestedCode ?? ''}
+              disabled
+              readOnly
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Généré automatiquement, non modifiable.</p>
+          </div>
+
           {/* Aperçu criticité */}
           {!readOnly && (
             <div className="rounded-lg border border-border bg-muted/30 p-4 flex items-center justify-between gap-4">

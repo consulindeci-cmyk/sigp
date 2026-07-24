@@ -6,7 +6,6 @@ import type {
   PPMLigne,
   CategorieAchat,
   MethodePassation,
-  StatutLignePPM,
   TypeRevue,
 } from '@/types';
 
@@ -14,6 +13,13 @@ import type {
 // wbs_id/budget_ligne_id/methode/type_revue sont désormais de vraies
 // colonnes (cf. migration 20260828100000) — fin du JSON __PPM_META__ planqué
 // dans `notes` (parseNotes/serializeNotes supprimés).
+
+// statut est conservé ici en lecture seule : usePPMVersions.ts en dérive le
+// statut d'ensemble de la version PPM (deriveVersionStatut). Il n'est en
+// revanche plus exposé sur PPMLigne ni modifiable via le formulaire — le
+// suivi d'exécution par marché (statut/titulaire/montant signé/date fin
+// effective) n'est plus géré par ce module (cf. suppression de ces champs
+// du formulaire et des Edge Functions ppm-create/ppm-update).
 
 export interface PpmMarcheDto {
   id:                  string;
@@ -23,11 +29,8 @@ export interface PpmMarcheDto {
   type:                string; // PpmTypeMarche: FOURNITURES | TRAVAUX | SERVICES | CONSULTANTS
   statut:              string; // PpmMarcheStatus: EN_PREPARATION | LANCE | SOUMISSION | EVALUATION | ATTRIBUTION | SIGNE | RESILIE | CLOTURE
   montantEstime:       number | null;
-  montantSigne:        number | null;
   dateLancementPrevu:  string | null;
   dateSignature:       string | null;
-  dateFinEffective:    string | null;
-  titulaire:           string | null;
   wbsId:               string | null;
   budgetLigneId:       string | null;
   methode:             string | null;
@@ -44,11 +47,8 @@ interface PpmMarcheRow {
   type: string;
   statut: string;
   montant_estime: number | null;
-  montant_signe: number | null;
   date_lancement_prevu: string | null;
   date_signature: string | null;
-  date_fin_effective: string | null;
-  titulaire: string | null;
   wbs_id: string | null;
   budget_ligne_id: string | null;
   methode: string | null;
@@ -58,8 +58,8 @@ interface PpmMarcheRow {
 }
 
 const PPM_MARCHE_SELECT = `
-  id, project_id, code, intitule, type, statut, montant_estime, montant_signe,
-  date_lancement_prevu, date_signature, date_fin_effective, titulaire,
+  id, project_id, code, intitule, type, statut, montant_estime,
+  date_lancement_prevu, date_signature,
   wbs_id, budget_ligne_id, methode, type_revue, created_at, updated_at
 `;
 
@@ -72,11 +72,8 @@ function rowToDto(row: PpmMarcheRow): PpmMarcheDto {
     type: row.type,
     statut: row.statut,
     montantEstime: row.montant_estime,
-    montantSigne: row.montant_signe,
     dateLancementPrevu: row.date_lancement_prevu,
     dateSignature: row.date_signature,
-    dateFinEffective: row.date_fin_effective,
-    titulaire: row.titulaire,
     wbsId: row.wbs_id,
     budgetLigneId: row.budget_ligne_id,
     methode: row.methode,
@@ -106,36 +103,6 @@ function categorieToType(cat: CategorieAchat): string {
   }
 }
 
-function beStatutToFe(s: string): StatutLignePPM {
-  switch (s) {
-    case 'EN_PREPARATION': return 'PLANIFIE';
-    case 'LANCE':          return 'DAO_LANCE';
-    case 'SOUMISSION':     return 'OFFRES_RECUES';
-    case 'EVALUATION':     return 'EVALUATION';
-    case 'ATTRIBUTION':    return 'ATTRIBUE';
-    case 'SIGNE':          return 'CONTRAT_SIGNE';
-    case 'RESILIE':        return 'ANNULE';
-    case 'CLOTURE':        return 'CLOTURE';
-    default:               return 'PLANIFIE';
-  }
-}
-
-function feStatutToBe(s: StatutLignePPM): string {
-  switch (s) {
-    case 'DAO_LANCE':                    return 'LANCE';
-    case 'OFFRES_RECUES':                return 'SOUMISSION';
-    case 'EVALUATION':
-    case 'ANO_EN_ATTENTE':
-    case 'ANO_OBTENU':                   return 'EVALUATION';
-    case 'ATTRIBUE':                     return 'ATTRIBUTION';
-    case 'CONTRAT_SIGNE':
-    case 'EXECUTION':                    return 'SIGNE';
-    case 'CLOTURE':                      return 'CLOTURE';
-    case 'ANNULE':                       return 'RESILIE';
-    default:                             return 'EN_PREPARATION';
-  }
-}
-
 function d(val: string | Date | null | undefined): string {
   if (!val) return '';
   const s = typeof val === 'string' ? val : (val as Date).toISOString();
@@ -156,14 +123,10 @@ function adaptMarche(dto: PpmMarcheDto, versionId: string): PPMLigne {
     methode:             (dto.methode as MethodePassation) || 'AOI',
     type_revue:          (dto.typeRevue as TypeRevue) || 'POST',
     montant_estime_base: dto.montantEstime ?? 0,
-    montant_signe:       dto.montantSigne ?? undefined,
-    titulaire:           dto.titulaire ?? undefined,
-    date_fin_effective:  d(dto.dateFinEffective) || undefined,
     dates_cles: {
       lancement_dao_prevue:     d(dto.dateLancementPrevu),
       signature_contrat_prevue: d(dto.dateSignature),
     },
-    statut:       beStatutToFe(dto.statut),
     version_hash: dto.updatedAt,
   };
 }
@@ -176,11 +139,7 @@ function ligneToCreatePayload(projectId: string, l: LigneInput) {
     code:              l.reference_marche,
     intitule:          l.description,
     type:              categorieToType(l.categorie),
-    statut:            l.statut ? feStatutToBe(l.statut as StatutLignePPM) : undefined,
     montantEstime:     l.montant_estime_base || undefined,
-    montantSigne:      l.montant_signe || undefined,
-    titulaire:         l.titulaire || undefined,
-    dateFinEffective:  l.date_fin_effective || undefined,
     dateLancementPrevu: l.dates_cles.lancement_dao_prevue     || undefined,
     dateSignature:      l.dates_cles.signature_contrat_prevue || undefined,
     wbsId:             l.wbs_id || undefined,
@@ -196,11 +155,7 @@ function ligneToUpdatePayload(l: Partial<PPMLigne>, existing: PPMLigne) {
     code:              merged.reference_marche,
     intitule:          merged.description,
     type:              categorieToType(merged.categorie),
-    statut:            merged.statut ? feStatutToBe(merged.statut as StatutLignePPM) : undefined,
     montantEstime:     merged.montant_estime_base || undefined,
-    montantSigne:      merged.montant_signe || undefined,
-    titulaire:         merged.titulaire || undefined,
-    dateFinEffective:  merged.date_fin_effective || undefined,
     dateLancementPrevu: merged.dates_cles.lancement_dao_prevue     || undefined,
     dateSignature:      merged.dates_cles.signature_contrat_prevue || undefined,
     wbsId:             merged.wbs_id || undefined,
