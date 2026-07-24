@@ -142,17 +142,11 @@ export function PPMDetailModal({ open, onClose, ligne, projectId, canManage, onE
 
           <SectionCard title="Données Financières">
             <Field label={`Montant Estimé (${devise})`} value={formatCurrency(ligne.montant_estime_base, devise)} />
-            <Field
-              label={`Montant Signé (${devise})`}
-              value={ligne.montant_signe != null ? formatCurrency(ligne.montant_signe, devise) : 'Non attribué'}
-            />
           </SectionCard>
 
           <SectionCard title="Suivi d'Exécution & Attribution">
-            <Field label="Titulaire / Attributaire" value={ligne.titulaire || 'Non attribué'} />
             <Field label="Date Avis / Publication" value={formatDateFR(ligne.dates_cles.lancement_dao_prevue)} />
             <Field label="Date Signature Contrat" value={formatDateFR(ligne.dates_cles.signature_contrat_prevue)} />
-            <Field label="Date Fin Effective" value={formatDateFR(ligne.date_fin_effective)} />
           </SectionCard>
         </div>
 
