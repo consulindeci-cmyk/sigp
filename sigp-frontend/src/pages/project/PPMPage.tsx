@@ -213,7 +213,14 @@ export default function PPMPage() {
           <>
             {activeTab === 'MATRIX' && (
               <div className="h-full min-h-[500px] bg-card border border-border rounded-lg overflow-hidden">
-                <PPMMatrix lignes={lignes} onRowClick={handleOpenForm} />
+                <PPMMatrix
+                  lignes={lignes}
+                  projectId={resolvedProjectId}
+                  canManage={canManage}
+                  canDelete={canDelete}
+                  onRowClick={handleOpenForm}
+                  onDeleteLigne={deleteLigne}
+                />
               </div>
             )}
 

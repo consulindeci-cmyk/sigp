@@ -1,30 +1,43 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { PPMLigne } from '@/types/ppm';
 import { PPMMatrixRow } from './PPMMatrixRow';
-import { Filter } from 'lucide-react';
+import { useWBS } from '@/hooks/useWBS';
+import { formatMoney } from '@/utils/format';
+import {
+  Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
+  ModalFooter, ModalClose,
+} from '@/components/ui/overlays/Modal';
+import { Button } from '@/components/ui/forms/Button';
+import { Filter, Trash2, AlertTriangle } from 'lucide-react';
 
 interface PPMMatrixProps {
-  lignes: PPMLigne[];
+  lignes:      PPMLigne[];
+  projectId:   string;
+  canManage:   boolean;
+  canDelete:   boolean;
   onRowClick?: (id: string) => void;
+  onDeleteLigne?: (id: string) => Promise<void>;
 }
 
 const SELECT_CLASS = 'h-8 px-3 text-xs border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring'
 
-const TH_GROUP = 'px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground border-r border-primary/30 text-center'
-const TH_GROUP_LAST = 'px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground text-center'
-const TH_GROUP_STICKY = `${TH_GROUP} bg-primary`
+const TH = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-r border-b border-border bg-muted/30 whitespace-nowrap'
+const TH_RIGHT = `${TH} text-right`
+const TH_LAST = 'px-3 py-2.5 text-xs font-semibold text-muted-foreground border-b border-border bg-muted/30 whitespace-nowrap text-right'
 
-const TH_COL = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-r border-b border-border bg-muted/30 whitespace-nowrap'
-const TH_COL_STICKY = `${TH_COL} w-[200px]`
-const TH_COL_RIGHT = `${TH_COL} text-right`
-const TH_COL_CENTER = `${TH_COL} text-center`
-const TH_COL_SECTION = `${TH_COL} border-r-2`
-const TH_COL_LAST = 'px-4 py-2.5 text-xs font-semibold text-muted-foreground border-b border-border bg-muted/30 whitespace-nowrap'
+const COLUMN_COUNT = 8; // 7 colonnes métier + Actions
 
-export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
+export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick, onDeleteLigne }: PPMMatrixProps) {
   const [filterBailleur,  setFilterBailleur]  = useState('');
   const [filterCategorie, setFilterCategorie] = useState('');
   const [filterStatut,    setFilterStatut]    = useState('');
+
+  const { data: wbsData } = useWBS(projectId);
+  const wbsById = useMemo(() => {
+    const map = new Map<string, { code: string; titre: string }>();
+    for (const n of wbsData?.data ?? []) map.set(n.id, { code: n.code_wbs, titre: n.titre });
+    return map;
+  }, [wbsData]);
 
   const filteredLignes = useMemo(() => {
     return lignes.filter(l => {
@@ -34,6 +47,41 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
       return true;
     });
   }, [lignes, filterBailleur, filterCategorie, filterStatut]);
+
+  const totalEstime = useMemo(
+    () => filteredLignes.reduce((s, l) => s + l.montant_estime_base, 0),
+    [filteredLignes],
+  );
+
+  // ── Détails / Étapes (lecture seule pour l'instant — pas de vue dédiée,
+  // renvoie sur la même fiche que Modifier) ──────────────────────────────────
+  function handleViewDetails(id: string) {
+    onRowClick?.(id);
+  }
+
+  // ── Suppression avec confirmation ──────────────────────────────────────────
+  const [ligneToDelete, setLigneToDelete] = useState<string | null>(null);
+  const [deleteError,   setDeleteError]   = useState<string | null>(null);
+  const [isDeleting,    setIsDeleting]    = useState(false);
+
+  function openDeleteConfirm(id: string) {
+    setLigneToDelete(id);
+    setDeleteError(null);
+  }
+
+  async function confirmDelete() {
+    if (!ligneToDelete || !onDeleteLigne) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDeleteLigne(ligneToDelete);
+      setLigneToDelete(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Une erreur est survenue. Veuillez réessayer.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -63,9 +111,9 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
         >
           <option value="">Toutes les Catégories</option>
           <option value="TRAVAUX">Travaux</option>
-          <option value="BIENS">Biens</option>
-          <option value="SERVICES_CONSULTANTS">Services Consultants</option>
-          <option value="SERVICES_NON_CONSULTANTS">Services Non Consultants</option>
+          <option value="BIENS">Fournitures</option>
+          <option value="SERVICES_CONSULTANTS">Services de consultants</option>
+          <option value="SERVICES_NON_CONSULTANTS">Services autres</option>
         </select>
 
         <select
@@ -100,42 +148,24 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
 
       {/* ── TABLE SCROLLABLE ─────────────────────────────────────────────── */}
       <div className="flex-1 overflow-x-auto scrollbar-thin bg-background">
-        <table className="w-full text-sm text-left border-collapse table-auto" style={{ minWidth: "1800px" }}>
+        <table className="w-full text-sm text-left border-collapse table-auto min-w-[1100px]">
           <thead className="sticky top-0 z-20">
-
-            {/* Header Groupes */}
             <tr className="bg-primary text-primary-foreground">
-              <th className={TH_GROUP_STICKY}>Identifiant</th>
-              <th colSpan={4} className={TH_GROUP}>Configuration du Marché</th>
-              <th colSpan={2} className={TH_GROUP}>Données Financières</th>
-              <th colSpan={7} className={TH_GROUP}>Chronogramme Prévisionnel (Gantt)</th>
-              <th className={TH_GROUP_LAST}>Suivi</th>
-            </tr>
-
-            {/* Header Colonnes */}
-            <tr>
-              <th className={TH_COL_STICKY}>Référence &amp; WBS</th>
-              <th className={TH_COL}>Description</th>
-              <th className={TH_COL}>Catégorie</th>
-              <th className={TH_COL}>Méthode</th>
-              <th className={TH_COL_SECTION}>Revue</th>
-              <th className={TH_COL_RIGHT}>Montant (Devise)</th>
-              <th className={`${TH_COL_RIGHT} border-r-2 text-foreground`}>Montant (Base)</th>
-              <th className={TH_COL_CENTER}>Prép. DAO</th>
-              <th className={TH_COL_CENTER}>Lanc. DAO</th>
-              <th className={TH_COL_CENTER}>Offres</th>
-              <th className={TH_COL_CENTER}>Évaluation</th>
-              <th className={TH_COL_CENTER}>ANO</th>
-              <th className={TH_COL_CENTER}>Attribution</th>
-              <th className={`${TH_COL_CENTER} border-r-2 text-foreground`}>Signature</th>
-              <th className={TH_COL_LAST}>Statut Actuel</th>
+              <th className={`${TH} bg-primary/80 text-primary-foreground`}>Description du Marché</th>
+              <th className={`${TH} bg-primary/80 text-primary-foreground`}>Type</th>
+              <th className={`${TH} bg-primary/80 text-primary-foreground`}>Méthode d'acquisition</th>
+              <th className={`${TH} bg-primary/80 text-primary-foreground`}>Revue bailleur</th>
+              <th className={`${TH} bg-primary/80 text-primary-foreground text-center`}>Date Avis / Publication</th>
+              <th className={`${TH} bg-primary/80 text-primary-foreground text-center`}>Date Signature Contrat</th>
+              <th className={`${TH_RIGHT} bg-primary/80 text-primary-foreground`}>Montant Estimé</th>
+              <th className={`${TH_LAST} bg-primary/80 text-primary-foreground`}>Actions</th>
             </tr>
           </thead>
 
           <tbody>
             {filteredLignes.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-10 py-10 text-center text-muted-foreground text-sm">
+                <td colSpan={COLUMN_COUNT} className="px-10 py-10 text-center text-muted-foreground text-sm">
                   {lignes.length === 0
                     ? 'Aucune ligne de marché pour cette version.'
                     : 'Aucune ligne ne correspond aux filtres sélectionnés.'}
@@ -146,13 +176,54 @@ export function PPMMatrix({ lignes, onRowClick }: PPMMatrixProps) {
                 <PPMMatrixRow
                   key={ligne.id}
                   ligne={ligne}
-                  onClick={() => onRowClick && onRowClick(ligne.id)}
+                  wbsLabel={wbsById.get(ligne.wbs_id)}
+                  canManage={canManage}
+                  canDelete={canDelete}
+                  onEdit={id => onRowClick?.(id)}
+                  onViewDetails={handleViewDetails}
+                  onDelete={openDeleteConfirm}
                 />
               ))
             )}
           </tbody>
+
+          {filteredLignes.length > 0 && (
+            <tfoot>
+              <tr className="bg-primary/5 border-t-2 border-primary/30 font-bold">
+                <td colSpan={6} className="px-4 py-3 text-xs font-bold text-foreground uppercase tracking-wide bg-muted/30 border-r border-border">
+                  TOTAL GÉNÉRAL ({filteredLignes.length} marché{filteredLignes.length > 1 ? 's' : ''})
+                </td>
+                <td className="px-4 py-3 text-right font-mono text-sm text-foreground">
+                  {formatMoney(totalEstime)}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
+
+      {/* ── Confirmation de suppression ───────────────────────────────────── */}
+      <Modal open={!!ligneToDelete} onOpenChange={open => { if (!open) { setLigneToDelete(null); setDeleteError(null); } }}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Supprimer la ligne de marché</ModalTitle>
+            <ModalDescription>Cette action est irréversible. La ligne sera définitivement supprimée.</ModalDescription>
+          </ModalHeader>
+          {deleteError && (
+            <p className="px-6 pb-2 text-sm text-destructive flex items-center gap-1.5" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {deleteError}
+            </p>
+          )}
+          <ModalFooter>
+            <ModalClose asChild><Button variant="outline">Annuler</Button></ModalClose>
+            <Button variant="destructive" leftIcon={<Trash2 className="h-4 w-4" />} onClick={confirmDelete} disabled={isDeleting}>
+              {isDeleting ? 'Suppression...' : 'Supprimer'}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

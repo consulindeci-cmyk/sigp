@@ -43,8 +43,10 @@ export interface PPMLigne {
   taux_change_estime: number;
   montant_estime_base: number;
   
-  // Gestion des Lots et Contrats (Relation 1..N)
-  est_lot_unique: boolean;
+  // Gestion des Lots et Contrats (Relation 1..N) — est_lot_unique n'a plus de
+  // champ dédié dans le formulaire (aucune gestion de lots réellement
+  // implémentée) ; optionnel, retombe sur `true` côté usePPM.ts si absent.
+  est_lot_unique?: boolean;
   lots_enfants_ids?: string[];
   contrats_generes_ids?: string[]; // 1 Ligne PPM -> N Contrats
 
