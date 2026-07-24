@@ -13,12 +13,11 @@ interface RisqueRow {
   code: string | null
   description: string
   categorie: string | null
-  probabilite: string  // FAIBLE | POSSIBLE | PROBABLE | QUASI_CERTAIN
-  impact: string        // FAIBLE | MODERE | IMPORTANT | CRITIQUE
+  probabilite: string  // '1' | '2' | '3' (ou ancienne valeur textuelle héritée)
+  impact: string        // '1' | '2' | '3' (ou ancienne valeur textuelle héritée)
   niveau_criticite: string
   statut: string        // OUVERT | EN_COURS | RESOLU | ACCEPTE | FERME
   strategie: string | null
-  plan_action: string | null
   responsable_id: string | null
   date_detection: string | null
   date_echeance: string | null
@@ -28,34 +27,27 @@ interface RisqueRow {
 
 const RISQUE_SELECT = `
   id, project_id, wbs_id, code, description, categorie, probabilite, impact,
-  niveau_criticite, statut, strategie, plan_action, responsable_id, date_detection,
+  niveau_criticite, statut, strategie, responsable_id, date_detection,
   date_echeance, created_at, updated_at
 `
 
-// ── Enum mappings (inchangés — indépendants de la source de données) ─────────
+// ── Scoring 3×3 (P/I 1-3, score 1-9) — cf. _shared/risk-scoring.ts côté
+// serveur (même logique, dupliquée car aucun module partagé front/back).
+// Les anciennes valeurs textuelles (FAIBLE/POSSIBLE/PROBABLE/QUASI_CERTAIN,
+// FAIBLE/MODERE/IMPORTANT/CRITIQUE) restent acceptées en lecture pour les
+// risques jamais réenregistrés depuis l'unification du scoring.
 
-function probToNumber(p: string): 1 | 2 | 3 {
-  if (p === 'FAIBLE' || p === 'POSSIBLE') return 1
-  if (p === 'PROBABLE') return 2
-  return 3
+const LEGACY_PROB_SCORE: Record<string, 1 | 2 | 3> = {
+  FAIBLE: 1, POSSIBLE: 1, PROBABLE: 2, QUASI_CERTAIN: 3,
+}
+const LEGACY_IMPACT_SCORE: Record<string, 1 | 2 | 3> = {
+  FAIBLE: 1, MODERE: 2, IMPORTANT: 2, CRITIQUE: 3,
 }
 
-function numberToProb(n: number | undefined): string {
-  if (!n || n <= 1) return 'FAIBLE'
-  if (n === 2) return 'PROBABLE'
-  return 'QUASI_CERTAIN'
-}
-
-function impactToNumber(i: string): 1 | 2 | 3 {
-  if (i === 'FAIBLE') return 1
-  if (i === 'MODERE' || i === 'IMPORTANT') return 2
-  return 3
-}
-
-function numberToImpact(n: number | undefined): string {
-  if (!n || n <= 1) return 'FAIBLE'
-  if (n === 2) return 'MODERE'
-  return 'CRITIQUE'
+function parseScore(v: string, legacy: Record<string, 1 | 2 | 3>): 1 | 2 | 3 {
+  const n = Number(v)
+  if (n === 1 || n === 2 || n === 3) return n
+  return legacy[v] ?? 1
 }
 
 function beStatutToFe(s: string): StatutRisque {
@@ -72,10 +64,12 @@ function feStatutToBe(s: string): string {
   return 'OUVERT'
 }
 
+// ELEVE/MOYEN sont les nouveaux paliers ; CRITIQUE/MODERE restent mappés sur
+// l'équivalent le plus proche pour les risques jamais réenregistrés depuis
+// l'unification du scoring.
 function niveauToFe(n: string): NiveauRisque {
-  if (n === 'CRITIQUE') return 'CRITIQUE'
-  if (n === 'ELEVE') return 'ELEVE'
-  if (n === 'MODERE') return 'MODERE'
+  if (n === 'ELEVE' || n === 'CRITIQUE') return 'ELEVE'
+  if (n === 'MOYEN' || n === 'MODERE') return 'MOYEN'
   return 'FAIBLE'
 }
 
@@ -93,8 +87,8 @@ function isoDate(val: string | null | undefined): string | undefined {
 // déclarée garantie).
 
 function adaptRisque(row: RisqueRow, responsableNames: Map<string, string>): Risque {
-  const prob = probToNumber(row.probabilite)
-  const imp = impactToNumber(row.impact)
+  const prob = parseScore(row.probabilite, LEGACY_PROB_SCORE)
+  const imp = parseScore(row.impact, LEGACY_IMPACT_SCORE)
   return {
     id:                   row.id,
     projet_id:            row.project_id,
@@ -109,7 +103,6 @@ function adaptRisque(row: RisqueRow, responsableNames: Map<string, string>): Ris
     responsable:          row.responsable_id ? responsableNames.get(row.responsable_id) ?? '' : '',
     responsableId:        row.responsable_id,
     strategie:            row.strategie,
-    plan_mitigation:      row.plan_action ?? undefined,
     date_identification:  isoDate(row.date_detection) ?? isoDate(row.created_at) ?? '',
     date_revision_prevue: isoDate(row.date_echeance),
     createdAt:            row.created_at,
@@ -117,20 +110,19 @@ function adaptRisque(row: RisqueRow, responsableNames: Map<string, string>): Ris
   }
 }
 
-// ── Payload builders (inchangés) ──────────────────────────────────────────────
+// ── Payload builders ───────────────────────────────────────────────────────
 
 function buildCreatePayload(projectId: string, dto: Partial<Risque>) {
   return {
     projectId,
     description:   dto.description ?? '',
-    probabilite:   numberToProb(dto.probabilite),
-    impact:        numberToImpact(dto.impact),
+    probabilite:   String(dto.probabilite ?? 1),
+    impact:        String(dto.impact ?? 1),
     code:          dto.code_risque        || undefined,
     categorie:     dto.categorie          || undefined,
     statut:        dto.statut             ? feStatutToBe(dto.statut) : undefined,
     responsableId: dto.responsableId      || undefined,
     strategie:     dto.strategie          || undefined,
-    planAction:    dto.plan_mitigation    || undefined,
     dateDetection: dto.date_identification    || undefined,
     dateEcheance:  dto.date_revision_prevue   || undefined,
   }
@@ -139,14 +131,13 @@ function buildCreatePayload(projectId: string, dto: Partial<Risque>) {
 function buildUpdatePayload(dto: Partial<Risque>) {
   const p: Record<string, unknown> = {}
   if (dto.description          !== undefined) p.description   = dto.description
-  if (dto.probabilite          !== undefined) p.probabilite   = numberToProb(dto.probabilite)
-  if (dto.impact               !== undefined) p.impact        = numberToImpact(dto.impact)
+  if (dto.probabilite          !== undefined) p.probabilite   = String(dto.probabilite)
+  if (dto.impact               !== undefined) p.impact        = String(dto.impact)
   if (dto.categorie            !== undefined) p.categorie     = dto.categorie
   if (dto.code_risque          !== undefined) p.code          = dto.code_risque
   if (dto.statut               !== undefined) p.statut        = feStatutToBe(dto.statut)
   if (dto.responsableId        !== undefined) p.responsableId = dto.responsableId || null
   if (dto.strategie            !== undefined) p.strategie     = dto.strategie
-  if (dto.plan_mitigation      !== undefined) p.planAction    = dto.plan_mitigation
   if (dto.date_identification  !== undefined) p.dateDetection = dto.date_identification
   if (dto.date_revision_prevue !== undefined) p.dateEcheance  = dto.date_revision_prevue
   return p

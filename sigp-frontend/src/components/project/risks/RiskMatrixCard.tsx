@@ -2,24 +2,20 @@ import type { Risque } from '@/types';
 
 type MatrixCell = { v: number; cls: string; textCls: string; countCls: string };
 
+// Matrice 3×3 stricte : score 1-4 FAIBLE (vert), 5-6 MOYEN (orange), 7-9
+// ÉLEVÉ (rouge) — mêmes seuils que TabRisks.tsx/RiskSlideOver.tsx (bandes
+// dérivées d'une fonction plutôt que codées cellule par cellule, pour ne
+// jamais diverger de ces seuils).
+function bucketFor(score: number): Omit<MatrixCell, 'v'> {
+  if (score <= 4) return { cls: 'bg-success', textCls: 'text-success-foreground', countCls: 'bg-success-foreground/20 text-success-foreground' };
+  if (score <= 6) return { cls: 'bg-warning', textCls: 'text-warning-foreground', countCls: 'bg-warning-foreground/20 text-warning-foreground' };
+  return { cls: 'bg-destructive', textCls: 'text-destructive-foreground', countCls: 'bg-destructive-foreground/20 text-destructive-foreground' };
+}
+
 // Rows: P=1 (top) → P=3 (bottom) | Columns: I=1 (left) → I=3 (right)
-const MATRIX: MatrixCell[][] = [
-  [
-    { v: 1, cls: 'bg-success',     textCls: 'text-success-foreground',     countCls: 'bg-success-foreground/20 text-success-foreground' },
-    { v: 2, cls: 'bg-success',     textCls: 'text-success-foreground',     countCls: 'bg-success-foreground/20 text-success-foreground' },
-    { v: 3, cls: 'bg-warning',     textCls: 'text-warning-foreground',     countCls: 'bg-warning-foreground/20 text-warning-foreground' },
-  ],
-  [
-    { v: 2, cls: 'bg-success',     textCls: 'text-success-foreground',     countCls: 'bg-success-foreground/20 text-success-foreground' },
-    { v: 4, cls: 'bg-warning',     textCls: 'text-warning-foreground',     countCls: 'bg-warning-foreground/20 text-warning-foreground' },
-    { v: 6, cls: 'bg-destructive', textCls: 'text-destructive-foreground', countCls: 'bg-destructive-foreground/20 text-destructive-foreground' },
-  ],
-  [
-    { v: 3, cls: 'bg-warning',     textCls: 'text-warning-foreground',     countCls: 'bg-warning-foreground/20 text-warning-foreground' },
-    { v: 6, cls: 'bg-destructive', textCls: 'text-destructive-foreground', countCls: 'bg-destructive-foreground/20 text-destructive-foreground' },
-    { v: 9, cls: 'bg-destructive', textCls: 'text-destructive-foreground', countCls: 'bg-destructive-foreground/20 text-destructive-foreground' },
-  ],
-];
+const MATRIX: MatrixCell[][] = [1, 2, 3].map(p =>
+  [1, 2, 3].map(i => ({ v: p * i, ...bucketFor(p * i) })),
+);
 
 const P_LABELS = ['P=1', 'P=2', 'P=3'];
 const I_LABELS = ['I=1', 'I=2', 'I=3'];
@@ -100,15 +96,15 @@ export function RiskMatrixCard({ risks = [] }: RiskMatrixCardProps) {
       <div className="mt-5 flex items-center gap-4 flex-wrap justify-center">
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="w-3 h-3 rounded-sm bg-success inline-block" />
-          Faible (1–2)
+          Faible (1–4)
         </span>
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="w-3 h-3 rounded-sm bg-warning inline-block" />
-          Modéré (3–4)
+          Moyen (5–6)
         </span>
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="w-3 h-3 rounded-sm bg-destructive inline-block" />
-          Élevé / Critique (6–9)
+          Élevé (7–9)
         </span>
       </div>
 

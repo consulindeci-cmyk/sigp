@@ -8,11 +8,15 @@ interface CreateRisqueBody {
   code?: string;
   description: string;
   categorie?: string;
-  probabilite: 'FAIBLE' | 'POSSIBLE' | 'PROBABLE' | 'QUASI_CERTAIN';
-  impact: 'FAIBLE' | 'MODERE' | 'IMPORTANT' | 'CRITIQUE';
+  // Matrice 3×3 stricte : '1' | '2' | '3' (cf. _shared/risk-scoring.ts).
+  probabilite: string;
+  impact: string;
   statut?: string;
+  // Stratégie d'atténuation — champ texte libre (remplace l'ancienne liste
+  // fermée Éviter/Réduire/Transférer/Accepter). plan_action n'est plus
+  // alimenté depuis ce champ, cf. suppression de plan_mitigation côté
+  // frontend.
   strategie?: string;
-  planAction?: string;
   responsableId?: string;
   dateDetection?: string;
   dateEcheance?: string;
@@ -68,7 +72,6 @@ Deno.serve(async (req: Request) => {
         niveau_criticite: niveauCriticite,
         statut: body.statut ?? 'OUVERT',
         strategie: body.strategie ?? null,
-        plan_action: body.planAction ?? null,
         responsable_id: body.responsableId ?? null,
         date_detection: body.dateDetection ?? null,
         date_echeance: body.dateEcheance ?? null,
@@ -98,8 +101,9 @@ Deno.serve(async (req: Request) => {
     // effet secondaire non bloquant). Notifie le responsable du risque et le
     // manager du projet — pas encore une diffusion large à tout le rôle
     // COORDINATEUR/CHARGE_PROGRAMME de l'organisation (hors périmètre de ce
-    // premier câblage).
-    if (niveauCriticite === 'CRITIQUE') {
+    // premier câblage). ELEVE est le palier haut du modèle 3×3 (remplace
+    // l'ancien CRITIQUE).
+    if (niveauCriticite === 'ELEVE') {
       try {
         const notifyUserIds = new Set<string>();
         if (body.responsableId) notifyUserIds.add(body.responsableId);
@@ -113,8 +117,8 @@ Deno.serve(async (req: Request) => {
             user_id: uid,
             project_id: body.projectId,
             type: 'RISQUE_CRITIQUE',
-            titre: 'Nouveau risque critique',
-            message: `Un risque critique a été enregistré : ${risque.description}`,
+            titre: 'Nouveau risque élevé',
+            message: `Un risque élevé a été enregistré : ${risque.description}`,
             lue: false,
             data: { risqueId: risque.id },
             created_by: profile.id,

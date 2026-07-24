@@ -163,7 +163,10 @@ Deno.serve(async (req: Request) => {
 
     const risquesList = risquesRows.data ?? [];
     const nombreRisques = risquesList.length;
-    const risquesCritiques = risquesList.filter((r) => r.niveau_criticite === 'CRITIQUE').length;
+    // ELEVE = palier haut du modèle 3×3 (remplace CRITIQUE) — l'ancienne
+    // valeur reste acceptée pour les risques jamais réenregistrés depuis
+    // l'unification du scoring (cf. _shared/risk-scoring.ts).
+    const risquesCritiques = risquesList.filter((r) => r.niveau_criticite === 'ELEVE' || r.niveau_criticite === 'CRITIQUE').length;
 
     let displayStatus = 'En préparation';
     if (project.statut === 'EN_COURS') {
@@ -201,11 +204,17 @@ Deno.serve(async (req: Request) => {
     };
 
     // ── getTopRisks ─────────────────────────────────────────────────────────
-    const PROB_ORDER: Record<string, number> = { QUASI_CERTAIN: 3, PROBABLE: 2, POSSIBLE: 1, FAIBLE: 0 };
+    // Probabilité 3×3 : '1'/'2'/'3' — anciennes valeurs textuelles encore
+    // acceptées pour les risques jamais réenregistrés depuis l'unification
+    // du scoring (cf. _shared/risk-scoring.ts).
+    const PROB_ORDER: Record<string, number> = {
+      '3': 3, '2': 2, '1': 1,
+      QUASI_CERTAIN: 3, PROBABLE: 2, POSSIBLE: 1, FAIBLE: 0,
+    };
     const topRisks = [...risquesList]
       .sort((a, b) => {
-        const aCrit = a.niveau_criticite === 'CRITIQUE' ? 1 : 0;
-        const bCrit = b.niveau_criticite === 'CRITIQUE' ? 1 : 0;
+        const aCrit = a.niveau_criticite === 'ELEVE' || a.niveau_criticite === 'CRITIQUE' ? 1 : 0;
+        const bCrit = b.niveau_criticite === 'ELEVE' || b.niveau_criticite === 'CRITIQUE' ? 1 : 0;
         if (bCrit !== aCrit) return bCrit - aCrit;
         return (PROB_ORDER[b.probabilite] ?? 0) - (PROB_ORDER[a.probabilite] ?? 0);
       })

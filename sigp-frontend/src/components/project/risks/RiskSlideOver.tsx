@@ -24,7 +24,6 @@ interface FormState {
   statut: StatutRisque;
   date_identification: string;
   date_revision_prevue: string;
-  plan_mitigation: string;
 }
 
 export interface RiskSlideOverSavePayload {
@@ -38,7 +37,6 @@ export interface RiskSlideOverSavePayload {
   statut: StatutRisque;
   date_identification: string;
   date_revision_prevue?: string;
-  plan_mitigation?: string;
 }
 
 export interface RiskSlideOverProps {
@@ -57,49 +55,37 @@ export interface RiskSlideOverProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Matrice 3×3 stricte : score 1-4 FAIBLE, 5-6 MOYEN, 7-9 ÉLEVÉ.
 function getNiveauCriticite(criticite: number): NiveauRisque {
-  if (criticite >= 9) return 'CRITIQUE';
-  if (criticite >= 6) return 'ELEVE';
-  if (criticite >= 3) return 'MODERE';
-  return 'FAIBLE';
+  if (criticite <= 4) return 'FAIBLE';
+  if (criticite <= 6) return 'MOYEN';
+  return 'ELEVE';
 }
 
 const NIVEAU_LABEL: Record<NiveauRisque, string> = {
-  CRITIQUE: 'Critique',
-  ELEVE:    'Élevé',
-  MODERE:   'Modéré',
-  FAIBLE:   'Faible',
+  ELEVE: 'Élevé',
+  MOYEN: 'Moyen',
+  FAIBLE: 'Faible',
 };
 
 type BadgeVariant = 'destructive' | 'warning' | 'outline' | 'success';
 
 function niveauVariant(n: NiveauRisque): BadgeVariant {
-  if (n === 'CRITIQUE') return 'destructive';
-  if (n === 'ELEVE')    return 'warning';
-  if (n === 'MODERE')   return 'outline';
+  if (n === 'ELEVE') return 'destructive';
+  if (n === 'MOYEN') return 'warning';
   return 'success';
 }
 
 const P_LABELS: Record<'1' | '2' | '3', string> = {
   '1': '1 — Faible',
-  '2': '2 — Modérée',
-  '3': '3 — Élevée',
+  '2': '2 — Moyen',
+  '3': '3 — Fort',
 };
 const I_LABELS: Record<'1' | '2' | '3', string> = {
   '1': '1 — Faible',
-  '2': '2 — Modéré',
-  '3': '3 — Élevé',
+  '2': '2 — Moyen',
+  '3': '3 — Fort',
 };
-
-// Stratégies de réponse standard (PMI) — le champ strategie existe déjà côté
-// serveur (risques-create/update, affiché dans le "Top Risks" du Dashboard)
-// mais n'était jusqu'ici jamais exposé dans ce formulaire.
-const STRATEGIE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'EVITER',      label: 'Éviter' },
-  { value: 'REDUIRE',     label: 'Réduire' },
-  { value: 'TRANSFERER',  label: 'Transférer' },
-  { value: 'ACCEPTER',    label: 'Accepter' },
-];
 
 const INIT: FormState = {
   description: '',
@@ -111,7 +97,6 @@ const INIT: FormState = {
   statut: 'OUVERT',
   date_identification: new Date().toISOString().slice(0, 10),
   date_revision_prevue: '',
-  plan_mitigation: '',
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -153,7 +138,6 @@ export function RiskSlideOver({
         statut:              risque.statut,
         date_identification: risque.date_identification,
         date_revision_prevue: risque.date_revision_prevue ?? '',
-        plan_mitigation:     risque.plan_mitigation ?? '',
       });
     } else {
       setForm(INIT);
@@ -201,7 +185,6 @@ export function RiskSlideOver({
         statut:              form.statut,
         date_identification: form.date_identification,
         date_revision_prevue: form.date_revision_prevue || undefined,
-        plan_mitigation:     form.plan_mitigation.trim() || undefined,
       },
       risque?.id,
     );
@@ -315,44 +298,26 @@ export function RiskSlideOver({
             </div>
           </div>
 
-          {/* Responsable + Stratégie */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground" htmlFor="risk-resp">
-                Responsable <span className="text-destructive">*</span>
-              </label>
-              <Select
-                id="risk-resp"
-                value={form.responsableId}
-                onChange={e => set('responsableId', e.target.value)}
-                disabled={readOnly || isLoadingMembers}
-                error={!!errors.responsableId}
-              >
-                <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
-                {responsableOptions.map(m => (
-                  <option key={m.id} value={m.id}>{m.displayName}</option>
-                ))}
-              </Select>
-              {errors.responsableId && (
-                <p className="text-xs text-destructive">{errors.responsableId}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground" htmlFor="risk-strategie">
-                Stratégie de réponse
-              </label>
-              <Select
-                id="risk-strategie"
-                value={form.strategie}
-                onChange={e => set('strategie', e.target.value)}
-                disabled={readOnly}
-              >
-                <option value="">Non définie</option>
-                {STRATEGIE_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </Select>
-            </div>
+          {/* Responsable */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground" htmlFor="risk-resp">
+              Responsable <span className="text-destructive">*</span>
+            </label>
+            <Select
+              id="risk-resp"
+              value={form.responsableId}
+              onChange={e => set('responsableId', e.target.value)}
+              disabled={readOnly || isLoadingMembers}
+              error={!!errors.responsableId}
+            >
+              <option value="">{isLoadingMembers ? 'Chargement…' : 'Sélectionner une personne'}</option>
+              {responsableOptions.map(m => (
+                <option key={m.id} value={m.id}>{m.displayName}</option>
+              ))}
+            </Select>
+            {errors.responsableId && (
+              <p className="text-xs text-destructive">{errors.responsableId}</p>
+            )}
           </div>
 
           {/* Statut */}
@@ -404,16 +369,16 @@ export function RiskSlideOver({
             </div>
           </div>
 
-          {/* Plan de mitigation */}
+          {/* Stratégie d'atténuation */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground" htmlFor="risk-plan">
-              Plan de mitigation
+            <label className="text-xs font-medium text-foreground" htmlFor="risk-strategie">
+              Stratégie d'atténuation
             </label>
             <Textarea
-              id="risk-plan"
-              value={form.plan_mitigation}
-              onChange={e => set('plan_mitigation', e.target.value)}
-              placeholder="Décrire les actions de mitigation prévues ou en cours…"
+              id="risk-strategie"
+              value={form.strategie}
+              onChange={e => set('strategie', e.target.value)}
+              placeholder="Décrire la stratégie et les actions d'atténuation prévues ou en cours…"
               rows={4}
               disabled={readOnly}
               className="resize-none"

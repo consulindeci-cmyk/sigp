@@ -15,11 +15,14 @@ export type StatutProjet = 'PREPARATION' | 'ACTIF' | 'SUSPENDU' | 'CLOTURE' | 'A
 
 export type StatutTache = 'A_FAIRE' | 'EN_COURS' | 'TERMINE' | 'ANNULE' | 'EN_ATTENTE';
 
-export type NiveauRisque = 'FAIBLE' | 'MODERE' | 'ELEVE' | 'CRITIQUE';
+// Matrice 3×3 stricte (Probabilité 1-3 × Impact 1-3, score 1-9) — remplace
+// l'ancien modèle à 4 paliers (FAIBLE/MODERE/ELEVE/CRITIQUE).
+export type NiveauRisque = 'FAIBLE' | 'MOYEN' | 'ELEVE';
 
 export type RisqueCategorie =
   | 'Technique' | 'Financier' | 'Opérationnel' | 'Juridique'
-  | 'Environnemental' | 'Social' | 'Sécurité' | 'Institutionnel' | 'Gouvernance';
+  | 'Environnemental' | 'Social' | 'Sécurité' | 'Institutionnel' | 'Gouvernance'
+  | 'Politique' | 'Ressources Humaines';
 
 export type StatutRisque = 'OUVERT' | 'EN_COURS' | 'MAÎTRISÉ' | 'CLOS';
 
@@ -150,8 +153,10 @@ export interface Risque {
   statut: StatutRisque;
   responsable: string;
   responsableId?: string | null;
+  // Stratégie d'atténuation — champ texte libre simple (remplace l'ancienne
+  // liste fermée Éviter/Réduire/Transférer/Accepter, et fusionne l'ancien
+  // plan_mitigation, supprimé).
   strategie?: string | null;
-  plan_mitigation?: string;
   date_identification: string;
   date_revision_prevue?: string;
   createdAt: string;

@@ -65,12 +65,22 @@ export const NOTIF_COLOR: Record<string, string> = {
   BUDGET_VALIDE: 'bg-success',
 };
 
-export const CRITICITE_ORDER: Record<string, number> = { CRITIQUE: 0, ELEVE: 1, MODERE: 2, FAIBLE: 3 };
+// Modèle 3×3 (FAIBLE/MOYEN/ELEVE) — CRITIQUE/MODERE restent mappés au même
+// rang que ELEVE/MOYEN pour les risques déjà enregistrés avant l'unification
+// du scoring (jamais migrés en base, cf. _shared/risk-scoring.ts).
+export const CRITICITE_ORDER: Record<string, number> = { CRITIQUE: 0, ELEVE: 0, MOYEN: 1, MODERE: 1, FAIBLE: 2 };
 
-export const PROB_TO_PCT: Record<string, number> = { FAIBLE: 25, POSSIBLE: 50, PROBABLE: 75, QUASI_CERTAIN: 95 };
+export function probToPct(p: string): number {
+  const n = Number(p);
+  if (n === 1) return 33;
+  if (n === 2) return 66;
+  if (n === 3) return 95;
+  const legacy: Record<string, number> = { FAIBLE: 25, POSSIBLE: 50, PROBABLE: 75, QUASI_CERTAIN: 95 };
+  return legacy[p] ?? 50;
+}
 
 export function niveauToLevel(n: string): 'high' | 'medium' | 'low' {
-  return n === 'CRITIQUE' || n === 'ELEVE' ? 'high' : n === 'MODERE' ? 'medium' : 'low';
+  return n === 'ELEVE' || n === 'CRITIQUE' ? 'high' : n === 'MOYEN' || n === 'MODERE' ? 'medium' : 'low';
 }
 
 // Doit rester un sous-ensemble exact de ProgressBarColor (frontend) — une

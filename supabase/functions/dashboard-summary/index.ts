@@ -12,7 +12,7 @@ import {
   NOTIF_TYPE_MAP,
   NOTIF_COLOR,
   CRITICITE_ORDER,
-  PROB_TO_PCT,
+  probToPct,
   niveauToLevel,
   DISTRIBUTION_COLORS,
 } from '../_shared/dashboard-format.ts';
@@ -106,7 +106,7 @@ Deno.serve(async (req: Request) => {
       db.from('risques').select('*', { count: 'exact', head: true }).is('deleted_at', null),
       db.from('risques').select('id, description, niveau_criticite, probabilite, categorie').is('deleted_at', null).limit(200),
       db.from('risques').select('id, description, niveau_criticite, probabilite').is('deleted_at', null)
-        .in('niveau_criticite', ['CRITIQUE', 'ELEVE', 'MODERE']).limit(20),
+        .in('niveau_criticite', ['ELEVE', 'MOYEN', 'CRITIQUE', 'MODERE']).limit(20),
       db.from('ppm_marches').select('*', { count: 'exact', head: true }).is('deleted_at', null),
       db.from('ppm_marches').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('statut', 'CLOTURE'),
       db.from('ppm_etapes').select('*', { count: 'exact', head: true }),
@@ -167,8 +167,12 @@ Deno.serve(async (req: Request) => {
     const montantPayeHorsLigne = (disbursementsHorsLigneRows.data ?? []).reduce((s, d) => s + Number(d.montant ?? 0), 0);
     const montantPaye = montantPayeLignes + montantPayeHorsLigne;
 
-    const risquesCritiques = (risquesRows.data ?? []).filter((r) => r.niveau_criticite === 'CRITIQUE').length;
-    const risquesEleves = (risquesRows.data ?? []).filter((r) => r.niveau_criticite === 'ELEVE').length;
+    // Modèle 3×3 : ELEVE est désormais le palier haut unique (remplace
+    // CRITIQUE), MOYEN le palier intermédiaire (remplace MODERE/ELEVE de
+    // l'ancien modèle 4 paliers) — anciennes valeurs encore acceptées pour
+    // les risques jamais réenregistrés depuis l'unification du scoring.
+    const risquesCritiques = (risquesRows.data ?? []).filter((r) => r.niveau_criticite === 'ELEVE' || r.niveau_criticite === 'CRITIQUE').length;
+    const risquesEleves = (risquesRows.data ?? []).filter((r) => r.niveau_criticite === 'MOYEN' || r.niveau_criticite === 'MODERE').length;
 
     // ── Décaissements mensuels (12 derniers mois) ──────────────────────────
     const disbMap = new Map<string, number>();
@@ -228,7 +232,7 @@ Deno.serve(async (req: Request) => {
     const risquesPrincipaux = (risquesPrincipauxRows.data ?? [])
       .sort((a, b) => (CRITICITE_ORDER[a.niveau_criticite] ?? 9) - (CRITICITE_ORDER[b.niveau_criticite] ?? 9))
       .slice(0, 5)
-      .map((r) => ({ id: r.id, description: r.description, probability: PROB_TO_PCT[r.probabilite] ?? 50, level: niveauToLevel(r.niveau_criticite) }));
+      .map((r) => ({ id: r.id, description: r.description, probability: probToPct(r.probabilite), level: niveauToLevel(r.niveau_criticite) }));
 
     // ── Jalons ───────────────────────────────────────────────────────────────
     const jalons = (jalonsRows.data ?? []).map((j) => ({

@@ -7,7 +7,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import {
   AlertTriangle, AlertCircle, Download, FileSpreadsheet, Plus, Eye, Pencil, Trash2,
-  Shield, ShieldAlert, CheckCircle2, Info,
+  Shield, ShieldAlert, CheckCircle2,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -30,17 +30,15 @@ import type { RiskSlideOverSavePayload } from './risks/RiskSlideOver';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const NIVEAU_LABEL: Record<NiveauRisque, string> = {
-  CRITIQUE: 'Critique',
-  ELEVE:    'Élevé',
-  MODERE:   'Modéré',
-  FAIBLE:   'Faible',
+  ELEVE:  'Élevé',
+  MOYEN:  'Moyen',
+  FAIBLE: 'Faible',
 };
 
 const NIVEAU_FILTER_OPTIONS = [
-  { label: 'Critique', value: 'CRITIQUE' },
-  { label: 'Élevé',   value: 'ELEVE'    },
-  { label: 'Modéré',  value: 'MODERE'   },
-  { label: 'Faible',  value: 'FAIBLE'   },
+  { label: 'Élevé',  value: 'ELEVE'  },
+  { label: 'Moyen',  value: 'MOYEN'  },
+  { label: 'Faible', value: 'FAIBLE' },
 ];
 
 const CATEGORIE_FILTER_OPTIONS = RISK_CATEGORIES.map(c => ({ label: c, value: c }));
@@ -48,25 +46,17 @@ const STATUT_FILTER_OPTIONS    = STATUT_RISQUE_OPTIONS.map(o => ({ label: o.labe
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Matrice 3×3 stricte : score 1-4 FAIBLE, 5-6 MOYEN, 7-9 ÉLEVÉ.
 function getNiveauCriticite(criticite: number): NiveauRisque {
-  if (criticite >= 9) return 'CRITIQUE';
-  if (criticite >= 6) return 'ELEVE';
-  if (criticite >= 3) return 'MODERE';
-  return 'FAIBLE';
+  if (criticite <= 4) return 'FAIBLE';
+  if (criticite <= 6) return 'MOYEN';
+  return 'ELEVE';
 }
 
-function niveauVariant(n: NiveauRisque): 'destructive' | 'warning' | 'outline' | 'success' {
-  if (n === 'CRITIQUE') return 'destructive';
-  if (n === 'ELEVE')    return 'warning';
-  if (n === 'MODERE')   return 'outline';
+function niveauVariant(n: NiveauRisque): 'destructive' | 'warning' | 'success' {
+  if (n === 'ELEVE') return 'destructive';
+  if (n === 'MOYEN') return 'warning';
   return 'success';
-}
-
-function statutVariant(s: string): 'outline' | 'info' | 'success' | 'secondary' {
-  if (s === 'EN_COURS') return 'info';
-  if (s === 'MAÎTRISÉ') return 'success';
-  if (s === 'CLOS')     return 'secondary';
-  return 'outline';
 }
 
 function fmtStatut(s: string) {
@@ -82,13 +72,12 @@ function nextCode(risques: Risque[]): string {
 }
 
 function doExportCsv(risques: Risque[]) {
-  const headers = ['Code', 'Description', 'Catégorie', 'P', 'I', 'Criticité', 'Niveau', 'Responsable', 'Statut', 'Date identification', 'Date révision', 'Plan de mitigation'];
+  const headers = ['N°', 'Catégorie', 'Description du Risque', 'P', 'I', 'Criticité', 'Niveau', "Stratégie d'atténuation", 'Responsable', 'Statut', 'Date identification', 'Date révision'];
   const rows = risques.map(r => [
-    r.code_risque, r.description, r.categorie,
+    r.code_risque, r.categorie, r.description,
     r.probabilite, r.impact, r.criticite, r.niveau_criticite,
-    r.responsable, fmtStatut(r.statut),
+    r.strategie ?? '', r.responsable, fmtStatut(r.statut),
     r.date_identification, r.date_revision_prevue ?? '',
-    r.plan_mitigation ?? '',
   ]);
   const csv = '﻿' + [headers, ...rows]
     .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
@@ -102,18 +91,17 @@ function doExportCsv(risques: Risque[]) {
 }
 
 function doExportXlsx(risques: Risque[]) {
-  const headers = ['Code', 'Description', 'Catégorie', 'P', 'I', 'Criticité', 'Niveau', 'Responsable', 'Statut', 'Date ID', 'Date révision', 'Plan de mitigation'];
+  const headers = ['N°', 'Catégorie', 'Description du Risque', 'P', 'I', 'Criticité', 'Niveau', "Stratégie d'atténuation", 'Responsable', 'Statut', 'Date ID', 'Date révision'];
   const rows = risques.map(r => [
-    r.code_risque, r.description, r.categorie,
+    r.code_risque, r.categorie, r.description,
     r.probabilite, r.impact, r.criticite, r.niveau_criticite,
-    r.responsable, fmtStatut(r.statut),
+    r.strategie ?? '', r.responsable, fmtStatut(r.statut),
     r.date_identification, r.date_revision_prevue ?? '',
-    r.plan_mitigation ?? '',
   ]);
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   ws['!cols'] = [
-    { wch: 10 }, { wch: 45 }, { wch: 18 }, { wch: 4 }, { wch: 4 },
-    { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 50 },
+    { wch: 10 }, { wch: 18 }, { wch: 45 }, { wch: 4 }, { wch: 4 },
+    { wch: 10 }, { wch: 12 }, { wch: 50 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 16 },
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Registre des Risques');
@@ -160,17 +148,16 @@ export default function TabRisks() {
   // ── KPIs ────────────────────────────────────────────────────────────────
 
   const kpis = useMemo(() => ({
-    total:    risques.length,
-    critique: risques.filter(r => r.niveau_criticite === 'CRITIQUE').length,
-    eleve:    risques.filter(r => r.niveau_criticite === 'ELEVE').length,
-    modere:   risques.filter(r => r.niveau_criticite === 'MODERE').length,
-    faible:   risques.filter(r => r.niveau_criticite === 'FAIBLE').length,
+    total:  risques.length,
+    eleve:  risques.filter(r => r.niveau_criticite === 'ELEVE').length,
+    moyen:  risques.filter(r => r.niveau_criticite === 'MOYEN').length,
+    faible: risques.filter(r => r.niveau_criticite === 'FAIBLE').length,
   }), [risques]);
 
   const alertRisques = useMemo(() =>
     risques
       .filter(r =>
-        (r.niveau_criticite === 'CRITIQUE' || r.niveau_criticite === 'ELEVE') &&
+        r.niveau_criticite === 'ELEVE' &&
         r.statut !== 'MAÎTRISÉ' && r.statut !== 'CLOS',
       )
       .sort((a, b) => b.criticite - a.criticite),
@@ -237,7 +224,6 @@ export default function TabRisks() {
         responsable:          payload.responsable,
         responsableId:        payload.responsableId,
         strategie:            payload.strategie,
-        plan_mitigation:      payload.plan_mitigation,
         date_identification:  payload.date_identification,
         date_revision_prevue: payload.date_revision_prevue,
       };
@@ -267,24 +253,24 @@ export default function TabRisks() {
   const columns = useMemo((): ColumnDef<Risque, unknown>[] => [
     {
       accessorKey: 'code_risque',
-      header: 'Code',
+      header: 'N°',
       size: 100,
       meta: { isSticky: true } as Record<string, unknown>,
     },
     {
+      accessorKey: 'categorie',
+      header: 'Catégorie',
+      size: 140,
+    },
+    {
       accessorKey: 'description',
-      header: 'Risque',
+      header: 'Description du Risque',
       size: 280,
       cell: ({ row }) => (
         <span className="block max-w-[260px] truncate" title={row.original.description}>
           {row.original.description}
         </span>
       ),
-    },
-    {
-      accessorKey: 'categorie',
-      header: 'Catégorie',
-      size: 140,
     },
     {
       accessorKey: 'probabilite',
@@ -315,35 +301,15 @@ export default function TabRisks() {
       },
     },
     {
-      accessorKey: 'responsable',
-      header: 'Responsable',
-      size: 160,
-    },
-    {
-      accessorKey: 'statut',
-      header: 'Statut',
-      size: 120,
-      cell: ({ row }) => (
-        <Badge variant={statutVariant(row.original.statut)}>
-          {fmtStatut(row.original.statut)}
-        </Badge>
-      ),
-    },
-    {
-      accessorKey: 'date_identification',
-      header: 'Date ID',
-      size: 110,
-      cell: ({ row }) =>
-        new Date(row.original.date_identification).toLocaleDateString('fr-FR'),
-    },
-    {
-      accessorKey: 'date_revision_prevue',
-      header: 'Date révision',
-      size: 120,
-      cell: ({ row }) =>
-        row.original.date_revision_prevue
-          ? new Date(row.original.date_revision_prevue).toLocaleDateString('fr-FR')
-          : <span className="text-muted-foreground">—</span>,
+      accessorKey: 'strategie',
+      header: "Stratégie d'atténuation",
+      size: 260,
+      cell: ({ row }) => {
+        const s = row.original.strategie;
+        return s
+          ? <span className="block max-w-[240px] truncate" title={s}>{s}</span>
+          : <span className="text-muted-foreground">—</span>;
+      },
     },
     {
       id: 'actions',
@@ -380,15 +346,13 @@ export default function TabRisks() {
     <div className="space-y-6">
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard title="Total Risques" value={kpis.total}
           icon={<Shield className="h-4 w-4 text-primary" />} iconVariant="primary" />
-        <StatCard title="Critiques" value={kpis.critique}
-          icon={<ShieldAlert className="h-4 w-4 text-destructive" />} iconVariant="destructive" />
         <StatCard title="Élevés" value={kpis.eleve}
+          icon={<ShieldAlert className="h-4 w-4 text-destructive" />} iconVariant="destructive" />
+        <StatCard title="Moyens" value={kpis.moyen}
           icon={<AlertTriangle className="h-4 w-4 text-warning" />} iconVariant="warning" />
-        <StatCard title="Modérés" value={kpis.modere}
-          icon={<Info className="h-4 w-4 text-info" />} iconVariant="info" />
         <StatCard title="Faibles" value={kpis.faible}
           icon={<CheckCircle2 className="h-4 w-4 text-success" />} iconVariant="success" />
       </div>
@@ -463,27 +427,20 @@ export default function TabRisks() {
               et actuel du registre. */}
           <div className="bg-card border border-border rounded-lg p-5">
             <h3 className="text-sm font-semibold text-foreground mb-4">Répartition par niveau de criticité</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
                 <span className="flex items-center gap-2 text-xs font-medium text-foreground">
                   <span className="h-2 w-2 rounded-full bg-destructive" aria-hidden="true" />
-                  Critiques
-                </span>
-                <span className="font-mono text-sm font-bold text-foreground">{kpis.critique}</span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
-                <span className="flex items-center gap-2 text-xs font-medium text-foreground">
-                  <span className="h-2 w-2 rounded-full bg-warning" aria-hidden="true" />
                   Élevés
                 </span>
                 <span className="font-mono text-sm font-bold text-foreground">{kpis.eleve}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
                 <span className="flex items-center gap-2 text-xs font-medium text-foreground">
-                  <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
-                  Modérés
+                  <span className="h-2 w-2 rounded-full bg-warning" aria-hidden="true" />
+                  Moyens
                 </span>
-                <span className="font-mono text-sm font-bold text-foreground">{kpis.modere}</span>
+                <span className="font-mono text-sm font-bold text-foreground">{kpis.moyen}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
                 <span className="flex items-center gap-2 text-xs font-medium text-foreground">
