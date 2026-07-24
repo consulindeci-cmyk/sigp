@@ -43,10 +43,10 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [touched,          setTouched]         = useState(false);
 
-  // Lignes budgétaires réelles de la version active — le bailleur/source de
-  // financement n'est plus saisi directement dans ce formulaire : il est
-  // hérité de la ligne budgétaire rattachée (cf. bailleur_id de la ligne,
-  // déjà résolu par useBudget.ts depuis la vraie colonne funding_source_id).
+  // Lignes budgétaires réelles de la version active — le PPM ne persiste
+  // plus de bailleur propre : le financement se lit déjà depuis la ligne
+  // budgétaire rattachée (onglet Budget/Financement), inutile de le
+  // dupliquer ici.
   const { data: budget } = useBudget(projectId);
   const { data: budgetVersion } = useBudgetVersion(projectId, budget?.version_active_id);
   const budgetLignes = budgetVersion?.lignes ?? [];
@@ -109,31 +109,20 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
 
   const [montantDevise, setMontantDevise] = useState(0);
 
-  // Bailleur hérité de la ligne budgétaire rattachée (funding_source_id réel,
-  // cf. useBudget.ts) — plus de sélecteur dédié dans ce formulaire.
-  const derivedBailleurId = budgetLignes.find(l => l.id === budgetLigneId)?.bailleur_id || '';
-
-  // ── Champs conservés en arrière-plan (retirés de l'UI par cette
-  // restructuration mais PAS supprimés en base) : le Statut (workflow de
-  // passation), les informations d'Attribution (titulaire/montant signé/date
-  // fin effective) et 6 des 8 dates du chronogramme correspondent à de
-  // vraies colonnes ppm_marches — les masquer sans les préserver aurait
-  // silencieusement écrasé ces valeurs à la moindre modification d'un
-  // marché existant. Initialisées depuis `ligne` comme avant, simplement
-  // plus rendues à l'écran.
+  // ── Champs conservés en arrière-plan (retirés de l'UI par la restructuration
+  // précédente mais PAS supprimés en base) : le Statut (workflow de
+  // passation) et les informations d'Attribution (titulaire/montant signé/
+  // date fin effective) correspondent à de vraies colonnes ppm_marches — les
+  // masquer sans les préserver aurait silencieusement écrasé ces valeurs à la
+  // moindre modification d'un marché existant. Initialisées depuis `ligne`
+  // comme avant, simplement plus rendues à l'écran.
   const [statut,           setStatut]           = useState<PPMLigne['statut']>('PLANIFIE');
   const [montantSigne,     setMontantSigne]     = useState('');
   const [titulaire,        setTitulaire]        = useState('');
   const [dateFinEffective, setDateFinEffective] = useState('');
   const [dates, setDates] = useState({
-    preparation_dao_prevue:       '',
     lancement_dao_prevue:         '',
-    remise_offres_prevue:         '',
-    ouverture_evaluation_prevue:  '',
-    avis_non_objection_prevue:    '',
-    attribution_prevue:           '',
     signature_contrat_prevue:     '',
-    demarrage_prevue:             '',
   });
 
   const [soldeDisponible, setSoldeDisponible] = useState<number | null>(null);
@@ -149,19 +138,13 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
       setMethode(ligne.methode);
       setTypeRevue(ligne.type_revue);
       setStatut(ligne.statut);
-      setMontantDevise(ligne.montant_estime_devise);
+      setMontantDevise(ligne.montant_estime_base);
       setMontantSigne(ligne.montant_signe != null ? String(ligne.montant_signe) : '');
       setTitulaire(ligne.titulaire ?? '');
       setDateFinEffective(ligne.date_fin_effective ?? '');
       setDates({
-        preparation_dao_prevue:      ligne.dates_cles.preparation_dao_prevue      || '',
-        lancement_dao_prevue:        ligne.dates_cles.lancement_dao_prevue        || '',
-        remise_offres_prevue:        ligne.dates_cles.remise_offres_prevue        || '',
-        ouverture_evaluation_prevue: ligne.dates_cles.ouverture_evaluation_prevue || '',
-        avis_non_objection_prevue:   ligne.dates_cles.avis_non_objection_prevue   || '',
-        attribution_prevue:          ligne.dates_cles.attribution_prevue          || '',
-        signature_contrat_prevue:    ligne.dates_cles.signature_contrat_prevue    || '',
-        demarrage_prevue:            ligne.dates_cles.demarrage_prevue            || '',
+        lancement_dao_prevue:     ligne.dates_cles.lancement_dao_prevue     || '',
+        signature_contrat_prevue: ligne.dates_cles.signature_contrat_prevue || '',
       });
     } else {
       setReference('');
@@ -176,11 +159,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
       setMontantSigne('');
       setTitulaire('');
       setDateFinEffective('');
-      setDates({
-        preparation_dao_prevue: '', lancement_dao_prevue: '', remise_offres_prevue: '',
-        ouverture_evaluation_prevue: '', avis_non_objection_prevue: '', attribution_prevue: '',
-        signature_contrat_prevue: '', demarrage_prevue: '',
-      });
+      setDates({ lancement_dao_prevue: '', signature_contrat_prevue: '' });
     }
     setError(null);
     setTouched(false);
@@ -233,11 +212,7 @@ export function PPMFormSlideOver({ isOpen, onClose, ligne, onSave, onDelete, pro
         categorie,
         methode,
         type_revue:           typeRevue,
-        bailleur_id:          derivedBailleurId,
         statut,
-        montant_estime_devise: montantDevise,
-        devise_code:          projectDevise,
-        taux_change_estime:   1,
         montant_estime_base:  montantDevise,
         montant_signe:        montantSigne ? Number(montantSigne) : undefined,
         titulaire:            titulaire.trim() || undefined,

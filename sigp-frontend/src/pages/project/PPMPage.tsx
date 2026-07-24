@@ -5,6 +5,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { usePPM } from '@/hooks/usePPM';
 import { usePPMVersions } from '@/hooks/usePPMVersions';
+import { useProject } from '@/hooks/useProjects';
 import { formatMoney } from '@/utils/format';
 import { VersionSelector } from '@/components/common/workflow/VersionSelector';
 import { PPMMatrix } from '@/components/project/ppm/views/PPMMatrix';
@@ -52,6 +53,8 @@ export default function PPMPage() {
 
   const { versions, activeVersionId, setActiveVersionId, isLoading: isLoadingVersions } = usePPMVersions(resolvedProjectId);
   const { lignes, isLoading: isLoadingPPM, totalEstimeBase, addLigne, updateLigne, deleteLigne } = usePPM(resolvedProjectId, activeVersionId);
+  const { data: project } = useProject(resolvedProjectId);
+  const projectDevise = project?.devise || 'XOF';
 
   // Miroir des rôles serveur (requireRole) sur ppm-create/update
   // (COORDINATEUR/CHARGE_PROGRAMME/ADMIN/SUPER_ADMIN) et ppm-delete (ADMIN/SUPER_ADMIN).
@@ -96,29 +99,21 @@ export default function PPMPage() {
 
   function handleExportXlsx() {
     const HEADERS = [
-      'Référence', 'WBS', 'Description', 'Catégorie', 'Méthode', 'Revue', 'Bailleur',
-      'Montant (Devise)', 'Devise', 'Montant Base (XOF)',
-      'Prép. DAO', 'Lanc. DAO', 'Remise Offres', 'Évaluation',
-      'ANO', 'Attribution', 'Signature Contrat', 'Démarrage', 'Statut',
+      'Référence', 'WBS', 'Description', 'Catégorie', 'Méthode', 'Revue',
+      'Montant Estimé', 'Devise',
+      'Date Avis / Publication', 'Date Signature Contrat', 'Statut',
     ];
     const rows = lignes.map(l => [
-      l.reference_marche, l.wbs_id, l.description, l.categorie, l.methode, l.type_revue, l.bailleur_id,
-      l.montant_estime_devise, l.devise_code, l.montant_estime_base,
-      l.dates_cles.preparation_dao_prevue ?? '',
+      l.reference_marche, l.wbs_id, l.description, l.categorie, l.methode, l.type_revue,
+      l.montant_estime_base, projectDevise,
       l.dates_cles.lancement_dao_prevue ?? '',
-      l.dates_cles.remise_offres_prevue ?? '',
-      l.dates_cles.ouverture_evaluation_prevue ?? '',
-      l.dates_cles.avis_non_objection_prevue ?? '',
-      l.dates_cles.attribution_prevue ?? '',
       l.dates_cles.signature_contrat_prevue ?? '',
-      l.dates_cles.demarrage_prevue ?? '',
       l.statut,
     ]);
     const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows]);
     ws['!cols'] = [
-      { wch: 18 }, { wch: 12 }, { wch: 35 }, { wch: 22 }, { wch: 8 }, { wch: 7 }, { wch: 10 },
-      { wch: 16 }, { wch: 6 }, { wch: 18 },
-      ...Array(9).fill({ wch: 12 }),
+      { wch: 18 }, { wch: 12 }, { wch: 35 }, { wch: 22 }, { wch: 8 }, { wch: 7 },
+      { wch: 16 }, { wch: 6 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `PPM ${activeVersion?.numero_version ?? 'Export'}`);

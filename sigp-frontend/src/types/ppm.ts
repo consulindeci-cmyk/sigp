@@ -24,31 +24,25 @@ export type StatutLignePPM = 'PLANIFIE' | 'DAO_EN_PREPARATION' | 'DAO_LANCE' | '
 export interface PPMLigne {
   id: string;
   ppm_version_id: string;
-  
-  // Relations d'intégrité
+
+  // Relations d'intégrité — colonnes réelles avec FK dédiée (cf. migration
+  // 20260828100000_ppm_marches_wbs_budget_methode_colonnes.sql). Le bailleur
+  // n'est plus persisté sur la ligne : il est dérivé à la volée depuis la
+  // ligne budgétaire rattachée (cf. PPMFormSlideOver).
   wbs_id: string;
   budget_ligne_id: string;
-  bailleur_id: string;
-  
+
   // Description de l'achat
   reference_marche: string;
   description: string;
   categorie: CategorieAchat;
   methode: MethodePassation;
   type_revue: TypeRevue;
-  
-  // Gestion Financière & Multi-devises
-  montant_estime_devise: number;
-  devise_code: string;
-  taux_change_estime: number;
+
+  // Montant estimé — toujours dans la devise du projet (une seule devise par
+  // projet, cf. Section 4 "Montant Estimé" de PPMFormSlideOver ; plus de
+  // devise/taux de change propres à la ligne).
   montant_estime_base: number;
-  
-  // Gestion des Lots et Contrats (Relation 1..N) — est_lot_unique n'a plus de
-  // champ dédié dans le formulaire (aucune gestion de lots réellement
-  // implémentée) ; optionnel, retombe sur `true` côté usePPM.ts si absent.
-  est_lot_unique?: boolean;
-  lots_enfants_ids?: string[];
-  contrats_generes_ids?: string[]; // 1 Ligne PPM -> N Contrats
 
   // Attribution — renseignés une fois le marché attribué/signé (colonnes
   // réelles ppm_marches.montant_signe/titulaire/date_fin_effective)
@@ -56,26 +50,14 @@ export interface PPMLigne {
   titulaire?: string;
   date_fin_effective?: string;
 
-  // Timeline détaillée
+  // Chronogramme — seules 2 dates ont un usage réel dans le formulaire
+  // (Section 3 "Calendrier & Jalons"), chacune adossée à une colonne réelle
+  // de longue date (date_lancement_prevu, date_signature).
   dates_cles: {
-    preparation_dao_prevue: string;
-    preparation_dao_reelle?: string;
-    lancement_dao_prevue: string;
-    lancement_dao_reelle?: string;
-    remise_offres_prevue: string;
-    remise_offres_reelle?: string;
-    ouverture_evaluation_prevue: string;
-    ouverture_evaluation_reelle?: string;
-    avis_non_objection_prevue?: string; 
-    avis_non_objection_reelle?: string;
-    attribution_prevue: string;
-    attribution_reelle?: string;
-    signature_contrat_prevue: string;
-    signature_contrat_reelle?: string;
-    demarrage_prevue: string;
-    demarrage_reelle?: string;
+    lancement_dao_prevue: string;     // Date Avis / Publication
+    signature_contrat_prevue: string; // Date Signature du Contrat
   };
-  
+
   statut: StatutLignePPM;
   version_hash: string;
 }

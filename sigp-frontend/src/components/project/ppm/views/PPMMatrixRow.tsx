@@ -9,6 +9,8 @@ interface PPMMatrixRowProps {
   ligne:        PPMLigne;
   /** Libellé WBS résolu (code + titre) — undefined si non rattaché/introuvable. */
   wbsLabel?:    { code: string; titre: string };
+  /** Devise du projet — le PPM n'a plus de devise propre à la ligne. */
+  devise:       string;
   canManage:    boolean;
   canDelete:    boolean;
   onEdit:       (id: string) => void;
@@ -49,7 +51,7 @@ function formatDateFR(dateStr?: string): string {
 const CELL = 'px-4 py-2.5 border-r border-b border-border text-sm';
 const CELL_LAST = 'px-3 py-2.5 border-b border-border text-sm whitespace-nowrap';
 
-function PPMMatrixRowComponent({ ligne, wbsLabel, canManage, canDelete, onEdit, onViewDetails, onDelete }: PPMMatrixRowProps) {
+function PPMMatrixRowComponent({ ligne, wbsLabel, devise, canManage, canDelete, onEdit, onViewDetails, onDelete }: PPMMatrixRowProps) {
   return (
     <tr className="hover:bg-muted/30 transition-colors group">
 
@@ -102,7 +104,7 @@ function PPMMatrixRowComponent({ ligne, wbsLabel, canManage, canDelete, onEdit, 
       {/* Montant Estimé */}
       <td className={`${CELL} text-right`}>
         <div className="font-mono font-semibold text-foreground whitespace-nowrap">
-          {formatCurrency(ligne.montant_estime_devise, ligne.devise_code)}
+          {formatCurrency(ligne.montant_estime_base, devise)}
         </div>
       </td>
 
@@ -135,6 +137,7 @@ function PPMMatrixRowComponent({ ligne, wbsLabel, canManage, canDelete, onEdit, 
 export const PPMMatrixRow = memo(PPMMatrixRowComponent, (prevProps, nextProps) => {
   return prevProps.ligne.version_hash === nextProps.ligne.version_hash
     && prevProps.wbsLabel?.code === nextProps.wbsLabel?.code
+    && prevProps.devise === nextProps.devise
     && prevProps.canManage === nextProps.canManage
     && prevProps.canDelete === nextProps.canDelete;
 });

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { PPMLigne } from '@/types/ppm';
 import { PPMMatrixRow } from './PPMMatrixRow';
 import { useWBS } from '@/hooks/useWBS';
+import { useProject } from '@/hooks/useProjects';
 import { formatMoney } from '@/utils/format';
 import {
   Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription,
@@ -28,7 +29,6 @@ const TH_LAST = 'px-3 py-2.5 text-xs font-semibold text-muted-foreground border-
 const COLUMN_COUNT = 9; // Référence + 7 colonnes métier + Actions
 
 export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick, onDeleteLigne }: PPMMatrixProps) {
-  const [filterBailleur,  setFilterBailleur]  = useState('');
   const [filterCategorie, setFilterCategorie] = useState('');
   const [filterStatut,    setFilterStatut]    = useState('');
 
@@ -39,14 +39,18 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
     return map;
   }, [wbsData]);
 
+  // Devise du projet — le PPM n'a plus de devise propre à la ligne (cf.
+  // Section 4 "Montant Estimé" de PPMFormSlideOver).
+  const { data: project } = useProject(projectId);
+  const projectDevise = project?.devise || 'XOF';
+
   const filteredLignes = useMemo(() => {
     return lignes.filter(l => {
-      if (filterBailleur  && l.bailleur_id !== filterBailleur)                          return false;
       if (filterCategorie && !l.categorie.startsWith(filterCategorie))                  return false;
       if (filterStatut    && !matchStatutGroupe(l.statut, filterStatut))                return false;
       return true;
     });
-  }, [lignes, filterBailleur, filterCategorie, filterStatut]);
+  }, [lignes, filterCategorie, filterStatut]);
 
   const totalEstime = useMemo(
     () => filteredLignes.reduce((s, l) => s + l.montant_estime_base, 0),
@@ -94,17 +98,6 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
 
         <select
           className={SELECT_CLASS}
-          value={filterBailleur}
-          onChange={e => setFilterBailleur(e.target.value)}
-          aria-label="Filtrer par bailleur"
-        >
-          <option value="">Tous les Bailleurs</option>
-          <option value="b-ida">IDA (Banque Mondiale)</option>
-          <option value="b-afd">AFD</option>
-        </select>
-
-        <select
-          className={SELECT_CLASS}
           value={filterCategorie}
           onChange={e => setFilterCategorie(e.target.value)}
           aria-label="Filtrer par catégorie"
@@ -130,10 +123,10 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
           <option value="ANNULE">Annulé</option>
         </select>
 
-        {(filterBailleur || filterCategorie || filterStatut) && (
+        {(filterCategorie || filterStatut) && (
           <button
             className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-            onClick={() => { setFilterBailleur(''); setFilterCategorie(''); setFilterStatut(''); }}
+            onClick={() => { setFilterCategorie(''); setFilterStatut(''); }}
           >
             Réinitialiser
           </button>
@@ -178,6 +171,7 @@ export function PPMMatrix({ lignes, projectId, canManage, canDelete, onRowClick,
                   key={ligne.id}
                   ligne={ligne}
                   wbsLabel={wbsById.get(ligne.wbs_id)}
+                  devise={projectDevise}
                   canManage={canManage}
                   canDelete={canDelete}
                   onEdit={id => onRowClick?.(id)}

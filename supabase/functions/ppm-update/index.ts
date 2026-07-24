@@ -17,6 +17,13 @@ interface UpdatePpmMarcheBody {
   dateFinEffective?: string;
   titulaire?: string;
   notes?: string;
+  // Rattachement WBS/Budget + méthode/revue — colonnes dédiées (cf. migration
+  // 20260828100000). wbsId/budgetLigneId acceptent explicitement `null` pour
+  // permettre de détacher un rattachement existant.
+  wbsId?: string | null;
+  budgetLigneId?: string | null;
+  methode?: string;
+  typeRevue?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -49,6 +56,42 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (body.wbsId) {
+      const { data: wbs, error: wbsError } = await admin
+        .from('wbs_nodes')
+        .select('id, project_id')
+        .eq('id', body.wbsId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (wbsError) throw wbsError;
+      if (!wbs) return json({ error: 'Nœud WBS introuvable' }, 404);
+      if (wbs.project_id !== existing.project_id) {
+        return json({ error: 'Le nœud WBS appartient à un autre projet' }, 409);
+      }
+    }
+
+    if (body.budgetLigneId) {
+      const { data: ligne, error: ligneError } = await admin
+        .from('budget_lignes')
+        .select('id, version_id')
+        .eq('id', body.budgetLigneId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (ligneError) throw ligneError;
+      if (!ligne) return json({ error: 'Ligne budgétaire introuvable' }, 404);
+
+      const { data: ligneVersion, error: ligneVersionError } = await admin
+        .from('budget_versions')
+        .select('project_id')
+        .eq('id', ligne.version_id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (ligneVersionError) throw ligneVersionError;
+      if (!ligneVersion || ligneVersion.project_id !== existing.project_id) {
+        return json({ error: 'La ligne budgétaire appartient à un autre projet' }, 409);
+      }
+    }
+
     const updatePayload: Record<string, unknown> = {
       updated_by: profile.id,
       updated_at: new Date().toISOString(),
@@ -67,6 +110,10 @@ Deno.serve(async (req: Request) => {
     if (body.dateFinEffective !== undefined) updatePayload.date_fin_effective = body.dateFinEffective;
     if (body.titulaire !== undefined) updatePayload.titulaire = body.titulaire;
     if (body.notes !== undefined) updatePayload.notes = body.notes;
+    if (body.wbsId !== undefined) updatePayload.wbs_id = body.wbsId;
+    if (body.budgetLigneId !== undefined) updatePayload.budget_ligne_id = body.budgetLigneId;
+    if (body.methode !== undefined) updatePayload.methode = body.methode;
+    if (body.typeRevue !== undefined) updatePayload.type_revue = body.typeRevue;
 
     const { data: updated, error: updateError } = await admin
       .from('ppm_marches')

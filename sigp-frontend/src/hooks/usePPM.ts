@@ -11,6 +11,9 @@ import type {
 } from '@/types';
 
 // ─── Ligne Supabase (colonnes snake_case de la table `ppm_marches`) ───────────
+// wbs_id/budget_ligne_id/methode/type_revue sont désormais de vraies
+// colonnes (cf. migration 20260828100000) — fin du JSON __PPM_META__ planqué
+// dans `notes` (parseNotes/serializeNotes supprimés).
 
 export interface PpmMarcheDto {
   id:                  string;
@@ -22,13 +25,13 @@ export interface PpmMarcheDto {
   montantEstime:       number | null;
   montantSigne:        number | null;
   dateLancementPrevu:  string | null;
-  dateSoumissionPrevu: string | null;
-  dateAttribution:     string | null;
   dateSignature:       string | null;
-  dateFinPrevue:       string | null;
   dateFinEffective:    string | null;
   titulaire:           string | null;
-  notes:               string | null;
+  wbsId:               string | null;
+  budgetLigneId:       string | null;
+  methode:             string | null;
+  typeRevue:           string | null;
   createdAt:           string;
   updatedAt:           string;
 }
@@ -43,21 +46,21 @@ interface PpmMarcheRow {
   montant_estime: number | null;
   montant_signe: number | null;
   date_lancement_prevu: string | null;
-  date_soumission_prevu: string | null;
-  date_attribution: string | null;
   date_signature: string | null;
-  date_fin_prevue: string | null;
   date_fin_effective: string | null;
   titulaire: string | null;
-  notes: string | null;
+  wbs_id: string | null;
+  budget_ligne_id: string | null;
+  methode: string | null;
+  type_revue: string | null;
   created_at: string;
   updated_at: string;
 }
 
 const PPM_MARCHE_SELECT = `
   id, project_id, code, intitule, type, statut, montant_estime, montant_signe,
-  date_lancement_prevu, date_soumission_prevu, date_attribution, date_signature,
-  date_fin_prevue, date_fin_effective, titulaire, notes, created_at, updated_at
+  date_lancement_prevu, date_signature, date_fin_effective, titulaire,
+  wbs_id, budget_ligne_id, methode, type_revue, created_at, updated_at
 `;
 
 function rowToDto(row: PpmMarcheRow): PpmMarcheDto {
@@ -71,66 +74,16 @@ function rowToDto(row: PpmMarcheRow): PpmMarcheDto {
     montantEstime: row.montant_estime,
     montantSigne: row.montant_signe,
     dateLancementPrevu: row.date_lancement_prevu,
-    dateSoumissionPrevu: row.date_soumission_prevu,
-    dateAttribution: row.date_attribution,
     dateSignature: row.date_signature,
-    dateFinPrevue: row.date_fin_prevue,
     dateFinEffective: row.date_fin_effective,
     titulaire: row.titulaire,
-    notes: row.notes,
+    wbsId: row.wbs_id,
+    budgetLigneId: row.budget_ligne_id,
+    methode: row.methode,
+    typeRevue: row.type_revue,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-// ─── Extra metadata: fields the backend doesn't have, serialized into `notes` ─
-// (inchangé, indépendant du backend — même colonne `notes` côté Supabase)
-
-const PPM_META = '__PPM_META__';
-
-interface PPMExtraMeta {
-  methode:               MethodePassation;
-  type_revue:            TypeRevue;
-  wbs_id:                string;
-  budget_ligne_id:       string;
-  bailleur_id:           string;
-  devise_code:           string;
-  taux_change_estime:    number;
-  montant_estime_devise: number;
-  est_lot_unique:        boolean;
-  d_prep_dao_p:          string;
-  d_prep_dao_r:          string;
-  d_lanc_dao_r:          string;
-  d_remise_r:            string;
-  d_eval_p:              string;
-  d_eval_r:              string;
-  d_ano_p:               string;
-  d_ano_r:               string;
-  d_attr_r:              string;
-  d_sign_r:              string;
-  d_dema_r:              string;
-}
-
-function defaultExtra(): PPMExtraMeta {
-  return {
-    methode: 'AOI', type_revue: 'POST',
-    wbs_id: '', budget_ligne_id: '', bailleur_id: '',
-    devise_code: 'XOF', taux_change_estime: 1, montant_estime_devise: 0,
-    est_lot_unique: true,
-    d_prep_dao_p: '', d_prep_dao_r: '', d_lanc_dao_r: '', d_remise_r: '',
-    d_eval_p: '', d_eval_r: '', d_ano_p: '', d_ano_r: '',
-    d_attr_r: '', d_sign_r: '', d_dema_r: '',
-  };
-}
-
-function parseNotes(notes: string | null): PPMExtraMeta {
-  if (!notes?.startsWith(`${PPM_META}:`)) return defaultExtra();
-  try { return { ...defaultExtra(), ...JSON.parse(notes.slice(PPM_META.length + 1)) }; }
-  catch { return defaultExtra(); }
-}
-
-function serializeNotes(extra: PPMExtraMeta): string {
-  return `${PPM_META}:${JSON.stringify(extra)}`;
 }
 
 // ─── Enum mappings (inchangés) ────────────────────────────────────────────────
@@ -192,44 +145,23 @@ function d(val: string | Date | null | undefined): string {
 // ─── Adapters ─────────────────────────────────────────────────────────────────
 
 function adaptMarche(dto: PpmMarcheDto, versionId: string): PPMLigne {
-  const x = parseNotes(dto.notes);
-  const base = dto.montantEstime ?? 0;
   return {
-    id:                   dto.id,
-    ppm_version_id:       versionId,
-    wbs_id:               x.wbs_id,
-    budget_ligne_id:      x.budget_ligne_id,
-    bailleur_id:          x.bailleur_id,
-    reference_marche:     dto.code,
-    description:          dto.intitule,
-    categorie:            typeToCategorie(dto.type),
-    methode:              x.methode,
-    type_revue:           x.type_revue,
-    montant_estime_devise: x.montant_estime_devise || base,
-    devise_code:          x.devise_code,
-    taux_change_estime:   x.taux_change_estime,
-    montant_estime_base:  base,
-    est_lot_unique:       x.est_lot_unique,
-    montant_signe:        dto.montantSigne ?? undefined,
-    titulaire:            dto.titulaire ?? undefined,
-    date_fin_effective:   d(dto.dateFinEffective) || undefined,
+    id:                  dto.id,
+    ppm_version_id:      versionId,
+    wbs_id:              dto.wbsId ?? '',
+    budget_ligne_id:     dto.budgetLigneId ?? '',
+    reference_marche:    dto.code,
+    description:         dto.intitule,
+    categorie:           typeToCategorie(dto.type),
+    methode:             (dto.methode as MethodePassation) || 'AOI',
+    type_revue:          (dto.typeRevue as TypeRevue) || 'POST',
+    montant_estime_base: dto.montantEstime ?? 0,
+    montant_signe:       dto.montantSigne ?? undefined,
+    titulaire:           dto.titulaire ?? undefined,
+    date_fin_effective:  d(dto.dateFinEffective) || undefined,
     dates_cles: {
-      preparation_dao_prevue:       x.d_prep_dao_p,
-      preparation_dao_reelle:       x.d_prep_dao_r || undefined,
-      lancement_dao_prevue:         d(dto.dateLancementPrevu),
-      lancement_dao_reelle:         x.d_lanc_dao_r || undefined,
-      remise_offres_prevue:         d(dto.dateSoumissionPrevu),
-      remise_offres_reelle:         x.d_remise_r || undefined,
-      ouverture_evaluation_prevue:  x.d_eval_p,
-      ouverture_evaluation_reelle:  x.d_eval_r || undefined,
-      avis_non_objection_prevue:    x.d_ano_p || undefined,
-      avis_non_objection_reelle:    x.d_ano_r || undefined,
-      attribution_prevue:           d(dto.dateAttribution),
-      attribution_reelle:           x.d_attr_r || undefined,
-      signature_contrat_prevue:     d(dto.dateSignature),
-      signature_contrat_reelle:     x.d_sign_r || undefined,
-      demarrage_prevue:             d(dto.dateFinPrevue),
-      demarrage_reelle:             x.d_dema_r || undefined,
+      lancement_dao_prevue:     d(dto.dateLancementPrevu),
+      signature_contrat_prevue: d(dto.dateSignature),
     },
     statut:       beStatutToFe(dto.statut),
     version_hash: dto.updatedAt,
@@ -239,86 +171,42 @@ function adaptMarche(dto: PpmMarcheDto, versionId: string): PPMLigne {
 type LigneInput = Omit<PPMLigne, 'id' | 'version_hash' | 'ppm_version_id'>;
 
 function ligneToCreatePayload(projectId: string, l: LigneInput) {
-  const extra: PPMExtraMeta = {
-    methode:               l.methode,
-    type_revue:            l.type_revue,
-    wbs_id:                l.wbs_id,
-    budget_ligne_id:       l.budget_ligne_id,
-    bailleur_id:           l.bailleur_id,
-    devise_code:           l.devise_code,
-    taux_change_estime:    l.taux_change_estime,
-    montant_estime_devise: l.montant_estime_devise,
-    est_lot_unique:        l.est_lot_unique ?? true,
-    d_prep_dao_p: l.dates_cles.preparation_dao_prevue      || '',
-    d_prep_dao_r: l.dates_cles.preparation_dao_reelle      || '',
-    d_lanc_dao_r: l.dates_cles.lancement_dao_reelle        || '',
-    d_remise_r:   l.dates_cles.remise_offres_reelle        || '',
-    d_eval_p:     l.dates_cles.ouverture_evaluation_prevue || '',
-    d_eval_r:     l.dates_cles.ouverture_evaluation_reelle || '',
-    d_ano_p:      l.dates_cles.avis_non_objection_prevue   || '',
-    d_ano_r:      l.dates_cles.avis_non_objection_reelle   || '',
-    d_attr_r:     l.dates_cles.attribution_reelle          || '',
-    d_sign_r:     l.dates_cles.signature_contrat_reelle    || '',
-    d_dema_r:     l.dates_cles.demarrage_reelle            || '',
-  };
   return {
     projectId,
-    code:                 l.reference_marche,
-    intitule:             l.description,
-    type:                 categorieToType(l.categorie),
-    statut:               l.statut ? feStatutToBe(l.statut as StatutLignePPM) : undefined,
-    montantEstime:        l.montant_estime_base || undefined,
-    montantSigne:         l.montant_signe || undefined,
-    titulaire:            l.titulaire || undefined,
-    dateFinEffective:     l.date_fin_effective || undefined,
-    dateLancementPrevu:   l.dates_cles.lancement_dao_prevue    || undefined,
-    dateSoumissionPrevu:  l.dates_cles.remise_offres_prevue    || undefined,
-    dateAttribution:      l.dates_cles.attribution_prevue      || undefined,
-    dateSignature:        l.dates_cles.signature_contrat_prevue || undefined,
-    dateFinPrevue:        l.dates_cles.demarrage_prevue        || undefined,
-    notes:                serializeNotes(extra),
+    code:              l.reference_marche,
+    intitule:          l.description,
+    type:              categorieToType(l.categorie),
+    statut:            l.statut ? feStatutToBe(l.statut as StatutLignePPM) : undefined,
+    montantEstime:     l.montant_estime_base || undefined,
+    montantSigne:      l.montant_signe || undefined,
+    titulaire:         l.titulaire || undefined,
+    dateFinEffective:  l.date_fin_effective || undefined,
+    dateLancementPrevu: l.dates_cles.lancement_dao_prevue     || undefined,
+    dateSignature:      l.dates_cles.signature_contrat_prevue || undefined,
+    wbsId:             l.wbs_id || undefined,
+    budgetLigneId:     l.budget_ligne_id || undefined,
+    methode:           l.methode,
+    typeRevue:         l.type_revue,
   };
 }
 
 function ligneToUpdatePayload(l: Partial<PPMLigne>, existing: PPMLigne) {
   const merged = { ...existing, ...l };
-  const extra: PPMExtraMeta = {
-    methode:               merged.methode,
-    type_revue:            merged.type_revue,
-    wbs_id:                merged.wbs_id,
-    budget_ligne_id:       merged.budget_ligne_id,
-    bailleur_id:           merged.bailleur_id,
-    devise_code:           merged.devise_code,
-    taux_change_estime:    merged.taux_change_estime,
-    montant_estime_devise: merged.montant_estime_devise,
-    est_lot_unique:        merged.est_lot_unique ?? true,
-    d_prep_dao_p: merged.dates_cles.preparation_dao_prevue      || '',
-    d_prep_dao_r: merged.dates_cles.preparation_dao_reelle      || '',
-    d_lanc_dao_r: merged.dates_cles.lancement_dao_reelle        || '',
-    d_remise_r:   merged.dates_cles.remise_offres_reelle        || '',
-    d_eval_p:     merged.dates_cles.ouverture_evaluation_prevue || '',
-    d_eval_r:     merged.dates_cles.ouverture_evaluation_reelle || '',
-    d_ano_p:      merged.dates_cles.avis_non_objection_prevue   || '',
-    d_ano_r:      merged.dates_cles.avis_non_objection_reelle   || '',
-    d_attr_r:     merged.dates_cles.attribution_reelle          || '',
-    d_sign_r:     merged.dates_cles.signature_contrat_reelle    || '',
-    d_dema_r:     merged.dates_cles.demarrage_reelle            || '',
-  };
   return {
-    code:                 merged.reference_marche,
-    intitule:             merged.description,
-    type:                 categorieToType(merged.categorie),
-    statut:               merged.statut ? feStatutToBe(merged.statut as StatutLignePPM) : undefined,
-    montantEstime:        merged.montant_estime_base || undefined,
-    montantSigne:         merged.montant_signe || undefined,
-    titulaire:            merged.titulaire || undefined,
-    dateFinEffective:     merged.date_fin_effective || undefined,
-    dateLancementPrevu:   merged.dates_cles.lancement_dao_prevue    || undefined,
-    dateSoumissionPrevu:  merged.dates_cles.remise_offres_prevue    || undefined,
-    dateAttribution:      merged.dates_cles.attribution_prevue      || undefined,
-    dateSignature:        merged.dates_cles.signature_contrat_prevue || undefined,
-    dateFinPrevue:        merged.dates_cles.demarrage_prevue        || undefined,
-    notes:                serializeNotes(extra),
+    code:              merged.reference_marche,
+    intitule:          merged.description,
+    type:              categorieToType(merged.categorie),
+    statut:            merged.statut ? feStatutToBe(merged.statut as StatutLignePPM) : undefined,
+    montantEstime:     merged.montant_estime_base || undefined,
+    montantSigne:      merged.montant_signe || undefined,
+    titulaire:         merged.titulaire || undefined,
+    dateFinEffective:  merged.date_fin_effective || undefined,
+    dateLancementPrevu: merged.dates_cles.lancement_dao_prevue     || undefined,
+    dateSignature:      merged.dates_cles.signature_contrat_prevue || undefined,
+    wbsId:             merged.wbs_id || undefined,
+    budgetLigneId:     merged.budget_ligne_id || undefined,
+    methode:           merged.methode,
+    typeRevue:         merged.type_revue,
   };
 }
 
