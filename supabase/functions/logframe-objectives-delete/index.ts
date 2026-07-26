@@ -131,7 +131,8 @@ Deno.serve(async (req: Request) => {
       .is('deleted_at', null);
     if (deleteIndicatorsError) throw deleteIndicatorsError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: existing.project_id,
       user_id: profile.id,
@@ -139,7 +140,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'logframe_objectives',
       enregistrement_id: body.id,
       avant: existing,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[logframe-objectives-delete] historique', historiqueError);
+    }
 
     return json({ message: descendantIds.length > 0 ? `Objectif et ${descendantIds.length} élément(s) subordonné(s) supprimés` : 'Objectif supprimé' });
   } catch (err) {

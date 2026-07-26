@@ -154,7 +154,8 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -162,7 +163,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'ptba_activites',
       enregistrement_id: activite.id,
       apres: activite,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[ptba-create] historique', historiqueError);
+    }
 
     return json({ data: activite }, 201);
   } catch (err) {

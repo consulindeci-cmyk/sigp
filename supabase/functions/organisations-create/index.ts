@@ -293,7 +293,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,
       organisation_id: org.id,
@@ -302,7 +303,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'organisations',
       enregistrement_id: org.id,
       apres: { organisation: org, direction, departement, unite, programme, admin: adminUser },
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[organisations-create] historique', historiqueError);
+    }
 
     return json({
       data: {

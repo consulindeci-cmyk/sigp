@@ -69,7 +69,8 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -77,7 +78,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'budget_versions',
       enregistrement_id: version.id,
       apres: version,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[budget-versions-create] historique', historiqueError);
+    }
 
     return json({ data: version }, 201);
   } catch (err) {

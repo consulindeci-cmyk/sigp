@@ -116,7 +116,8 @@ Deno.serve(async (req: Request) => {
       if (recalcError) console.error('[contracts-create] recalc_budget_ligne_montants', recalcError);
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -124,7 +125,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'contracts',
       enregistrement_id: contract.id,
       apres: contract,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[contracts-create] historique', historiqueError);
+    }
 
     return json({ data: contract }, 201);
   } catch (err) {

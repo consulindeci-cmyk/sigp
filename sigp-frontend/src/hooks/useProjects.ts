@@ -111,9 +111,9 @@ export function flatten(row: RawRow): ProjectApiDto {
   }
 }
 
-interface AggResult { progressScore: number; tauxDecaissement: number; composantes: number; activites: number; livrables: number }
+interface AggResult { progressScore: number; tauxDecaissement: number; composantes: number; activites: number }
 
-// Réplique ProjectRepository.getBatchAggregations : 4 requêtes groupées pour
+// Réplique ProjectRepository.getBatchAggregations : requêtes groupées pour
 // l'ensemble des projets d'une page, pas une requête par projet (anti N+1).
 // Exporté pour être réutilisé par projectExport.ts (même logique d'enrichissement).
 export async function fetchBatchAggregations(projects: { id: string; budgetTotal: number | null }[]): Promise<Map<string, AggResult>> {
@@ -121,9 +121,8 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
   if (projects.length === 0) return result
   const projectIds = projects.map((p) => p.id)
 
-  const [ptbaRes, livrablesRes, wbsRes, budgetLignesRes, montantPayeRes] = await Promise.all([
+  const [ptbaRes, wbsRes, budgetLignesRes, montantPayeRes] = await Promise.all([
     supabase.from('ptba_activites').select('project_id, statut, taux_realisation, montant_prevu').is('deleted_at', null).in('project_id', projectIds),
-    supabase.from('livrables').select('project_id').is('deleted_at', null).in('project_id', projectIds),
     supabase.from('wbs_nodes').select('project_id').is('deleted_at', null).is('parent_id', null).in('project_id', projectIds),
     // Seule la version budgétaire APPROUVE fait foi (même règle que
     // project_montant_paye_view/calculate_project_evm/project-detail-summary/
@@ -141,7 +140,6 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
     supabase.from('project_montant_paye_view').select('project_id, montant_paye').in('project_id', projectIds),
   ])
   if (ptbaRes.error) throw ptbaRes.error
-  if (livrablesRes.error) throw livrablesRes.error
   if (wbsRes.error) throw wbsRes.error
   if (budgetLignesRes.error) throw budgetLignesRes.error
   if (montantPayeRes.error) throw montantPayeRes.error
@@ -156,8 +154,6 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
     e.ev += Number(a.montant_prevu ?? 0) * (Number(a.taux_realisation ?? 0) / 100)
     activitesMap.set(a.project_id, e)
   }
-  const livrablesMap = new Map<string, number>()
-  for (const l of livrablesRes.data ?? []) livrablesMap.set(l.project_id, (livrablesMap.get(l.project_id) ?? 0) + 1)
   const composantesMap = new Map<string, number>()
   for (const w of wbsRes.data ?? []) composantesMap.set(w.project_id, (composantesMap.get(w.project_id) ?? 0) + 1)
   const budgetMap = new Map<string, { prevu: number }>()
@@ -187,7 +183,6 @@ export async function fetchBatchAggregations(projects: { id: string; budgetTotal
       tauxDecaissement,
       composantes: composantesMap.get(project.id) ?? 0,
       activites: act.count,
-      livrables: livrablesMap.get(project.id) ?? 0,
     })
   }
   return result
@@ -255,7 +250,7 @@ export function useProjects(params?: UseProjectsParams) {
       const aggMap = await fetchBatchAggregations(rows.map((r) => ({ id: r.id, budgetTotal: r.budgetTotal })))
       let enriched = rows.map((r) => ({
         ...r,
-        ...(aggMap.get(r.id) ?? { progressScore: 0, tauxDecaissement: 0, composantes: 0, activites: 0, livrables: 0 }),
+        ...(aggMap.get(r.id) ?? { progressScore: 0, tauxDecaissement: 0, composantes: 0, activites: 0 }),
       }))
 
       // SUPER_ADMIN uniquement — résout le nom d'organisation de chaque
@@ -290,7 +285,7 @@ export function useProjects(params?: UseProjectsParams) {
 }
 
 // Détail d'un projet — ligne brute uniquement (rapide, une seule requête).
-// Les compteurs agrégés (progressScore, composantes, activites, livrables...)
+// Les compteurs agrégés (progressScore, composantes, activites...)
 // viennent de useProjectSummary/useProjectRowAggregation, qui partagent tous
 // le même appel à project-detail-summary via useProjectDetailSummary — ne pas
 // le ré-invoquer ici, ça doublait ce call coûteux à chaque ouverture de fiche
@@ -315,11 +310,10 @@ interface ProjectDetailSummary {
   summary: {
     budgetTotal: number; montantEngage: number; montantPaye: number; soldeDisponible: number; tauxDecaissement: number;
     nombreActivites: number; activitesTerminees: number; activitesEnCours: number; activitesEnRetard: number;
-    nombreLivrables: number; livrablesTermines: number; livrablesEnCours: number;
     nombreContrats: number; contratsActifs: number; nombreRisques: number; risquesCritiques: number;
     tauxAvancementGlobal: number; progressScore: number; profileScore: number; displayStatus: string;
   };
-  rowAggregation: { progressScore: number; tauxDecaissement: number; composantes: number; activites: number; livrables: number };
+  rowAggregation: { progressScore: number; tauxDecaissement: number; composantes: number; activites: number };
   topRisks: ProjectTopRisk[];
   criticalActivities: CriticalActivityResponse[];
   disbursementsMonthly: DisbursementMonthly[];
@@ -343,7 +337,7 @@ export function useProjectSummary(id: string) {
   return { ...query, data: query.data?.summary }
 }
 
-// Compteurs bruts (composantes WBS, activités, livrables)
+// Compteurs bruts (composantes WBS, activités)
 export function useProjectRowAggregation(id: string) {
   const query = useProjectDetailSummary(id)
   return { ...query, data: query.data?.rowAggregation }
@@ -379,7 +373,7 @@ export function useProjectFundingSources(projectId: string) {
   return { ...query, data: query.data?.fundingSources ?? [] }
 }
 
-// Jalons (livrables)
+// Jalons (échéances des activités PTBA — module Livrables supprimé)
 export function useProjectMilestones(projectId: string) {
   const query = useProjectDetailSummary(projectId)
   return { ...query, data: query.data?.milestones ?? [] }

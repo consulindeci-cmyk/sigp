@@ -86,7 +86,8 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -94,7 +95,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'logframe_objectives',
       enregistrement_id: objective.id,
       apres: objective,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[logframe-objectives-create] historique', historiqueError);
+    }
 
     return json({ data: objective }, 201);
   } catch (err) {

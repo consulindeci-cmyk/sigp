@@ -2,7 +2,6 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   FolderKanban,
-  FileText,
   Users,
   Settings,
 } from 'lucide-react';
@@ -17,7 +16,6 @@ import { useUIStore } from '@/stores/uiStore';
 const MOBILE_NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/projects',  label: 'Projets',   icon: FolderKanban    },
-  { to: '/documents', label: 'Documents', icon: FileText        },
   { to: '/users',     label: 'Comptes',   icon: Users           },
   { to: '/settings',  label: 'Réglages',  icon: Settings        },
 ] as const;

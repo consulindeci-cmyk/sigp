@@ -16,14 +16,10 @@ import WBSPage from './project/WBSPage';
 import TabOverview from '../components/project/TabOverview';
 import TabEVM from '../components/project/TabEVM';
 import TabRisks from '../components/project/TabRisks';
-import TabDocuments from '../components/project/TabDocuments';
-import TabReports from '../components/project/TabReports';
 import ProjectGovernanceTab from '../components/project/ProjectGovernanceTab';
 import ProjectFundingTab from '../components/project/ProjectFundingTab';
 import ProjectDisbursementTab from '../components/project/ProjectDisbursementTab';
-import ProjectDeliverablesTab from '../components/project/ProjectDeliverablesTab';
 import TabHistory from '../components/project/TabHistory';
-import TabComments from '../components/project/TabComments';
 
 import { useProject, useProjectSummary, useProjectRowAggregation, useUpdateProject } from '@/hooks/useProjects';
 import { adaptProjectDto, type Project, type UpdateProjectPayload } from '@/lib/projectAdapter';
@@ -52,7 +48,6 @@ export default function ProjectDetail() {
       profileScore: summary?.profileScore ?? 0,
       composantes: rowAgg?.composantes ?? 0,
       activites: rowAgg?.activites ?? 0,
-      livrables: rowAgg?.livrables ?? 0,
     };
   }, [apiProject, summary, rowAgg]);
 
@@ -163,20 +158,8 @@ export default function ProjectDetail() {
         {activeProjectTab === 'risks' && (
           <div className={PAD}><div className={INNER}><TabRisks /></div></div>
         )}
-        {activeProjectTab === 'deliverables' && (
-          <div className={PAD}><div className={INNER}><ProjectDeliverablesTab /></div></div>
-        )}
-        {activeProjectTab === 'pdocuments' && (
-          <div className={PAD}><div className={INNER}><TabDocuments /></div></div>
-        )}
-        {activeProjectTab === 'reports' && (
-          <div className={PAD}><div className={INNER}><TabReports /></div></div>
-        )}
         {activeProjectTab === 'history' && (
           <div className={PAD}><div className={INNER}><TabHistory /></div></div>
-        )}
-        {activeProjectTab === 'comments' && (
-          <div className={PAD}><div className={INNER}><TabComments /></div></div>
         )}
       </div>
     </div>

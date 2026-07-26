@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   FolderKanban,
   Users,
-  FileText,
   Settings,
   Building2,
   ChevronLeft,
@@ -81,7 +80,6 @@ const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
   { to: '/projects',  label: 'Projets',          icon: FolderKanban   },
   { to: '/users',     label: 'Utilisateurs',     icon: Users          },
-  { to: '/documents', label: 'Documents',        icon: FileText       },
   { to: '/organisations', label: 'Organisations', icon: Building2,    superAdminOnly: true },
   { to: '/settings',  label: 'Paramètres',       icon: Settings       },
 ];

@@ -45,7 +45,8 @@ Deno.serve(async (req: Request) => {
     const { error: deleteError } = await admin.from('ppm_etapes').delete().eq('id', body.id);
     if (deleteError) throw deleteError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: marche?.project_id ?? null,
       user_id: profile.id,
@@ -53,7 +54,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'ppm_etapes',
       enregistrement_id: body.id,
       avant: existing,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[ppm-etapes-delete] historique', historiqueError);
+    }
 
     return json({ message: 'Étape PPM supprimée' });
   } catch (err) {

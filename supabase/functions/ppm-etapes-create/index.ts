@@ -70,7 +70,8 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: marche.project_id,
       user_id: profile.id,
@@ -78,7 +79,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'ppm_etapes',
       enregistrement_id: etape.id,
       apres: etape,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[ppm-etapes-create] historique', historiqueError);
+    }
 
     return json({ data: etape }, 201);
   } catch (err) {

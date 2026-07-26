@@ -16,8 +16,6 @@ const SettingsPage  = lazy(() => import('./pages/SettingsPage'));
 const LoginPage     = lazy(() => import('./pages/LoginPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const UsersPage     = lazy(() => import('./pages/UsersPage'));
-const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
-const ReportsPage   = lazy(() => import('./pages/ReportsPage'));
 const OrganisationsPage = lazy(() => import('./pages/OrganisationsPage'));
 
 // ─── Aiguillage /dashboard : vue macro plateforme pour SUPER_ADMIN, vue
@@ -32,7 +30,6 @@ function DashboardRouter() {
 const HOME_ROUTE_MAP: Record<string, string> = {
   'Tableau de bord': '/dashboard',
   'Projets':         '/projects',
-  'Documents':       '/documents',
   'Utilisateurs':    '/users',
   'Paramètres':      '/settings',
 };
@@ -86,8 +83,6 @@ export default function App() {
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/settings"  element={<SettingsPage />} />
             <Route path="/users"     element={<UsersPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/reports"   element={<ReportsPage />} />
             <Route
               path="/organisations"
               element={

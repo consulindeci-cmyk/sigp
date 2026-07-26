@@ -52,9 +52,6 @@ interface ProjectSummary {
   activitesTerminees: number;
   activitesEnCours: number;
   activitesEnRetard: number;
-  nombreLivrables: number;
-  livrablesTermines: number;
-  livrablesEnCours: number;
   nombreContrats: number;
   contratsActifs: number;
   nombreRisques: number;
@@ -128,7 +125,6 @@ function buildKpis(project?: Project, summary?: ProjectSummary): KpiItem[] {
       { label: 'Financière', val: '—', colorClass: 'text-success',          target: 'disbursements' },
       { label: 'Complétude', val: '—', colorClass: 'text-warning',          target: 'overview'      },
       { label: 'Activités',  val: '—', colorClass: 'text-foreground',       target: 'ptba'          },
-      { label: 'Livrables',  val: '—', colorClass: 'text-foreground',       target: 'deliverables'  },
       { label: 'Risques',    val: '—', colorClass: 'text-destructive',      target: 'risks'         },
       { label: 'Alertes',    val: '—', colorClass: 'text-destructive',      target: 'risks'         },
     ];
@@ -143,7 +139,6 @@ function buildKpis(project?: Project, summary?: ProjectSummary): KpiItem[] {
     { label: 'Financière', val: pct(summary.tauxDecaissement),     colorClass: 'text-success',          target: 'disbursements' },
     { label: 'Complétude', val: pct(summary.profileScore),         colorClass: 'text-warning',          target: 'overview'      },
     { label: 'Activités',  val: num(summary.nombreActivites),      colorClass: 'text-foreground',       target: 'ptba'          },
-    { label: 'Livrables',  val: num(summary.nombreLivrables),      colorClass: 'text-foreground',       target: 'deliverables'  },
     { label: 'Risques',    val: num(summary.nombreRisques),        colorClass: 'text-destructive',      target: 'risks'         },
     { label: 'Alertes',    val: num(summary.risquesCritiques),     colorClass: 'text-destructive',      target: 'risks'         },
   ];

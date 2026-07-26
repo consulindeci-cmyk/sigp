@@ -57,7 +57,6 @@ Deno.serve(async (req: Request) => {
     const [
       budgetLignesRows,
       ptbaRows,
-      livrablesRows,
       contratsRows,
       risquesRows,
       wbsRootCount,
@@ -74,7 +73,6 @@ Deno.serve(async (req: Request) => {
       db.from('budget_lignes').select('categorie, montant_prevu, montant_engage, montant_paye, version:budget_versions!inner(project_id)')
         .is('deleted_at', null).eq('version.project_id', body.projectId).eq('version.statut', 'APPROUVE'),
       db.from('ptba_activites').select('statut, taux_realisation').is('deleted_at', null).eq('project_id', body.projectId),
-      db.from('livrables').select('statut').is('deleted_at', null).eq('project_id', body.projectId),
       db.from('contracts').select('id, statut').is('deleted_at', null).eq('project_id', body.projectId),
       db.from('risques').select('id, description, niveau_criticite, probabilite, impact, strategie, statut')
         .is('deleted_at', null).eq('project_id', body.projectId),
@@ -84,7 +82,12 @@ Deno.serve(async (req: Request) => {
       // budget_version_id doivent compter comme "réels" (cf. commentaire ci-dessus).
       db.from('budget_versions').select('id').is('deleted_at', null).eq('project_id', body.projectId).eq('statut', 'APPROUVE'),
       db.from('funding_sources').select('id, nom, montant, pourcentage').eq('project_id', body.projectId).order('montant', { ascending: false }),
-      db.from('livrables').select('id, nom, date_prevue, statut').eq('project_id', body.projectId).order('date_prevue', { ascending: true }),
+      // Jalons — rebasés sur les échéances des activités PTBA (le module
+      // Livrables a été supprimé) : une activité fait office de jalon via sa
+      // date de fin prévue, comme partout ailleurs (activités critiques,
+      // échéances proches côté dashboard-summary).
+      db.from('ptba_activites').select('id, libelle, date_fin_prevue, statut')
+        .is('deleted_at', null).eq('project_id', body.projectId).order('date_fin_prevue', { ascending: true }),
       db.from('ptba_activites').select('id, code, libelle, responsable_id, statut, taux_realisation, date_fin_prevue')
         .eq('project_id', body.projectId)
         .or(`statut.eq.EN_RETARD,and(statut.not.in.(TERMINE,ANNULE),date_fin_prevue.lt.${new Date().toISOString()})`),
@@ -95,7 +98,7 @@ Deno.serve(async (req: Request) => {
     ]);
 
     for (const [name, res] of Object.entries({
-      budgetLignesRows, ptbaRows, livrablesRows, contratsRows, risquesRows, wbsRootCount,
+      budgetLignesRows, ptbaRows, contratsRows, risquesRows, wbsRootCount,
       budgetVersionIdsRows, fundingSourcesRows, milestonesRows, criticalActivitiesRows, evmRes,
     })) {
       if (res.error) throw new Error(`[${name}] ${res.error.message}`);
@@ -152,11 +155,6 @@ Deno.serve(async (req: Request) => {
       ? Math.round((Number(evm.ev) / Number(evm.bac)) * 100)
       : 0;
 
-    const livrablesList = livrablesRows.data ?? [];
-    const nombreLivrables = livrablesList.length;
-    const livrablesTermines = livrablesList.filter((l) => l.statut === 'VALIDE').length;
-    const livrablesEnCours = livrablesList.filter((l) => l.statut === 'EN_COURS').length;
-
     const contratsList = contratsRows.data ?? [];
     const nombreContrats = contratsList.length;
     const contratsActifs = contratsList.filter((c) => c.statut === 'ACTIF').length;
@@ -187,7 +185,6 @@ Deno.serve(async (req: Request) => {
     const summary = {
       budgetTotal, montantEngage, montantPaye, soldeDisponible, tauxDecaissement,
       nombreActivites, activitesTerminees, activitesEnCours, activitesEnRetard,
-      nombreLivrables, livrablesTermines, livrablesEnCours,
       nombreContrats, contratsActifs, nombreRisques, risquesCritiques,
       tauxAvancementGlobal, progressScore: tauxAvancementGlobal,
       profileScore,
@@ -200,7 +197,6 @@ Deno.serve(async (req: Request) => {
       tauxDecaissement,
       composantes: wbsRootCount.count ?? 0,
       activites: nombreActivites,
-      livrables: nombreLivrables,
     };
 
     // ── getTopRisks ─────────────────────────────────────────────────────────
@@ -274,8 +270,13 @@ Deno.serve(async (req: Request) => {
     });
 
     // ── getMilestones ───────────────────────────────────────────────────────
-    const milestones = (milestonesRows.data ?? []).map((l) => ({
-      id: l.id, titre: l.nom, datePrevue: l.date_prevue ?? null, statut: l.statut,
+    // Rebasé sur les activités PTBA (module Livrables supprimé) — statut
+    // traduit vers le même vocabulaire attendu par le frontend
+    // (TabOverview.tsx : 'VALIDE' → achieved, 'EN_RETARD' → delayed, sinon
+    // pending), pour ne rien changer côté widget Jalons.
+    const milestones = (milestonesRows.data ?? []).map((a) => ({
+      id: a.id, titre: a.libelle, datePrevue: a.date_fin_prevue ?? null,
+      statut: a.statut === 'TERMINE' ? 'VALIDE' : a.statut,
     }));
 
     return json({ summary, rowAggregation, topRisks, criticalActivities, disbursementsMonthly, budgetDistribution, fundingSources, milestones });

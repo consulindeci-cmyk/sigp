@@ -76,7 +76,8 @@ Deno.serve(async (req: Request) => {
       .eq('id', ligne.version_id)
       .maybeSingle();
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: version?.project_id ?? null,
       user_id: profile.id,
@@ -84,7 +85,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'journal_operations',
       enregistrement_id: operation.id,
       apres: operation,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[journal-operations-create] historique', historiqueError);
+    }
 
     return json({ data: operation }, 201);
   } catch (err) {

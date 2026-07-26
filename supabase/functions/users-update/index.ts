@@ -115,7 +115,8 @@ Deno.serve(async (req: Request) => {
       .single();
     if (updateError) throw updateError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,
       // organisation_id : celle après la mise à jour (pertinent notamment pour
@@ -128,7 +129,10 @@ Deno.serve(async (req: Request) => {
       enregistrement_id: body.id,
       avant: existing,
       apres: updated,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[users-update] historique', historiqueError);
+    }
 
     return json({ data: updated });
   } catch (err) {

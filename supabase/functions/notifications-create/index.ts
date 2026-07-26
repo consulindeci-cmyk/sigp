@@ -63,7 +63,8 @@ Deno.serve(async (req: Request) => {
 
     if (insertError) throw insertError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId ?? null,
       user_id: profile.id,
@@ -71,7 +72,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'notifications',
       enregistrement_id: notification.id,
       apres: notification,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[notifications-create] historique', historiqueError);
+    }
 
     return json({ data: notification }, 201);
   } catch (err) {

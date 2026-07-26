@@ -47,7 +47,8 @@ Deno.serve(async (req: Request) => {
       .single();
     if (restoreError) throw restoreError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.id,
       user_id: profile.id,
@@ -56,7 +57,10 @@ Deno.serve(async (req: Request) => {
       enregistrement_id: body.id,
       avant: existing,
       apres: restored,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[projects-restore] historique', historiqueError);
+    }
 
     return json({ data: restored });
   } catch (err) {

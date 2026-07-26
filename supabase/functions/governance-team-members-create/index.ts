@@ -70,7 +70,8 @@ Deno.serve(async (req: Request) => {
       .single();
     if (insertError) throw insertError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -78,7 +79,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'project_team_members',
       enregistrement_id: member.id,
       apres: member,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[governance-team-members-create] historique', historiqueError);
+    }
 
     return json({ data: member }, 201);
   } catch (err) {

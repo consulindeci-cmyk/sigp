@@ -11,7 +11,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import {
   Search, Bell, Menu, X,
-  FolderOpen, FileText, Settings, LayoutDashboard, Users,
+  FolderOpen, Settings, LayoutDashboard, Users,
   AlertTriangle, CheckCircle2, Clock, LogOut, ChevronRight,
   User as UserIcon, Info,
 } from 'lucide-react';
@@ -51,7 +51,6 @@ interface SearchResult {
 const PAGE_NAV: Omit<SearchResult, 'id' | 'type'>[] = [
   { title: 'Tableau de bord', subtitle: "Vue d'ensemble et KPIs", route: '/dashboard', icon: LayoutDashboard },
   { title: 'Projets',         subtitle: 'Portefeuille de projets', route: '/projects',  icon: FolderOpen      },
-  { title: 'Documents',       subtitle: 'Bibliothèque documentaire', route: '/documents', icon: FileText      },
   { title: 'Utilisateurs',    subtitle: 'Gestion des comptes',     route: '/users',     icon: Users           },
   { title: 'Paramètres',      subtitle: 'Configuration',           route: '/settings',  icon: Settings        },
 ];
@@ -60,7 +59,6 @@ const SECTION_TITLE: Record<string, string> = {
   '/dashboard': 'Tableau de bord',
   '/projects':  'Projets',
   '/users':     'Utilisateurs',
-  '/documents': 'Documents',
   '/settings':  'Paramètres',
 };
 

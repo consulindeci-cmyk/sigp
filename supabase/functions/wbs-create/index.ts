@@ -122,7 +122,8 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -130,7 +131,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'wbs_nodes',
       enregistrement_id: node.id,
       apres: node,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[wbs-create] historique', historiqueError);
+    }
 
     return json({ data: node }, 201);
   } catch (err) {

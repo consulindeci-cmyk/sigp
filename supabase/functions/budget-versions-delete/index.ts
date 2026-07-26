@@ -61,7 +61,8 @@ Deno.serve(async (req: Request) => {
       .select('id');
     if (cascadeError) throw cascadeError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: existing.project_id,
       user_id: profile.id,
@@ -69,7 +70,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'budget_versions',
       enregistrement_id: body.id,
       avant: existing,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[budget-versions-delete] historique', historiqueError);
+    }
 
     const cascadedCount = cascadedLignes?.length ?? 0;
     return json({

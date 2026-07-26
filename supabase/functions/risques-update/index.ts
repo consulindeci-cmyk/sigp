@@ -81,7 +81,8 @@ Deno.serve(async (req: Request) => {
       .single();
     if (updateError) throw updateError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: existing.project_id,
       user_id: profile.id,
@@ -90,7 +91,10 @@ Deno.serve(async (req: Request) => {
       enregistrement_id: body.id,
       avant: existing,
       apres: updated,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[risques-update] historique', historiqueError);
+    }
 
     // Notifie seulement la TRANSITION vers ELEVE (palier haut du nouveau
     // modèle 3×3, remplace CRITIQUE) — pas à chaque modification d'un risque

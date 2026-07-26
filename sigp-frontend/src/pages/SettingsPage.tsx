@@ -962,19 +962,12 @@ function SauvegardeSection({ role }: { role: string }) {
   async function handleExportOrg() {
     setExporting(true); setExportError('');
     try {
-      const [projectsRes, documentsRes, rapportsRes] = await Promise.all([
-        supabase.from('projects').select('*').is('deleted_at', null),
-        supabase.from('documents_projet').select('*').is('deleted_at', null),
-        supabase.from('rapports_projet').select('*').is('deleted_at', null),
-      ]);
-      const firstError = projectsRes.error ?? documentsRes.error ?? rapportsRes.error;
-      if (firstError) throw firstError;
+      const { data: projets, error } = await supabase.from('projects').select('*').is('deleted_at', null);
+      if (error) throw error;
 
       const payload = {
         exporteLe: new Date().toISOString(),
-        projets:   projectsRes.data,
-        documents: documentsRes.data,
-        rapports:  rapportsRes.data,
+        projets,
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url  = URL.createObjectURL(blob);
@@ -999,7 +992,7 @@ function SauvegardeSection({ role }: { role: string }) {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Exporter les données de l'organisation</CardTitle>
-          <CardDescription className="text-[11px]">Projets, documents et rapports — au format JSON.</CardDescription>
+          <CardDescription className="text-[11px]">Projets — au format JSON.</CardDescription>
         </CardHeader>
         <CardContent>
           {!isAdmin ? (
@@ -1036,44 +1029,30 @@ function useArchivedCounts() {
   return useQuery({
     queryKey: ['archived-counts'],
     queryFn: async () => {
-      const [documents, projets, rapports] = await Promise.all([
-        countDeleted('documents_projet'),
-        countDeleted('projects'),
-        countDeleted('rapports_projet'),
-      ]);
-      return { documents, projets, rapports, corbeille: documents + projets + rapports };
+      const projets = await countDeleted('projects');
+      return { projets, corbeille: projets };
     },
   });
 }
 
 // ─── Restaurer des éléments — vraie liste + restauration réelle ──────────────
+// Documents/Rapports retirés (modules supprimés) — seuls les projets restent
+// soft-deletables/restaurables ici.
 
-type TrashItemType = 'document' | 'projet' | 'rapport';
+type TrashItemType = 'projet';
 interface TrashItem { id: string; type: TrashItemType; titre: string; deletedAt: string | null }
 
 const RESTORE_FUNCTION: Record<TrashItemType, string> = {
-  document: 'documents-restore',
-  projet:   'projects-restore',
-  rapport:  'reports-restore',
+  projet: 'projects-restore',
 };
 
 function useTrashItems() {
   return useQuery({
     queryKey: ['trash-items'],
     queryFn: async (): Promise<TrashItem[]> => {
-      const [docs, projets, rapports] = await Promise.all([
-        supabase.from('documents_projet').select('id, titre, deleted_at').not('deleted_at', 'is', null),
-        supabase.from('projects').select('id, nom, deleted_at').not('deleted_at', 'is', null),
-        supabase.from('rapports_projet').select('id, titre, deleted_at').not('deleted_at', 'is', null),
-      ]);
-      const firstError = docs.error ?? projets.error ?? rapports.error;
-      if (firstError) throw firstError;
-
-      const items: TrashItem[] = [
-        ...(docs.data ?? []).map(d => ({ id: d.id, type: 'document' as const, titre: d.titre, deletedAt: d.deleted_at })),
-        ...(projets.data ?? []).map(p => ({ id: p.id, type: 'projet' as const, titre: p.nom, deletedAt: p.deleted_at })),
-        ...(rapports.data ?? []).map(r => ({ id: r.id, type: 'rapport' as const, titre: r.titre, deletedAt: r.deleted_at })),
-      ];
+      const { data, error } = await supabase.from('projects').select('id, nom, deleted_at').not('deleted_at', 'is', null);
+      if (error) throw error;
+      const items: TrashItem[] = (data ?? []).map(p => ({ id: p.id, type: 'projet' as const, titre: p.nom, deletedAt: p.deleted_at }));
       return items.sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
     },
   });
@@ -1094,7 +1073,7 @@ function useRestoreItem() {
 }
 
 const TRASH_TYPE_LABEL: Record<TrashItemType, string> = {
-  document: 'Document', projet: 'Projet', rapport: 'Rapport',
+  projet: 'Projet',
 };
 
 function ArchivageSection() {
@@ -1186,11 +1165,9 @@ function ArchivageSection() {
           <CardDescription className="text-[11px]">✅ Compteurs réels (deleted_at renseigné, toutes suppressions sont des soft-delete).</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 gap-3 mb-5">
             {[
-              { label: 'Documents', count: counts?.documents },
               { label: 'Projets',   count: counts?.projets },
-              { label: 'Rapports',  count: counts?.rapports },
               { label: 'Corbeille', count: counts?.corbeille },
             ].map(item => (
               <div key={item.label} className="rounded-lg border border-border bg-card p-3 text-center">
@@ -1425,7 +1402,6 @@ function PrefsAvanceesSection() {
               <Select id="pf-home" value={display.homePage} onChange={e => setDisplayField('homePage', e.target.value)}>
                 <option value="Tableau de bord">Tableau de bord</option>
                 <option value="Projets">Projets</option>
-                <option value="Documents">Documents</option>
                 <option value="Utilisateurs">Utilisateurs</option>
                 <option value="Paramètres">Paramètres</option>
               </Select>

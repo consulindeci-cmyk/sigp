@@ -40,15 +40,16 @@ export function deadlineColorClass(daysUntil: number): string {
   return 'bg-muted-foreground';
 }
 
+// LIVRABLE_EN_RETARD/DOCUMENT_VALIDE/RAPPORT_PRET retirés (modules Livrables/
+// Documents/Rapports supprimés, plus aucune Edge Function ne les émet) — les
+// notifications historiques de ce type restent lisibles via le repli
+// générique ('milestone' / 'bg-primary') déjà en place pour tout type inconnu.
 export const NOTIF_TYPE_MAP: Record<string, 'alert' | 'validation' | 'payment' | 'milestone'> = {
   RISQUE_CRITIQUE: 'alert',
   BUDGET_DEPASSE: 'alert',
   EVM_ALERTE_CPI: 'alert',
   EVM_ALERTE_SPI: 'alert',
   CONTRAT_EXPIRE: 'alert',
-  LIVRABLE_EN_RETARD: 'alert',
-  DOCUMENT_VALIDE: 'validation',
-  RAPPORT_PRET: 'validation',
   BUDGET_VALIDE: 'validation',
   PAIEMENT_DU: 'payment',
   CONTRAT_SIGNE: 'payment',
@@ -58,10 +59,7 @@ export const NOTIF_COLOR: Record<string, string> = {
   RISQUE_CRITIQUE: 'bg-destructive',
   BUDGET_DEPASSE: 'bg-destructive',
   EVM_ALERTE_CPI: 'bg-destructive',
-  LIVRABLE_EN_RETARD: 'bg-warning',
   CONTRAT_EXPIRE: 'bg-warning',
-  DOCUMENT_VALIDE: 'bg-success',
-  RAPPORT_PRET: 'bg-success',
   BUDGET_VALIDE: 'bg-success',
 };
 

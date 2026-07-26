@@ -156,11 +156,10 @@ function ProjectViewContent({ project }: { project: Project }) {
       </div>
 
       {/* Stats rapides */}
-      <div className="grid grid-cols-3 gap-3 border-t border-border pt-4">
+      <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
         {[
           { label: 'Composantes', value: project.composantes },
           { label: 'Activités',   value: project.activites   },
-          { label: 'Livrables',   value: project.livrables   },
         ].map(({ label, value }) => (
           <div key={label} className="flex flex-col items-center gap-1 bg-muted/40 rounded-lg p-3">
             <span className="text-[20px] font-bold text-foreground">{value}</span>

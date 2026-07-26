@@ -50,7 +50,8 @@ Deno.serve(async (req: Request) => {
       .eq('id', body.id);
     if (deleteError) throw deleteError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: existing.project_id,
       user_id: profile.id,
@@ -58,7 +59,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'notifications',
       enregistrement_id: body.id,
       avant: existing,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[notifications-delete] historique', historiqueError);
+    }
 
     return json({ message: 'Notification supprimée' });
   } catch (err) {

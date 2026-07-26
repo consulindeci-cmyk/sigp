@@ -83,7 +83,8 @@ Deno.serve(async (req: Request) => {
 
     if (insertError) throw insertError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -91,7 +92,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'risques',
       enregistrement_id: risque.id,
       apres: risque,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[risques-create] historique', historiqueError);
+    }
 
     // Premier pont vers le module Notifications (cf. audit Risques & Alertes :
     // notifications-create n'était jamais appelé par aucun code du repo — la

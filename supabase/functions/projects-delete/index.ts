@@ -52,7 +52,8 @@ Deno.serve(async (req: Request) => {
       .eq('id', body.id);
     if (deleteError) throw deleteError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.id,
       user_id: profile.id,
@@ -60,7 +61,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'projects',
       enregistrement_id: body.id,
       avant: existing,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[projects-delete] historique', historiqueError);
+    }
 
     return json({ message: 'Projet supprimé' });
   } catch (err) {

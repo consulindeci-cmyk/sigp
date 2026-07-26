@@ -52,7 +52,8 @@ Deno.serve(async (req: Request) => {
       if (recalcError) console.error('[contracts-delete] recalc_budget_ligne_montants', recalcError);
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: existing.project_id,
       user_id: profile.id,
@@ -60,7 +61,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'contracts',
       enregistrement_id: body.id,
       avant: existing,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[contracts-delete] historique', historiqueError);
+    }
 
     return json({ message: 'Contrat supprimé' });
   } catch (err) {

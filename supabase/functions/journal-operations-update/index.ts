@@ -75,7 +75,8 @@ Deno.serve(async (req: Request) => {
       ? await admin.from('budget_versions').select('project_id').eq('id', ligne.version_id).maybeSingle()
       : { data: null };
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: version?.project_id ?? null,
       user_id: profile.id,
@@ -84,7 +85,10 @@ Deno.serve(async (req: Request) => {
       enregistrement_id: body.id,
       avant: existing,
       apres: updated,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[journal-operations-update] historique', historiqueError);
+    }
 
     return json({ data: updated });
   } catch (err) {

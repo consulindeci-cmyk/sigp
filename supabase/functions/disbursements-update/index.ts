@@ -74,7 +74,8 @@ Deno.serve(async (req: Request) => {
       if (recalcError) console.error('[disbursements-update] recalc_budget_ligne_montants', recalcError);
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,
       user_id: profile.id,
@@ -83,7 +84,10 @@ Deno.serve(async (req: Request) => {
       enregistrement_id: body.id,
       avant: existing,
       apres: updated,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[disbursements-update] historique', historiqueError);
+    }
 
     return json({ data: updated });
   } catch (err) {

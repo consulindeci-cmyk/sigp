@@ -85,7 +85,7 @@ export async function exportAllProjectsToCSV({
   const aggMap = await fetchBatchAggregations(rows.map((r) => ({ id: r.id, budgetTotal: r.budgetTotal })));
   const enriched = rows.map((r) => ({
     ...r,
-    ...(aggMap.get(r.id) ?? { progressScore: 0, tauxDecaissement: 0, composantes: 0, activites: 0, livrables: 0 }),
+    ...(aggMap.get(r.id) ?? { progressScore: 0, tauxDecaissement: 0, composantes: 0, activites: 0 }),
   }));
 
   const projects: ProjectRow[] = enriched.map(adaptProjectDto);

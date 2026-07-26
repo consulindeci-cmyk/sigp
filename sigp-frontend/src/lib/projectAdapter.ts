@@ -55,7 +55,6 @@ export interface ProjectApiDto {
   tauxDecaissement: number;
   composantes: number;
   activites: number;
-  livrables: number;
   createdAt: string;
   updatedAt: string;
   // SUPER_ADMIN uniquement — nom de l'organisation propriétaire du projet
@@ -91,7 +90,6 @@ export interface Project {
   tauxDecaissement: number;
   composantes: number;
   activites: number;
-  livrables: number;
 }
 
 export type ProjectRow = Project & {
@@ -245,7 +243,6 @@ export function adaptProjectDto(raw: ProjectApiDto): ProjectRow {
     tauxDecaissement: raw.tauxDecaissement ?? 0,
     composantes: raw.composantes ?? 0,
     activites: raw.activites ?? 0,
-    livrables: raw.livrables ?? 0,
     organisationNom: raw.organisationNom ?? undefined,
   };
 }

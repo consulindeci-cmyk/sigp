@@ -88,7 +88,8 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -96,7 +97,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'project_settings',
       enregistrement_id: setting.id,
       apres: setting,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[settings-create] historique', historiqueError);
+    }
 
     return json({ data: setting }, 201);
   } catch (err) {

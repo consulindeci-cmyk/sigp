@@ -6,9 +6,10 @@ import type { Risque, NiveauRisque, RisqueCategorie } from '@/types'
 
 // ── Ligne Supabase (colonnes snake_case de la table `risques`) ────────────────
 // responsable_id/statut/date_detection/date_echeance existent toujours en base
-// (lus par d'autres écrans en lecture seule, cf. reportBuilder.ts) mais ne
-// sont plus collectés ni affichés par ce module CRUD (formulaire Nouveau
-// risque) — cf. suppression Responsable/Statut/Dates du formulaire.
+// (lus par d'autres écrans en lecture seule, cf. project-detail-summary
+// getTopRisks) mais ne sont plus collectés ni affichés par ce module CRUD
+// (formulaire Nouveau risque) — cf. suppression Responsable/Statut/Dates du
+// formulaire.
 
 interface RisqueRow {
   id: string

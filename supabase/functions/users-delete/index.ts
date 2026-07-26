@@ -70,7 +70,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: null,
       organisation_id: existing.organisation_id,
@@ -79,7 +80,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'users',
       enregistrement_id: body.id,
       avant: existing,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[users-delete] historique', historiqueError);
+    }
 
     return json({ message: 'Utilisateur supprimé' });
   } catch (err) {

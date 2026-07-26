@@ -75,7 +75,8 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -83,7 +84,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'funding_sources',
       enregistrement_id: source.id,
       apres: source,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[funding-sources-create] historique', historiqueError);
+    }
 
     return json({ data: source }, 201);
   } catch (err) {

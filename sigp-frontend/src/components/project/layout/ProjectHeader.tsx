@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Edit2, Share2, FileText, AlertTriangle, AlertCircle, Copy, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Edit2, Share2, AlertTriangle, Copy, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/forms/Button';
 import { Badge } from '@/components/ui/data-display/Badge';
 import { Input } from '@/components/ui/forms/Input';
-import { Select } from '@/components/ui/forms/Select';
 import { Card, CardContent } from '@/components/ui/data-display/Card';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -13,8 +12,6 @@ import {
 import { ProjectEditModal } from '@/components/projects/ProjectEditModal';
 import type { Project } from '@/lib/projectAdapter';
 import { useAuthStore } from '@/stores/authStore';
-import { buildReportFile, triggerBrowserDownload } from '@/lib/reportBuilder';
-import type { TypeRapport } from '@/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,18 +71,9 @@ interface ProjectHeaderProps {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-const RAPPORT_TYPE_MAP: Record<string, TypeRapport> = {
-  avancement: 'AVANCEMENT',
-  financier:  'FINANCIER',
-  evm:        'EVM',
-  risques:    'RISQUES',
-  final:      'FINAL',
-};
-
 export default function ProjectHeader({ project, onProjectUpdate, isUpdating = false, updateError = null }: ProjectHeaderProps) {
   const [showEdit,    setShowEdit]    = useState(false);
   const [showShare,   setShowShare]   = useState(false);
-  const [showRapport, setShowRapport] = useState(false);
   const [linkCopied,  setLinkCopied]  = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false); // DEFAULT TO EXPANDED
 
@@ -94,12 +82,6 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
   // projet reste une responsabilité org_admin, pas plateforme.
   const currentRole = useAuthStore(s => s.user?.role);
   const canManageProject = currentRole === 'COORDINATEUR' || currentRole === 'ADMIN';
-
-  const [rapportType,       setRapportType]       = useState('avancement');
-  const [rapportFormat,     setRapportFormat]     = useState<'PDF' | 'Excel'>('PDF');
-  const [rapportGenerating, setRapportGenerating] = useState(false);
-  const [rapportDone,       setRapportDone]       = useState(false);
-  const [rapportError,      setRapportError]      = useState<string | null>(null);
 
   async function handleSaveProject(data: Partial<Project>) {
     try {
@@ -115,35 +97,6 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
     navigator.clipboard.writeText(url).catch(() => {});
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
-  }
-
-  // Vrai moteur de génération (reportBuilder.ts) — remplace la simulation
-  // setTimeout et les formats "(simulé)" (cf. audit Paramètres du Projet) :
-  // un rapport de synthèse réel (EVM + Budget + Risques + PTBA), construit à
-  // partir des données réellement stockées pour ce projet, téléchargé
-  // immédiatement. Pas de catalogage dans rapports_projet ici — ce bouton
-  // reste un export rapide, le Centre de Rapports (TabReports.tsx) couvre
-  // déjà le cycle complet génération+stockage+historique.
-  async function handleGenerateReport() {
-    setRapportGenerating(true);
-    setRapportError(null);
-    try {
-      const built = await buildReportFile({
-        type: RAPPORT_TYPE_MAP[rapportType] ?? 'AVANCEMENT',
-        format: rapportFormat,
-        projectId: project.id,
-        reportTitle: `Rapport de synthèse — ${project.name}`,
-        reportCode: project.code,
-        dateDebut: project.startDate,
-        dateFin: project.endDate,
-      });
-      triggerBrowserDownload(built.blob, built.fileName);
-      setRapportGenerating(false);
-      setRapportDone(true);
-    } catch (err) {
-      setRapportGenerating(false);
-      setRapportError(err instanceof Error ? err.message : 'Échec de la génération du rapport.');
-    }
   }
 
   const physBarClass = project.progressScore >= 70
@@ -197,14 +150,6 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
                   className="hidden md:flex"
                 >
                   Partager
-                </Button>
-                <Button
-                  variant="secondary"
-                  leftIcon={<FileText className="w-4 h-4" />}
-                  onClick={() => { setRapportDone(false); setRapportError(null); setShowRapport(true); }}
-                  className="hidden md:flex"
-                >
-                  Rapport
                 </Button>
               </>
             }
@@ -324,78 +269,6 @@ export default function ProjectHeader({ project, onProjectUpdate, isUpdating = f
                 Fermer
               </Button>
             </ModalClose>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      {/* ── Modal Rapport ──────────────────────────────────────────────── */}
-      <Modal open={showRapport} onOpenChange={open => { if (!rapportGenerating) setShowRapport(open); }}>
-        <ModalContent>
-          <ModalHeader>
-            <ModalTitle>Générer un rapport</ModalTitle>
-            <ModalDescription>
-              Rapport pour le projet <strong className="text-foreground">{project.name}</strong>.
-            </ModalDescription>
-          </ModalHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="rpt-type">
-                Type de rapport
-              </label>
-              <Select
-                id="rpt-type"
-                value={rapportType}
-                onChange={e => setRapportType(e.target.value)}
-                disabled={rapportGenerating || rapportDone}
-              >
-                <option value="avancement">Rapport d'avancement</option>
-                <option value="financier">Rapport financier</option>
-                <option value="evm">Rapport EVM</option>
-                <option value="risques">Rapport des risques</option>
-                <option value="final">Rapport final</option>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground" htmlFor="rpt-format">
-                Format d'export
-              </label>
-              <Select
-                id="rpt-format"
-                value={rapportFormat}
-                onChange={e => setRapportFormat(e.target.value as 'PDF' | 'Excel')}
-                disabled={rapportGenerating || rapportDone}
-              >
-                <option value="PDF">PDF</option>
-                <option value="Excel">Excel (XLSX)</option>
-              </Select>
-            </div>
-            {rapportError && (
-              <div className="flex items-start gap-2 text-destructive text-sm bg-destructive/10 rounded-md px-3 py-2 border border-destructive/20" role="alert">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
-                <span>{rapportError}</span>
-              </div>
-            )}
-            {rapportDone && (
-              <div className="flex items-center gap-2 text-success text-sm bg-success/10 rounded-md px-3 py-2 border border-success/20">
-                <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
-                Rapport généré et téléchargé.
-              </div>
-            )}
-          </div>
-          <ModalFooter>
-            <ModalClose asChild>
-              <Button variant="outline" disabled={rapportGenerating}>{rapportDone ? 'Fermer' : 'Annuler'}</Button>
-            </ModalClose>
-            {!rapportDone && (
-            <Button
-              variant="default"
-              onClick={handleGenerateReport}
-              disabled={rapportGenerating}
-            >
-              <FileText className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              {rapportGenerating ? 'Génération…' : 'Générer'}
-            </Button>
-            )}
           </ModalFooter>
         </ModalContent>
       </Modal>

@@ -54,7 +54,8 @@ Deno.serve(async (req: Request) => {
       .single();
     if (insertError) throw insertError;
 
-    await admin.from('historique').insert({
+    try {
+      await admin.from('historique').insert({
       id: crypto.randomUUID(),
       project_id: body.projectId,
       user_id: profile.id,
@@ -62,7 +63,10 @@ Deno.serve(async (req: Request) => {
       table_cible: 'project_stakeholders',
       enregistrement_id: stakeholder.id,
       apres: stakeholder,
-    });
+      });
+    } catch (historiqueError) {
+      console.error('[governance-stakeholders-create] historique', historiqueError);
+    }
 
     return json({ data: stakeholder }, 201);
   } catch (err) {
