@@ -8,6 +8,7 @@ import PTBAPage from './project/PTBAPage';
 import LogframePage from './project/LogframePage';
 import BudgetPage from './project/BudgetPage';
 import PPMPage from './project/PPMPage';
+import ProjectSettingsPage from './project/ProjectSettingsPage';
 
 // Natural-flow tabs (padded by ProjectDetail, scroll via parent)
 import { Loader } from '@/components/ui/feedback/Loader';
@@ -21,10 +22,8 @@ import ProjectGovernanceTab from '../components/project/ProjectGovernanceTab';
 import ProjectFundingTab from '../components/project/ProjectFundingTab';
 import ProjectDisbursementTab from '../components/project/ProjectDisbursementTab';
 import ProjectDeliverablesTab from '../components/project/ProjectDeliverablesTab';
-import ProjectOperationsJournalTab from '../components/project/ProjectOperationsJournalTab';
 import TabHistory from '../components/project/TabHistory';
 import TabComments from '../components/project/TabComments';
-import TabSettings from '../components/project/TabSettings';
 
 import { useProject, useProjectSummary, useProjectRowAggregation, useUpdateProject } from '@/hooks/useProjects';
 import { adaptProjectDto, type Project, type UpdateProjectPayload } from '@/lib/projectAdapter';
@@ -130,22 +129,30 @@ export default function ProjectDetail() {
         {activeProjectTab === 'ptba'      && <PTBAPage />}
         {activeProjectTab === 'budget'    && <BudgetPage />}
         {activeProjectTab === 'ppm'       && <PPMPage />}
+        {activeProjectTab === 'settings'  && <ProjectSettingsPage />}
 
         {/* Natural-flow tabs: padded, parent container scrolls them */}
         {activeProjectTab === 'overview' && (
           <div className={PAD}><div className={INNER}><TabOverview setActiveTab={setActiveProjectTab} project={project} summary={summary} /></div></div>
         )}
+        {/* "Membres"/"Sources de financement"/"Structure WBS" vivent désormais
+            comme sous-onglets de Paramètres du Projet (ProjectSettingsPage) —
+            ces 3 cas restent actifs pour ne casser aucun lien existant
+            (ex: BudgetPage.tsx → setActiveProjectTab('funding')), même s'ils
+            ne sont plus listés dans le menu principal. */}
         {activeProjectTab === 'governance' && (
           <div className={PAD}><div className={INNER}><ProjectGovernanceTab /></div></div>
         )}
         {activeProjectTab === 'wbs' && (
           <div className={PAD}><div className={INNER}><WBSPage /></div></div>
         )}
-        {activeProjectTab === 'journal' && (
-          <div className={PAD}><div className={INNER}><ProjectOperationsJournalTab /></div></div>
-        )}
         {activeProjectTab === 'funding' && (
           <div className={PAD}><div className={INNER}><ProjectFundingTab /></div></div>
+        )}
+        {/* "Journal des Opérations" affiche désormais directement le registre
+            des Décaissements (plus de sous-onglets Journal/Historique). */}
+        {activeProjectTab === 'journal' && (
+          <div className={PAD}><div className={INNER}><ProjectDisbursementTab /></div></div>
         )}
         {activeProjectTab === 'disbursements' && (
           <div className={PAD}><div className={INNER}><ProjectDisbursementTab /></div></div>
@@ -170,9 +177,6 @@ export default function ProjectDetail() {
         )}
         {activeProjectTab === 'comments' && (
           <div className={PAD}><div className={INNER}><TabComments /></div></div>
-        )}
-        {activeProjectTab === 'settings' && (
-          <div className={PAD}><div className={INNER}><TabSettings /></div></div>
         )}
       </div>
     </div>

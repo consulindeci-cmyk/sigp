@@ -20,58 +20,26 @@ import {
 // Project sub-navigation data
 // ---------------------------------------------------------------------------
 
-// Tous les modules sont désormais réellement branchés sur Supabase (migration
-// terminée le 2026-07-17) — le statut n'a plus vocation à distinguer
-// réel/mock, gardé uniquement comme repère visuel neutre par groupe.
+// Structure réorganisée (9 onglets) — Membres/Sources de financement/
+// Structure WBS restent de vraies routes internes (cf. ProjectDetail.tsx),
+// désormais regroupées comme sous-sections DANS "Paramètres du Projet"
+// (ProjectSettingsPage) plutôt qu'exposées comme entrées séparées ici.
+// Livrables/Documents/Rapports/Commentaires/Historique restent pleinement
+// fonctionnels (aucune route retirée de ProjectDetail.tsx) mais ne sont plus
+// listés dans ce menu principal, sur demande explicite.
 export const PROJECT_NAV_GROUPS = [
   {
-    title: "Aperçu & Cadrage",
+    title: "Modules du Projet",
     items: [
-      { id: "overview",   label: "Informations Générales", status: "success" },
-      { id: "governance", label: "Membres",                status: "success" },
-      { id: "logframe",   label: "Cadre Logique",           status: "success" },
-    ],
-  },
-  {
-    title: "Planification & Opérations",
-    items: [
-      { id: "wbs",        label: "Structure WBS",          status: "success" },
-      { id: "ptba",       label: "PTBA",                   status: "success" },
-      { id: "journal",    label: "Journal des Opérations", status: "success" },
-    ],
-  },
-  {
-    title: "Budget & Finances",
-    items: [
-      { id: "budget",        label: "Budget",                 status: "success" },
-      { id: "funding",       label: "Sources de financement", status: "success" },
-      { id: "ppm",           label: "Marchés & Contrats",     status: "success" },
-      { id: "disbursements", label: "Décaissements",          status: "success" },
-    ],
-  },
-  {
-    title: "Suivi & Contrôle",
-    items: [
-      { id: "evm",          label: "Indicateurs EVM",   status: "success" },
-      { id: "risks",        label: "Risques & Alertes", status: "success" },
-      { id: "deliverables", label: "Livrables",         status: "success" },
-    ],
-  },
-  {
-    title: "Documentation",
-    items: [
-      { id: "pdocuments", label: "Documents",         status: "success" },
-      { id: "reports",    label: "Rapports",          status: "success" },
-      { id: "history",    label: "Historique",        status: "success" },
-      { id: "comments",   label: "Commentaires",      status: "success" },
-    ],
-  },
-  {
-    // Isolé en dernier groupe — standard pour les réglages, séparé du contenu
-    // fonctionnel du projet (Documentation, Suivi, etc.).
-    title: "Paramètres",
-    items: [
-      { id: "settings", label: "Paramètres Projet", status: "success" },
+      { id: "overview",  label: "Vue d'ensemble",              status: "success" },
+      { id: "logframe",  label: "Cadre Logique",                status: "success" },
+      { id: "ptba",      label: "Plan de Travail (PTBA)",       status: "success" },
+      { id: "budget",    label: "Budget & Suivi Financier",     status: "success" },
+      { id: "journal",   label: "Journal des Opérations",       status: "success" },
+      { id: "evm",       label: "Indicateurs EVM",              status: "success" },
+      { id: "ppm",       label: "Passation des Marchés (PPM)",  status: "success" },
+      { id: "risks",     label: "Matrice des Risques",          status: "success" },
+      { id: "settings",  label: "Paramètres du Projet",         status: "success" },
     ],
   },
 ] as const;
@@ -167,7 +135,7 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
                 {activeProjectName ?? 'Détail du Projet'}
               </h2>
               <p className="text-[11px] text-sidebar-foreground/60 truncate mt-0.5">
-                Navigation des 17 modules
+                Navigation des 9 modules
               </p>
             </div>
           </div>

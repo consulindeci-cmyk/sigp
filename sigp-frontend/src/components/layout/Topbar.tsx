@@ -595,7 +595,7 @@ export function Topbar() {
     (acc, group) => [...acc, ...group.items],
     []
   );
-  const activeModuleLabel = allNavItems.find(i => i.id === activeProjectTab)?.label || 'Informations Générales';
+  const activeModuleLabel = allNavItems.find(i => i.id === activeProjectTab)?.label || "Vue d'ensemble";
 
   const currentUser = useCurrentUserProfile();
   const avatarStyle = userAvatarStyle(currentUser.initiales);
