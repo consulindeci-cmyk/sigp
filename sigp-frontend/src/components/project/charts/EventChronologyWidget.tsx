@@ -9,7 +9,7 @@ interface Props {
 export default function EventChronologyWidget({ data, state = 'success' }: Props) {
   return (
     <WidgetWrapper title="Chronologie des Événements" state={state}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '280px', overflowY: 'auto', paddingRight: '4px' }}>
         {data.map(evt => (
           <div key={evt.id} style={{ fontSize: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--line-soft)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
