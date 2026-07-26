@@ -20,26 +20,29 @@ import {
 // Project sub-navigation data
 // ---------------------------------------------------------------------------
 
-// Structure réorganisée (9 onglets) — Membres/Sources de financement/
+// Structure réorganisée (10 onglets) — Membres/Sources de financement/
 // Structure WBS restent de vraies routes internes (cf. ProjectDetail.tsx),
 // désormais regroupées comme sous-sections DANS "Paramètres du Projet"
 // (ProjectSettingsPage) plutôt qu'exposées comme entrées séparées ici.
-// Livrables/Documents/Rapports/Commentaires/Historique restent pleinement
-// fonctionnels (aucune route retirée de ProjectDetail.tsx) mais ne sont plus
-// listés dans ce menu principal, sur demande explicite.
+// Livrables/Documents/Rapports/Commentaires restent pleinement fonctionnels
+// (aucune route retirée de ProjectDetail.tsx) mais ne sont plus listés dans
+// ce menu principal, sur demande explicite. Historique a été réintégré ici
+// (retiré puis remis sur demande) et reste, lui aussi, la même route
+// 'history' existante — jamais retirée de ProjectDetail.tsx.
 export const PROJECT_NAV_GROUPS = [
   {
     title: "Modules du Projet",
     items: [
-      { id: "overview",  label: "Vue d'ensemble",              status: "success" },
-      { id: "logframe",  label: "Cadre Logique",                status: "success" },
-      { id: "ptba",      label: "Plan de Travail (PTBA)",       status: "success" },
-      { id: "budget",    label: "Budget & Suivi Financier",     status: "success" },
-      { id: "journal",   label: "Journal des Opérations",       status: "success" },
-      { id: "evm",       label: "Indicateurs EVM",              status: "success" },
-      { id: "ppm",       label: "Passation des Marchés (PPM)",  status: "success" },
-      { id: "risks",     label: "Matrice des Risques",          status: "success" },
-      { id: "settings",  label: "Paramètres du Projet",         status: "success" },
+      { id: "overview",  label: "Vue d'ensemble",                     status: "success" },
+      { id: "logframe",  label: "Cadre Logique",                       status: "success" },
+      { id: "ptba",      label: "Plan de Travail (PTBA)",              status: "success" },
+      { id: "budget",    label: "Budget & Suivi Financier",            status: "success" },
+      { id: "journal",   label: "Journal des Opérations (Décaissements)", status: "success" },
+      { id: "evm",       label: "Indicateurs EVM",                     status: "success" },
+      { id: "ppm",       label: "Passation des Marchés (PPM)",         status: "success" },
+      { id: "risks",     label: "Matrice des Risques",                 status: "success" },
+      { id: "history",   label: "Historique",                          status: "success" },
+      { id: "settings",  label: "Paramètres du Projet",                status: "success" },
     ],
   },
 ] as const;
@@ -135,7 +138,7 @@ export function Sidebar({ isMobile = false }: SidebarProps) {
                 {activeProjectName ?? 'Détail du Projet'}
               </h2>
               <p className="text-[11px] text-sidebar-foreground/60 truncate mt-0.5">
-                Navigation des 9 modules
+                Navigation des 10 modules
               </p>
             </div>
           </div>
