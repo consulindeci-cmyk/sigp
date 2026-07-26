@@ -907,79 +907,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Milestones + Events ── */}
-      <section aria-label="Jalons et événements">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-
-          {/* Milestones */}
-          <Card className="min-w-0">
-            <CardHeader className="pb-3">
-              <SectionHeader
-                title="Jalons à Venir"
-                subtitle="Prochains jalons critiques du portefeuille"
-                action={
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-8 pr-0 shrink-0"
-                    onClick={() => setShowCalendar(true)}
-                    aria-label="Voir le calendrier des jalons"
-                  >
-                    Calendrier <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
-                  </Button>
-                }
-              />
-            </CardHeader>
-            <CardContent className="p-0">
-              {dashboardLoading ? <ListSkeleton /> : (
-              <ul role="list" className="divide-y divide-border">
-                {jalons.length === 0 && (
-                  <li className="p-4 text-sm text-muted-foreground">Aucun jalon à venir.</li>
-                )}
-                {jalons.map((milestone) => (
-                  <li
-                    key={milestone.id}
-                    className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
-                  >
-                    <div
-                      className={`p-2 rounded-md shrink-0 ${
-                        milestone.status === 'achieved'
-                          ? 'bg-success/10 text-success'
-                          : milestone.status === 'delayed'
-                          ? 'bg-destructive/10 text-destructive'
-                          : 'bg-primary/10 text-primary'
-                      }`}
-                      aria-hidden="true"
-                    >
-                      <Flag className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">
-                        {milestone.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{milestone.date}</p>
-                    </div>
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                        milestone.status === 'achieved'
-                          ? 'bg-success/10 text-success'
-                          : milestone.status === 'delayed'
-                          ? 'bg-destructive/10 text-destructive'
-                          : 'bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {milestone.status === 'achieved'
-                        ? 'Atteint'
-                        : milestone.status === 'delayed'
-                        ? 'En retard'
-                        : 'À venir'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              )}
-            </CardContent>
-          </Card>
+      {/* ── Events ── */}
+      <section aria-label="Événements">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6">
 
           {/* Events */}
           <Card className="min-w-0">

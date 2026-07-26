@@ -75,10 +75,8 @@ Deno.serve(async (req: Request) => {
       disbursementsHorsLigneRows,
       fundingSourcesRows,
       activitesCritiquesRows,
-      jalonsRows,
       echeancesRows,
       notificationsRecentesRows,
-      timelineActivitesRows,
       timelineContractsRows,
       evmSnapshotsRows,
     ] = await Promise.all([
@@ -119,16 +117,16 @@ Deno.serve(async (req: Request) => {
       db.from('ptba_activites').select('id, code, libelle, statut, date_fin_prevue')
         .or(`statut.eq.EN_RETARD,and(statut.not.in.(TERMINE,ANNULE),date_fin_prevue.lt.${nowIso})`)
         .order('date_fin_prevue', { ascending: true }).limit(10),
-      db.from('ptba_activites').select('id, libelle, date_fin_prevue, statut')
-        .not('statut', 'in', '(TERMINE,ANNULE)').gte('date_fin_prevue', nowIso)
-        .order('date_fin_prevue', { ascending: true }).limit(5),
-      db.from('ptba_activites').select('id, libelle, date_fin_prevue, project:projects(code)')
+      // Source unique pour "Jalons à Venir", "Échéances à Venir" et la partie
+      // activités de "Ligne de Temps du Portefeuille" — ces 3 widgets
+      // affichaient auparavant 3 requêtes quasi-identiques (même table, même
+      // filtre, même tri, seul le limit différait) ; on ne requête plus
+      // qu'une fois (limit 10 = le plus grand des 3) et chaque widget prend
+      // les N premières lignes déjà triées par date_fin_prevue croissante.
+      db.from('ptba_activites').select('id, libelle, date_fin_prevue, statut, project:projects(code)')
         .not('statut', 'in', '(TERMINE,ANNULE)').gte('date_fin_prevue', nowIso)
         .order('date_fin_prevue', { ascending: true }).limit(10),
       db.from('notifications').select('id, titre, message, type, created_at').order('created_at', { ascending: false }).limit(10),
-      db.from('ptba_activites').select('id, libelle, date_fin_prevue, project:projects(code)')
-        .not('statut', 'in', '(TERMINE,ANNULE)').gte('date_fin_prevue', nowIso)
-        .order('date_fin_prevue', { ascending: true }).limit(8),
       db.from('contracts').select('id, intitule, date_fin, project:projects(code)')
         .gte('date_fin', nowIso).order('date_fin', { ascending: true }).limit(5),
       db.from('evm_snapshots').select('periode, pv, ev, ac').order('periode', { ascending: true }),
@@ -138,8 +136,8 @@ Deno.serve(async (req: Request) => {
       projetsTotal, projetsActifs, projetsTermines, projetsSuspendus, projetsBudget, versionsTotal,
       budgetLignesRows, ptbaTotal, ptbaTermines, ptbaEnCours, ptbaNonDemarres, risquesTotal, risquesRows,
       risquesPrincipauxRows, marchesTotal, marchesTermines, etapesTotal, notificationsTotal, notificationsNonLues,
-      disbursementsRows, disbursementsHorsLigneRows, fundingSourcesRows, activitesCritiquesRows, jalonsRows, echeancesRows,
-      notificationsRecentesRows, timelineActivitesRows, timelineContractsRows, evmSnapshotsRows,
+      disbursementsRows, disbursementsHorsLigneRows, fundingSourcesRows, activitesCritiquesRows, echeancesRows,
+      notificationsRecentesRows, timelineContractsRows, evmSnapshotsRows,
     })) {
       if (res.error) throw new Error(`[${name}] ${res.error.message}`);
     }
@@ -223,8 +221,8 @@ Deno.serve(async (req: Request) => {
       .slice(0, 5)
       .map((r) => ({ id: r.id, description: r.description, probability: probToPct(r.probabilite), level: niveauToLevel(r.niveau_criticite) }));
 
-    // ── Jalons ───────────────────────────────────────────────────────────────
-    const jalons = (jalonsRows.data ?? []).map((j) => ({
+    // ── Jalons (5 premiers de la même liste déjà triée qu'echeancesRows) ────
+    const jalons = (echeancesRows.data ?? []).slice(0, 5).map((j) => ({
       id: j.id,
       title: j.libelle,
       date: j.date_fin_prevue ? String(j.date_fin_prevue).slice(0, 10) : '',
@@ -247,8 +245,9 @@ Deno.serve(async (req: Request) => {
     });
 
     // ── Timeline (activités + contrats fusionnés) ──────────────────────────
+    // Les 8 premières de la même liste (echeancesRows) déjà triée par échéance croissante.
     type TimelineRaw = { id: string; title: string; date: string; project: string; type: 'deadline' | 'milestone'; _sort: number };
-    const timelineActivites: TimelineRaw[] = (timelineActivitesRows.data ?? [])
+    const timelineActivites: TimelineRaw[] = (echeancesRows.data ?? []).slice(0, 8)
       .filter((a: { date_fin_prevue: string | null }) => a.date_fin_prevue)
       .map((a: { id: string; libelle: string; date_fin_prevue: string; project?: { code: string } | { code: string }[] }) => {
         const d = new Date(a.date_fin_prevue);
